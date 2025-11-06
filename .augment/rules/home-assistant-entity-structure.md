@@ -4,6 +4,8 @@ type: "always_apply"
 
 # Home Assistant Unraid Integration - AI Agent Rule File
 
+**Scope**: This rule file defines universal standards for Unraid entities in Home Assistant, applicable to all Unraid integrations regardless of communication protocol (SSH, GraphQL, REST API, etc.).
+
 ## Table of Contents
 1. [Integration Overview](#integration-overview)
 2. [File Organization Standards](#file-organization-standards)
@@ -21,25 +23,26 @@ type: "always_apply"
 ## 1. Integration Overview
 
 ### Domain and Basic Information
-- **Domain**: `unraid`
+- **Domain**: `unraid` (or variant like `unraid_graphql`, `unraid_management`)
 - **Version Format**: `YYYY.MM.DD` (e.g., "2025.06.12")
-- **Quality Scale**: `silver`
-- **IoT Class**: `local_polling`
+- **Quality Scale**: `silver` or higher
+- **IoT Class**: `local_polling` or `cloud_polling` (depending on implementation)
 - **Config Flow**: UI-based configuration (no YAML)
-- **Migration Version**: `2` (current)
+- **Migration Version**: `2` (current standard)
 
 ### Supported Platforms
-The integration supports four Home Assistant platforms:
+All Unraid integrations should support these four Home Assistant platforms:
 1. **SENSOR** - System metrics, storage usage, network statistics, UPS monitoring
 2. **BINARY_SENSOR** - Status indicators, health monitoring, connectivity checks
 3. **SWITCH** - VM control, Docker container management
 4. **BUTTON** - System actions (reboot, shutdown), user script execution
 
 ### Architecture Pattern
-- **Coordinator Pattern**: `UnraidDataUpdateCoordinator` extends `DataUpdateCoordinator[UnraidDataDict]` to centralize data fetching
+- **Coordinator Pattern**: `UnraidDataUpdateCoordinator` extends `DataUpdateCoordinator[UnraidDataDict]` to centralize data fetching from any source
 - **Factory/Registry Pattern**: `SensorFactory` + `register_all_sensors()` enable dynamic sensor creation based on hardware
 - **Modern Runtime Data**: Uses `entry.runtime_data` (not deprecated `hass.data`)
 - **Entity Format v2**: Modern naming with `has_entity_name = True`
+- **Protocol Agnostic**: Data source can be SSH, GraphQL, REST API, WebSocket, or any other communication method
 
 ---
 
@@ -47,16 +50,18 @@ The integration supports four Home Assistant platforms:
 
 ### Directory Structure
 ```
-custom_components/unraid/
+custom_components/unraid*/
 ├── __init__.py, manifest.json, config_flow.py, const.py, coordinator.py
 ├── entity_naming.py, helpers.py
 ├── sensor.py, binary_sensor.py, button.py, switch.py
-├── api/                        # API communication (unraid_api.py, ssh_client.py, disk_mapping.py)
+├── api/                        # Communication layer (protocol-specific: client.py, data_fetcher.py, etc.)
 ├── sensors/                    # Sensor implementations (base.py, factory.py, registry.py, metadata.py)
 │   └── system.py, storage.py, network.py, ups.py, docker.py
 ├── diagnostics/                # Binary sensors (base.py, disk.py, parity.py, array.py, ups.py)
 └── performance/                # Optimization (cache_manager.py, sensor_priority.py)
 ```
+
+**Note**: The `api/` directory contains protocol-specific implementation (SSH client, GraphQL client, REST client, etc.) but the entity structure remains consistent.
 
 ### Naming Conventions
 **Files**: `{platform}.py`, `{category}.py`, `base.py`, `const.py`
@@ -220,7 +225,7 @@ BUTTON_DESCRIPTIONS = [
         key="reboot",
         name="Reboot",
         icon="mdi:restart",
-        press_fn=lambda api: api.reboot_system(),
+        press_fn=lambda coordinator: coordinator.api.reboot_system(),
     ),
 ]
 ```
@@ -535,326 +540,159 @@ def extra_state_attributes(self) -> dict[str, Any]:
 | `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
 
 ### 6.14 Network Sensor Attributes
+**Entity**: `sensor.{hostname}_network_{interface}_{direction}` | **State**: Throughput in MB/s
 
-**Entity**: `sensor.{hostname}_network_{interface}_{direction}`
-**State Value**: Network throughput in MB/s
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `interface` | `str` | Network interface name | `"eth0"` |
-| `direction` | `str` | Traffic direction | `"inbound"` / `"outbound"` |
-| `bytes_total` | `int` | Total bytes transferred | `1234567890` |
-| `packets_total` | `int` | Total packets transferred | `9876543` |
-| `errors` | `int` | Error count | `0` |
-| `drops` | `int` | Dropped packet count | `0` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `interface`, `direction` | `str` | Interface and direction | `"eth0"`, `"inbound"` / `"outbound"` |
+| `bytes_total`, `packets_total` | `int` | Transfer totals | `1234567890`, `9876543` |
+| `errors`, `drops` | `int` | Error/drop counts | `0`, `0` |
 | `connected` | `bool` | Connection status | `true` |
-| `speed_mbps` | `int` | Link speed in Mbps | `1000` |
-| `duplex` | `str` | Duplex mode | `"full"` / `"half"` |
-| `mac_address` | `str` | MAC address | `"00:11:22:33:44:55"` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| `speed_mbps`, `duplex`, `mac_address` | `int`/`str` | Link info | `1000`, `"full"`, `"00:11:22:33:44:55"` |
 
 ### 6.15 UPS Server Power Sensor Attributes
+**Entity**: `sensor.{hostname}_ups_server_power` | **State**: Power in Watts | **Energy Dashboard**: Compatible
 
-**Entity**: `sensor.{hostname}_ups_server_power`
-**State Value**: Current power consumption in Watts
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `ups_model` | `str` | UPS model name | `"CyberPower CP1500PFCLCD"` |
-| `rated_power` | `str` | Rated power capacity | `"1000W"` |
-| `current_load` | `str` | Current load percentage | `"45%"` |
-| `battery_charge` | `str` | Battery charge percentage | `"100%"` |
-| `battery_status` | `str` | Battery status description | `"Excellent"` / `"Good"` / `"Fair"` / `"Low"` / `"Critical"` |
-| `estimated_runtime` | `str` | Estimated runtime on battery | `"1h 30m"` / `"45m"` |
-| `load_status` | `str` | Load status description | `"Light"` / `"Moderate"` / `"High"` / `"Very High"` |
-| `energy_dashboard_ready` | `bool` | Energy Dashboard compatibility | `true` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
-
-**Energy Dashboard**: This sensor is compatible with Home Assistant Energy Dashboard for tracking server power consumption.
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `ups_model`, `rated_power` | `str` | UPS info | `"CyberPower CP1500PFCLCD"`, `"1000W"` |
+| `current_load`, `battery_charge` | `str` | Load/battery % | `"45%"`, `"100%"` |
+| `battery_status` | `str` | Battery status | `"Excellent"` / `"Good"` / `"Fair"` / `"Low"` / `"Critical"` |
+| `estimated_runtime` | `str` | Runtime on battery | `"1h 30m"` / `"45m"` |
+| `load_status` | `str` | Load status | `"Light"` / `"Moderate"` / `"High"` / `"Very High"` |
+| `energy_dashboard_ready` | `bool` | Dashboard compatibility | `true` |
 
 ### 6.16 UPS Server Energy Sensor Attributes
+**Entity**: `sensor.{hostname}_ups_server_energy` | **State**: Energy in kWh | **Energy Dashboard**: Compatible
 
-**Entity**: `sensor.{hostname}_ups_server_energy`
-**State Value**: Cumulative energy consumption in kWh
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `ups_model` | `str` | UPS model name | `"CyberPower CP1500PFCLCD"` |
-| `rated_power` | `str` | Rated power capacity | `"1000W"` |
-| `current_power` | `str` | Current power draw | `"450W"` |
-| `total_energy_kwh` | `float` | Total energy consumed | `123.45` |
-| `energy_today_kwh` | `float` | Energy consumed today | `2.5` |
-| `energy_this_month_kwh` | `float` | Energy consumed this month | `75.0` |
-| `estimated_cost_today` | `str` | Estimated cost today (if configured) | `"$0.30"` |
-| `estimated_cost_month` | `str` | Estimated cost this month | `"$9.00"` |
-| `energy_dashboard_ready` | `bool` | Energy Dashboard compatibility | `true` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
-
-**Energy Dashboard**: This sensor is compatible with Home Assistant Energy Dashboard for tracking cumulative server energy consumption.
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `ups_model`, `rated_power`, `current_power` | `str` | UPS/power info | `"CyberPower CP1500PFCLCD"`, `"1000W"`, `"450W"` |
+| `total_energy_kwh`, `energy_today_kwh`, `energy_this_month_kwh` | `float` | Energy totals | `123.45`, `2.5`, `75.0` |
+| `estimated_cost_today`, `estimated_cost_month` | `str` | Cost estimates | `"$0.30"`, `"$9.00"` |
+| `energy_dashboard_ready` | `bool` | Dashboard compatibility | `true` |
 
 ### 6.17 Docker Container Count Sensors Attributes
+**Entities**: `sensor.{hostname}_containers_running`, `sensor.{hostname}_containers_paused`, `sensor.{hostname}_total_containers` | **State**: Container count
 
-**Entities**:
-- `sensor.{hostname}_containers_running`
-- `sensor.{hostname}_containers_paused`
-- `sensor.{hostname}_total_containers`
-
-**State Value**: Count of containers
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `container_names` | `list[str]` | List of container names | `["plex", "sonarr", "radarr"]` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `container_names` | `list[str]` | Container names | `["plex", "sonarr", "radarr"]` |
 
 ### 6.18 Binary Sensor Attributes
 
 #### Array Status Binary Sensor
+**Entity**: `binary_sensor.{hostname}_array_status` | **State**: `on` (started) / `off` (stopped)
 
-**Entity**: `binary_sensor.{hostname}_array_status`
-**State Value**: `on` (started) / `off` (stopped)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `array_state` | `str` | Array state | `"Started"` / `"Stopped"` |
-| `num_disks` | `int` | Total number of disks | `6` |
-| `num_data_disks` | `int` | Number of data disks | `4` |
-| `num_parity_disks` | `int` | Number of parity disks | `2` |
-| `protection` | `str` | Protection status | `"Protected"` / `"Unprotected"` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `array_state`, `protection` | `str` | State and protection | `"Started"` / `"Stopped"`, `"Protected"` / `"Unprotected"` |
+| `num_disks`, `num_data_disks`, `num_parity_disks` | `int` | Disk counts | `6`, `4`, `2` |
 
 #### Array Health Binary Sensor
+**Entity**: `binary_sensor.{hostname}_array_health` | **State**: `on` (problem) / `off` (healthy)
 
-**Entity**: `binary_sensor.{hostname}_array_health`
-**State Value**: `on` (problem) / `off` (healthy)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
 | `health_status` | `str` | Health status | `"Healthy"` / `"Warning"` / `"Critical"` |
-| `issues` | `list[str]` | List of detected issues | `["Disk 1 temperature high", "Parity errors detected"]` |
-| `num_issues` | `int` | Number of issues | `2` |
-| `last_check` | `str` | ISO timestamp of last check | `"2024-01-15T10:30:00Z"` |
+| `issues`, `num_issues` | `list[str]`, `int` | Issues detected | `["Disk 1 temperature high"]`, `2` |
 
 #### Disk Health Binary Sensor
+**Entity**: `binary_sensor.{hostname}_disk_health_{name}` | **State**: `on` (problem) / `off` (healthy)
 
-**Entity**: `binary_sensor.{hostname}_disk_health_{name}`
-**State Value**: `on` (problem) / `off` (healthy)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `disk_name` | `str` | Disk name | `"disk1"` |
-| `device` | `str` | Device path | `"/dev/sdb1"` |
-| `serial` | `str` | Disk serial number | `"WD-XXXXXXXXXXXX"` |
-| `smart_status` | `str` | SMART status | `"PASSED"` / `"FAILED"` |
-| `temperature` | `int` | Current temperature | `35` |
-| `temperature_status` | `str` | Temperature status | `"Normal"` / `"Warm"` / `"Hot"` |
-| `power_state` | `str` | Power state | `"active"` / `"standby"` |
-| `reallocated_sectors` | `int` | Reallocated sector count | `0` |
-| `pending_sectors` | `int` | Pending sector count | `0` |
-| `offline_uncorrectable` | `int` | Offline uncorrectable sectors | `0` |
-| `problems_detected` | `list[str]` | List of problems | `["Temperature high", "Reallocated sectors"]` |
-| `last_smart_check` | `str` | ISO timestamp of last SMART check | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `disk_name`, `device`, `serial` | `str` | Disk identification | `"disk1"`, `"/dev/sdb1"`, `"WD-XXXXXXXXXXXX"` |
+| `smart_status`, `temperature`, `temperature_status`, `power_state` | `str`/`int` | Disk status | `"PASSED"`, `35`, `"Normal"`, `"active"` |
+| `reallocated_sectors`, `pending_sectors`, `offline_uncorrectable` | `int` | SMART attributes | `0`, `0`, `0` |
+| `problems_detected` | `list[str]` | Problems list | `["Temperature high"]` |
 
 #### Parity Check Binary Sensor
+**Entity**: `binary_sensor.{hostname}_parity_check` | **State**: `on` (running) / `off` (not running)
 
-**Entity**: `binary_sensor.{hostname}_parity_check`
-**State Value**: `on` (running) / `off` (not running)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `status` | `str` | Parity check status | `"Running"` / `"Idle"` / `"Paused"` |
-| `progress` | `float` | Progress percentage | `45.5` |
-| `elapsed_time` | `str` | Elapsed time | `"2h 15m"` |
-| `estimated_finish` | `str` | Estimated finish time | `"2024-01-15T15:30:00Z"` |
-| `speed_mbps` | `float` | Check speed in MB/s | `125.5` |
-| `errors_found` | `int` | Errors found | `0` |
-| `last_check_date` | `str` | Date of last check | `"2024-01-01"` |
-| `last_check_duration` | `str` | Duration of last check | `"4h 30m"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `status`, `progress` | `str`, `float` | Check status | `"Running"`, `45.5` |
+| `elapsed_time`, `estimated_finish`, `speed_mbps` | `str`/`float` | Progress info | `"2h 15m"`, `"2024-01-15T15:30:00Z"`, `125.5` |
+| `errors_found`, `last_check_date`, `last_check_duration` | `int`/`str` | Check results | `0`, `"2024-01-01"`, `"4h 30m"` |
 
 #### Parity Errors Binary Sensor
+**Entity**: `binary_sensor.{hostname}_parity_errors` | **State**: `on` (errors) / `off` (no errors)
 
-**Entity**: `binary_sensor.{hostname}_parity_errors`
-**State Value**: `on` (errors detected) / `off` (no errors)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `error_count` | `int` | Number of parity errors | `0` |
-| `last_check_date` | `str` | Date of last check | `"2024-01-01"` |
-| `last_check_errors` | `int` | Errors from last check | `0` |
-| `error_history` | `list[dict]` | History of errors | `[{"date": "2024-01-01", "errors": 0}]` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `error_count`, `last_check_date`, `last_check_errors` | `int`/`str` | Error info | `0`, `"2024-01-01"`, `0` |
+| `error_history` | `list[dict]` | Error history | `[{"date": "2024-01-01", "errors": 0}]` |
 
 #### UPS Status Binary Sensor
+**Entity**: `binary_sensor.{hostname}_ups_status` | **State**: `on` (online) / `off` (offline/on battery)
 
-**Entity**: `binary_sensor.{hostname}_ups_status`
-**State Value**: `on` (online) / `off` (offline/on battery)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `ups_model` | `str` | UPS model name | `"CyberPower CP1500PFCLCD"` |
-| `status` | `str` | UPS status | `"ONLINE"` / `"ONBATT"` / `"LOWBATT"` |
-| `battery_charge` | `str` | Battery charge percentage | `"100%"` |
-| `battery_runtime` | `str` | Estimated runtime | `"1h 30m"` |
-| `load_percent` | `str` | Load percentage | `"45%"` |
-| `input_voltage` | `str` | Input voltage | `"120V"` |
-| `output_voltage` | `str` | Output voltage | `"120V"` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `ups_model`, `status` | `str` | UPS info | `"CyberPower CP1500PFCLCD"`, `"ONLINE"` / `"ONBATT"` |
+| `battery_charge`, `battery_runtime`, `load_percent` | `str` | Battery/load info | `"100%"`, `"1h 30m"`, `"45%"` |
+| `input_voltage`, `output_voltage` | `str` | Voltage info | `"120V"`, `"120V"` |
 
 ### 6.19 Switch Attributes
 
 #### Docker Container Switch
+**Entity**: `switch.{hostname}_docker_{container_name}` | **State**: `on` (running) / `off` (stopped)
 
-**Entity**: `switch.{hostname}_docker_{container_name}`
-**State Value**: `on` (running) / `off` (stopped)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `container_id` | `str` | Container ID | `"abc123def456"` |
-| `container_name` | `str` | Container name | `"plex"` |
-| `status` | `str` | Container status | `"running"` / `"exited"` / `"paused"` |
-| `image` | `str` | Docker image | `"plexinc/pms-docker:latest"` |
-| `created` | `str` | Creation timestamp | `"2024-01-01T00:00:00Z"` |
-| `ports` | `list[str]` | Exposed ports | `["32400:32400/tcp"]` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `container_id`, `container_name`, `status`, `image` | `str` | Container info | `"abc123def456"`, `"plex"`, `"running"`, `"plexinc/pms-docker:latest"` |
+| `created`, `ports` | `str`, `list[str]` | Creation and ports | `"2024-01-01T00:00:00Z"`, `["32400:32400/tcp"]` |
 
 #### VM Switch
+**Entity**: `switch.{hostname}_vm_{vm_name}` | **State**: `on` (running) / `off` (stopped)
 
-**Entity**: `switch.{hostname}_vm_{vm_name}`
-**State Value**: `on` (running) / `off` (stopped)
-
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `vm_name` | `str` | VM name | `"Windows 10"` |
-| `status` | `str` | VM status | `"running"` / `"shut off"` / `"paused"` |
-| `os_type` | `str` | Operating system type | `"windows"` / `"linux"` / `"macos"` |
-| `vcpus` | `int` | Number of vCPUs | `4` |
-| `memory_mb` | `int` | Allocated memory in MB | `8192` |
-| `autostart` | `bool` | Autostart enabled | `true` |
-| `last_updated` | `str` | ISO timestamp | `"2024-01-15T10:30:00Z"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `vm_name`, `status`, `os_type` | `str` | VM info | `"Windows 10"`, `"running"`, `"windows"` |
+| `vcpus`, `memory_mb`, `autostart` | `int`/`bool` | Resources | `4`, `8192`, `true` |
 
 ### 6.20 Button Attributes
 
 #### System Control Buttons
-
 **Entities**: `button.{hostname}_reboot`, `button.{hostname}_shutdown`
 
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `last_pressed` | `str` | ISO timestamp of last press | `"2024-01-15T10:30:00Z"` |
-| `action` | `str` | Action description | `"Reboot System"` / `"Shutdown System"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `last_pressed`, `action` | `str` | Press info | `"2024-01-15T10:30:00Z"`, `"Reboot System"` |
 
 #### User Script Button
-
 **Entity**: `button.{hostname}_script_{script_name}`
 
-| Attribute | Data Type | Description | Example Value |
-|-----------|-----------|-------------|---------------|
-| `script_name` | `str` | Script name | `"backup"` |
-| `script_path` | `str` | Script file path | `"/boot/config/plugins/user.scripts/scripts/backup/script"` |
-| `last_executed` | `str` | ISO timestamp of last execution | `"2024-01-15T10:30:00Z"` |
-| `last_result` | `str` | Result of last execution | `"success"` / `"failed"` |
-| `execution_time` | `str` | Last execution duration | `"2m 15s"` |
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `script_name`, `script_path` | `str` | Script info | `"backup"`, `"/boot/config/plugins/user.scripts/scripts/backup/script"` |
+| `last_executed`, `last_result`, `execution_time` | `str` | Execution info | `"2024-01-15T10:30:00Z"`, `"success"`, `"2m 15s"` |
 
 ---
 
 ## 7. Device Info Standards
 
-### 7.1 Main Server Device
+### Device Identifier Patterns
 
-**Device Identifier**: `(DOMAIN, entry_id)`
+| Device Type | Identifier Pattern | Name Pattern | Manufacturer | Model |
+|-------------|-------------------|--------------|--------------|-------|
+| Main Server | `(DOMAIN, entry_id)` | `{hostname.title()}` | `"Lime Technology"` | `"Unraid Server"` |
+| Docker | `(DOMAIN, f"{entry_id}_docker")` | `"Unraid Docker ({hostname})"` | `"Docker"` | `"Container Engine"` |
+| Container | `(DOMAIN, f"docker_{container_name}_{entry_id}")` | `{container_name}` | `"Docker"` | `"Container"` |
+| VM | `(DOMAIN, f"vm_{vm_name}_{entry_id}")` | `{vm_name}` | `"QEMU/KVM"` | `"{os_type} Virtual Machine"` |
+| Disk | `(DOMAIN, f"disk_{disk_name}_{entry_id}")` | `"Unraid Disk ({disk_name})"` | From SMART | From SMART |
+| UPS | `(DOMAIN, f"ups_{entry_id}")` | `"Unraid UPS ({hostname})"` | From UPS data | From UPS data |
 
+### Device Info Example
 ```python
 DeviceInfo(
     identifiers={(DOMAIN, entry.entry_id)},
     name=coordinator.hostname.replace("_", " ").title(),
     manufacturer="Lime Technology",
     model="Unraid Server",
-    sw_version=coordinator.data.get("system_stats", {}).get("unraid_version", "Unknown"),
+    sw_version=coordinator.data.get("system_stats", {}).get("unraid_version"),
     configuration_url=f"http://{coordinator.hostname}",
-)
-```
-
-**Properties**:
-- `identifiers`: `{(DOMAIN, entry_id)}`
-- `name`: Hostname in title case (e.g., "Tower")
-- `manufacturer`: `"Lime Technology"`
-- `model`: `"Unraid Server"`
-- `sw_version`: Unraid version from system stats
-- `configuration_url`: `http://{hostname}`
-
-### 7.2 Docker Device
-
-**Device Identifier**: `(DOMAIN, f"{entry_id}_docker")`
-
-```python
-DeviceInfo(
-    identifiers={(DOMAIN, f"{entry.entry_id}_docker")},
-    name=f"Unraid Docker ({coordinator.hostname.replace('_', ' ').title()})",
-    manufacturer="Docker",
-    model="Container Engine",
-    via_device=(DOMAIN, entry.entry_id),
-)
-```
-
-**Properties**:
-- `identifiers`: `{(DOMAIN, f"{entry_id}_docker")}`
-- `name`: `"Unraid Docker ({hostname})"`
-- `manufacturer`: `"Docker"`
-- `model`: `"Container Engine"`
-- `via_device`: Links to main server device
-
-### 7.3 Individual Docker Container Device
-
-**Device Identifier**: `(DOMAIN, f"docker_{container_name}_{entry_id}")`
-
-```python
-DeviceInfo(
-    identifiers={(DOMAIN, f"docker_{container_name}_{entry.entry_id}")},
-    name=container_name,
-    manufacturer="Docker",
-    model="Container",
-    via_device=(DOMAIN, f"{entry.entry_id}_docker"),
-)
-```
-
-### 7.4 VM Device
-
-**Device Identifier**: `(DOMAIN, f"vm_{vm_name}_{entry_id}")`
-
-```python
-DeviceInfo(
-    identifiers={(DOMAIN, f"vm_{vm_name}_{entry.entry_id}")},
-    name=vm_name,
-    manufacturer="QEMU/KVM",
-    model=f"{os_type.title()} Virtual Machine",
-    via_device=(DOMAIN, entry.entry_id),
-)
-```
-
-### 7.5 Disk Device
-
-**Device Identifier**: `(DOMAIN, f"disk_{disk_name}_{entry_id}")`
-
-```python
-DeviceInfo(
-    identifiers={(DOMAIN, f"disk_{disk_name}_{entry.entry_id}")},
-    name=f"Unraid Disk ({disk_name})",
-    manufacturer=disk_manufacturer,  # From SMART data
-    model=disk_model,  # From SMART data
-    serial_number=disk_serial,
-    via_device=(DOMAIN, entry.entry_id),
-)
-```
-
-### 7.6 UPS Device
-
-**Device Identifier**: `(DOMAIN, f"ups_{entry_id}")`
-
-```python
-DeviceInfo(
-    identifiers={(DOMAIN, f"ups_{entry.entry_id}")},
-    name=f"Unraid UPS ({coordinator.hostname.replace('_', ' ').title()})",
-    manufacturer=ups_manufacturer,  # From UPS data
-    model=ups_model,  # From UPS data
-    via_device=(DOMAIN, entry.entry_id),
+    via_device=(DOMAIN, parent_device_id),  # For child devices
 )
 ```
 
@@ -863,64 +701,38 @@ DeviceInfo(
 ## 8. State Management Patterns
 
 ### 8.1 Coordinator Update Intervals
-
-**Defined in**: `custom_components/unraid/const.py`
-
 ```python
-DEFAULT_GENERAL_INTERVAL = 5  # minutes
-DEFAULT_DISK_INTERVAL = 60  # minutes
+DEFAULT_GENERAL_INTERVAL = 5  # minutes (range: 1-60)
+DEFAULT_DISK_INTERVAL = 60  # minutes (range: 5-1440)
 ```
-
-**Configurable Ranges**:
-- General Interval: 1-60 minutes (default: 5)
-- Disk Interval: 5 minutes to 24 hours (default: 60)
-
-**Why Separate Intervals**:
-- **General**: Frequent updates for system metrics (CPU, RAM, network)
-- **Disk**: Less frequent to avoid spinning up standby disks
+**Why Separate**: General updates system metrics frequently; disk updates less often to avoid spinning up standby disks.
 
 ### 8.2 Cache TTL Settings
 
-**Defined in**: `custom_components/unraid/performance/cache_manager.py`
-
-| Data Type | TTL | Reason |
-|-----------|-----|--------|
-| Static Data | 1 hour | Disk mapping, device serials/models rarely change |
-| Semi-Dynamic | 2-10 minutes | System stats, Docker/VM info change moderately |
-| Real-Time | 15-60 seconds | Network stats, CPU/memory need frequent updates |
-| Critical Monitoring | 30 seconds | Disk power state, SMART alerts need quick detection |
+| Data Type | TTL | Examples |
+|-----------|-----|----------|
+| Static | 1 hour | Disk mapping, device serials/models |
+| Semi-Dynamic | 2-10 min | System stats, Docker/VM info |
+| Real-Time | 15-60 sec | Network stats, CPU/memory |
+| Critical | 30 sec | Disk power state, SMART alerts |
 
 ### 8.3 Sensor Priority Levels
 
-**Defined in**: `custom_components/unraid/performance/sensor_priority.py`
-
-| Priority | Update Interval | Sensor Types |
-|----------|----------------|--------------|
-| Critical | 60 seconds | Array status, parity status, system state |
-| High | 2 minutes | CPU, memory, temperatures, UPS |
-| Medium | 5 minutes | Storage usage, Docker stats |
-| Low | 15 minutes | Static information, detailed attributes |
-
-**Why Priority System**:
-- Optimizes API calls and system load
-- Critical sensors update more frequently
-- Static data doesn't waste resources
+| Priority | Interval | Sensor Types |
+|----------|----------|--------------|
+| Critical | 60 sec | Array status, parity status |
+| High | 2 min | CPU, memory, temperatures, UPS |
+| Medium | 5 min | Storage usage, Docker stats |
+| Low | 15 min | Static information |
 
 ### 8.4 Standby Disk Handling
-
-**Pattern**: Preserve last known values when disk is in standby
-
 ```python
 if disk_state == "standby":
-    # Return cached values to avoid spinning up disk
-    return self._last_value
+    return self._last_value  # Cached to avoid spin-up
 else:
-    # Update and cache new values
     self._last_value = current_value
     return current_value
 ```
-
-**Why**: Prevents unnecessary disk spin-ups that waste power and reduce disk lifespan.
 
 ---
 
@@ -1115,7 +927,7 @@ async def async_turn_on(self, **kwargs: Any) -> None:
 
 ## Summary
 
-This rule file documents the complete architecture, patterns, and standards for the Unraid Home Assistant integration. When creating new entities:
+This rule file documents the complete architecture, patterns, and standards for Unraid Home Assistant integrations. When creating new entities:
 
 1. **Follow the naming conventions** for entity IDs, unique IDs, and device IDs
 2. **Use the appropriate base class** (UnraidSensorBase, UnraidBinarySensorBase, etc.)
@@ -1127,6 +939,6 @@ This rule file documents the complete architecture, patterns, and standards for 
 8. **Respect update priorities** for optimal performance
 9. **Handle standby disks** by caching last known values
 
-Every new entity should be indistinguishable from existing ones by following these patterns exactly.
+Every new entity should be indistinguishable from existing ones by following these patterns exactly, regardless of the underlying communication protocol (SSH, GraphQL, REST API, etc.).
 
 
