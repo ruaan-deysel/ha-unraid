@@ -11,7 +11,7 @@ This custom integration allows you to monitor and control your Unraid server fro
 
 ## ⚠️ Project Status Update
 
-Due to time constraints, I am no longer able to actively develop and support this integration. 
+I am no longer developing and supporting this integration. 
 
 ### Recommended Alternative
 
