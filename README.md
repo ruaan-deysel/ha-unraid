@@ -15,7 +15,7 @@ Due to time constraints, I am no longer able to actively develop and support thi
 
 ### Recommended Alternative
 
-I encourage users to check out **[chris-mc1's Unraid API integration](https://github.com/chris-mc1/unraid_api)**, which is under active development and provides an alternative solution for integrating Unraid with Home Assistant.
+I encourage users to check out **[Unraid Management Agent integration](https://www.github.com/ruaan-deysel/ha-unraid-management-agent)**, which is under active development and provides an alternative solution for integrating Unraid with Home Assistant.
 
 ### What this means
 
