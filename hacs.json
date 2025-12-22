@@ -2,6 +2,6 @@
     "name": "UNRAID",
     "render_readme": true,
     "country": [],
-    "homeassistant": "2024.9.0",
+    "homeassistant": "2025.12.0",
     "hacs": "2.0.1"
   }
