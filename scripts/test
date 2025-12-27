@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Test script for Home Assistant Unraid Integration
+# Runs pytest with coverage
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+# Activate virtual environment if it exists
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+fi
+
+echo "🧪 Running tests with coverage..."
+pytest tests/ \
+    --cov=custom_components.unraid \
+    --cov-report=term-missing \
+    --cov-report=html \
+    -v \
+    "$@"
+
+echo ""
+echo "✅ Tests complete!"
+echo "📊 Coverage report: htmlcov/index.html"

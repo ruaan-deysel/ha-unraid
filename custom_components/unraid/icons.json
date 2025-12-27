@@ -1,0 +1,114 @@
+{
+  "entity": {
+    "sensor": {
+      "cpu_usage": {
+        "default": "mdi:cpu-64-bit"
+      },
+      "ram_usage": {
+        "default": "mdi:memory"
+      },
+      "cpu_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "cpu_power": {
+        "default": "mdi:lightning-bolt"
+      },
+      "uptime": {
+        "default": "mdi:clock-outline"
+      },
+      "active_notifications": {
+        "default": "mdi:bell"
+      },
+      "array_state": {
+        "default": "mdi:harddisk"
+      },
+      "array_usage": {
+        "default": "mdi:database"
+      },
+      "parity_progress": {
+        "default": "mdi:progress-check"
+      },
+      "disk_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "disk_usage": {
+        "default": "mdi:harddisk"
+      },
+      "ups_battery": {
+        "default": "mdi:battery"
+      },
+      "ups_load": {
+        "default": "mdi:gauge"
+      },
+      "ups_runtime": {
+        "default": "mdi:timer"
+      },
+      "ups_power": {
+        "default": "mdi:lightning-bolt"
+      },
+      "share_usage": {
+        "default": "mdi:folder-network"
+      },
+      "flash_usage": {
+        "default": "mdi:usb-flash-drive"
+      }
+    },
+    "binary_sensor": {
+      "disk_health": {
+        "default": "mdi:harddisk"
+      },
+      "parity_status": {
+        "default": "mdi:shield-check"
+      },
+      "array_started": {
+        "default": "mdi:harddisk"
+      },
+      "parity_check_running": {
+        "default": "mdi:shield-sync"
+      },
+      "parity_valid": {
+        "default": "mdi:shield-check"
+      },
+      "ups_connected": {
+        "default": "mdi:battery"
+      }
+    },
+    "switch": {
+      "docker_container": {
+        "default": "mdi:docker"
+      },
+      "virtual_machine": {
+        "default": "mdi:desktop-tower"
+      }
+    },
+    "button": {
+      "array_start": {
+        "default": "mdi:play"
+      },
+      "array_stop": {
+        "default": "mdi:stop"
+      },
+      "parity_check_start": {
+        "default": "mdi:play"
+      },
+      "parity_check_start_correct": {
+        "default": "mdi:play"
+      },
+      "parity_check_pause": {
+        "default": "mdi:pause"
+      },
+      "parity_check_resume": {
+        "default": "mdi:play"
+      },
+      "parity_check_stop": {
+        "default": "mdi:stop"
+      },
+      "disk_spin_up": {
+        "default": "mdi:rotate-right"
+      },
+      "disk_spin_down": {
+        "default": "mdi:sleep"
+      }
+    }
+  }
+}

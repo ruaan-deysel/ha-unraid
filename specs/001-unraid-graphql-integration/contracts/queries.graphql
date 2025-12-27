@@ -1,0 +1,440 @@
+# Unraid GraphQL API Queries
+# Feature: 001-unraid-graphql-integration
+# Date: 2025-12-23
+# Source: Official Unraid API Schema v4.29.2
+
+# ============================================================================
+# SYSTEM QUERIES - Polled every 30 seconds (configurable)
+# ============================================================================
+
+# Query: System Information (Initial Connection)
+# Purpose: Get server info, CPU specs, OS info, and Unraid version
+# Used by: Version check, server device creation, static info
+query SystemInfo {
+  info {
+    time
+    machineId
+    baseboard {
+      manufacturer
+      model
+      serial
+      memMax
+      memSlots
+    }
+    cpu {
+      manufacturer
+      brand
+      cores
+      threads
+      processors
+      speed
+      speedmax
+      socket
+      packages {
+        totalPower
+        temp
+      }
+    }
+    memory {
+      layout {
+        size
+        bank
+        type
+        clockSpeed
+        manufacturer
+      }
+    }
+    os {
+      platform
+      distro
+      release
+      kernel
+      hostname
+      uptime
+    }
+    system {
+      manufacturer
+      model
+      serial
+      uuid
+      virtual
+    }
+    display {
+      unit
+      warning
+      critical
+    }
+    versions {
+      core {
+        unraid
+        api
+        kernel
+      }
+    }
+  }
+}
+
+# Query: Real-Time Metrics
+# Purpose: Get current CPU and memory utilization
+# Used by: CPU usage sensor, RAM usage sensor
+query SystemMetrics {
+  metrics {
+    cpu {
+      percentTotal
+      cpus {
+        percentTotal
+        percentUser
+        percentSystem
+        percentIdle
+      }
+    }
+    memory {
+      total
+      used
+      free
+      available
+      percentTotal
+      swapTotal
+      swapUsed
+      swapFree
+      percentSwapTotal
+    }
+  }
+  info {
+    cpu {
+      packages {
+        temp
+        totalPower
+      }
+    }
+  }
+}
+
+# Query: Docker Containers
+# Purpose: Get all Docker containers with state
+# Used by: Docker switch entities
+query DockerContainers {
+  docker {
+    containers(skipCache: false) {
+      id
+      names
+      image
+      imageId
+      state
+      status
+      autoStart
+      autoStartOrder
+      ports {
+        ip
+        privatePort
+        publicPort
+        type
+      }
+      webUiUrl
+      iconUrl
+      projectUrl
+      supportUrl
+      isUpdateAvailable
+      isOrphaned
+    }
+  }
+}
+
+# Query: Virtual Machines
+# Purpose: Get all VMs with state
+# Used by: VM switch entities
+query VirtualMachines {
+  vms {
+    id
+    domains {
+      id
+      name
+      state
+    }
+  }
+}
+
+# Query: UPS Status
+# Purpose: Get UPS information (if connected)
+# Used by: UPS sensors
+query UPSStatus {
+  upsDevices {
+    id
+    name
+    model
+    status
+    battery {
+      chargeLevel
+      estimatedRuntime
+      health
+    }
+    power {
+      inputVoltage
+      outputVoltage
+      loadPercentage
+    }
+  }
+}
+
+# Query: Notifications Overview
+# Purpose: Get notification counts for monitoring
+# Used by: Notification sensors
+query NotificationsOverview {
+  notifications {
+    overview {
+      unread {
+        info
+        warning
+        alert
+        total
+      }
+    }
+    warningsAndAlerts {
+      id
+      title
+      subject
+      importance
+      timestamp
+    }
+  }
+}
+
+# ============================================================================
+# STORAGE QUERIES - Polled every 5 minutes (configurable)
+# ============================================================================
+
+# Query: Array Status
+# Purpose: Get array state, capacity, and disk health
+# Used by: Array sensors, disk sensors
+query ArrayStatus {
+  array {
+    id
+    state
+    capacity {
+      kilobytes {
+        free
+        used
+        total
+      }
+    }
+    parityCheckStatus {
+      status
+      progress
+      speed
+      errors
+      running
+      paused
+      correcting
+    }
+    boot {
+      id
+      name
+      device
+      size
+      status
+    }
+    parities {
+      id
+      idx
+      name
+      device
+      size
+      status
+      temp
+      numReads
+      numWrites
+      numErrors
+      rotational
+      isSpinning
+    }
+    disks {
+      id
+      idx
+      name
+      device
+      size
+      status
+      temp
+      numReads
+      numWrites
+      numErrors
+      fsSize
+      fsFree
+      fsUsed
+      fsType
+      rotational
+      isSpinning
+      transport
+      color
+      warning
+      critical
+    }
+    caches {
+      id
+      idx
+      name
+      device
+      size
+      status
+      temp
+      fsSize
+      fsFree
+      fsUsed
+      fsType
+      isSpinning
+      color
+    }
+  }
+}
+
+# Query: Physical Disks Hardware Info
+# Purpose: Get hardware details for all physical disks
+# Used by: Disk sensors (SMART status, serial numbers)
+query DisksHardware {
+  disks {
+    id
+    device
+    type
+    name
+    vendor
+    size
+    bytesPerSector
+    firmwareRevision
+    serialNum
+    interfaceType
+    smartStatus
+    temperature
+    isSpinning
+    partitions {
+      name
+      fsType
+      size
+    }
+  }
+}
+
+# Query: User Shares
+# Purpose: Get share information
+# Used by: Share sensors (optional)
+query Shares {
+  shares {
+    id
+    name
+    free
+    used
+    size
+    include
+    exclude
+    cache
+    comment
+    color
+    luksStatus
+  }
+}
+
+# Query: Parity History
+# Purpose: Get parity check history
+# Used by: Parity status sensor (optional)
+query ParityHistory {
+  parityHistory {
+    date
+    duration
+    speed
+    status
+    errors
+  }
+}
+
+# ============================================================================
+# ONE-TIME QUERIES - Called during setup or on-demand
+# ============================================================================
+
+# Query: Registration/License Info
+# Purpose: Get license type and status
+# Used by: Server device attributes
+query Registration {
+  registration {
+    id
+    type
+    state
+    expiration
+  }
+}
+
+# Query: System Variables
+# Purpose: Get comprehensive system configuration
+# Used by: Server device attributes, diagnostics
+query SystemVars {
+  vars {
+    id
+    version
+    name
+    timeZone
+    maxArraysz
+    maxCachesz
+    useSsl
+    port
+    portssl
+    shareCount
+    flashGuid
+    regTo
+    regTy
+    regState
+    mdState
+    mdNumDisks
+    mdNumDisabled
+    mdNumMissing
+    fsState
+    fsProgress
+    shareMoverActive
+  }
+}
+
+# Query: Network Access URLs
+# Purpose: Get server access URLs
+# Used by: Server device attributes
+query Network {
+  network {
+    id
+    accessUrls {
+      type
+      name
+      ipv4
+      ipv6
+    }
+  }
+}
+
+# Query: Flash Drive Info
+# Purpose: Get flash drive information
+# Used by: Flash drive sensor (optional)
+query Flash {
+  flash {
+    id
+    guid
+    vendor
+    product
+  }
+}
+
+# Query: Services Status
+# Purpose: Get running services
+# Used by: Service sensors (optional)
+query Services {
+  services {
+    id
+    name
+    online
+    version
+    uptime {
+      timestamp
+    }
+  }
+}
+
+# Query: Online Status
+# Purpose: Quick health check
+# Used by: Connection validation
+query OnlineCheck {
+  online
+}

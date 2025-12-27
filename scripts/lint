@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
+# Linting script for Home Assistant Unraid Integration
+# Runs ruff formatter and linter
 
 set -e
 
 cd "$(dirname "$0")/.."
 
+# Activate virtual environment if it exists
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+fi
+
+echo "🎨 Running ruff format..."
 ruff format .
+
+echo "🔍 Running ruff check..."
 ruff check . --fix
+
+echo ""
+echo "✅ All checks passed!"

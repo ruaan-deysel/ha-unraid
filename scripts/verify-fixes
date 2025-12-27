@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Verification script for devcontainer setup
+# This script checks that all fixes for permission issues are in place
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+echo "✅ Verification: Devcontainer Setup Fixes"
+echo ""
+
+# Check 1: pyproject.toml has hatch wheel config
+echo "Checking pyproject.toml..."
+if grep -q "packages = \[\"custom_components\"\]" pyproject.toml; then
+    echo "  ✅ Hatch wheel configuration present"
+else
+    echo "  ❌ Missing hatch wheel configuration"
+    exit 1
+fi
+
+# Check 2: setup script uses uv sync (not --system)
+echo "Checking scripts/setup..."
+if grep -q "uv sync --all-extras" scripts/setup; then
+    echo "  ✅ Using uv sync (no --system flag)"
+else
+    echo "  ❌ Not using uv sync correctly"
+    exit 1
+fi
+
+if grep -q "source .venv/bin/activate" scripts/setup; then
+    echo "  ✅ Activates virtual environment"
+else
+    echo "  ⚠️  Virtual environment activation missing"
+fi
+
+# Check 3: lint script activates venv
+echo "Checking scripts/lint..."
+if grep -q "source .venv/bin/activate" scripts/lint; then
+    echo "  ✅ Activates virtual environment"
+else
+    echo "  ❌ Missing venv activation"
+    exit 1
+fi
+
+# Check 4: test script activates venv
+echo "Checking scripts/test..."
+if grep -q "source .venv/bin/activate" scripts/test; then
+    echo "  ✅ Activates virtual environment"
+else
+    echo "  ❌ Missing venv activation"
+    exit 1
+fi
+
+# Check 5: devcontainer uses venv Python
+echo "Checking .devcontainer.json..."
+if grep -q '.venv/bin/python' .devcontainer.json; then
+    echo "  ✅ Uses venv Python interpreter"
+else
+    echo "  ❌ Not using venv Python interpreter"
+    exit 1
+fi
+
+# Check 6: .gitignore includes venv
+echo "Checking .gitignore..."
+if grep -q "^\.venv/$" .gitignore; then
+    echo "  ✅ .venv/ is gitignored"
+else
+    echo "  ❌ .venv/ not in gitignore"
+    exit 1
+fi
+
+echo ""
+echo "✅ All verification checks passed!"
+echo ""
+echo "Summary of fixes:"
+echo "  1. Added hatch wheel configuration for custom_components"
+echo "  2. Changed setup to use 'uv sync' (not --system)"
+echo "  3. All scripts activate .venv before running tools"
+echo "  4. Devcontainer Python points to .venv/bin/python"
+echo "  5. .venv/ is in .gitignore"
+echo ""
+echo "You can now rebuild the devcontainer!"
+echo "Expected flow:"
+echo "  1. Devcontainer builds"
+echo "  2. postCreateCommand runs: ./scripts/setup"
+echo "  3. uv creates .venv/ and installs all dependencies"
+echo "  4. pre-commit hooks are installed"
+echo "  5. Container is ready for development"

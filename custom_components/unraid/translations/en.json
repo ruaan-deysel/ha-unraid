@@ -1,0 +1,69 @@
+{
+  "title": "Unraid",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Unraid",
+        "description": "Enter your Unraid server IP address or hostname and API key. You can find the API key in Unraid Settings > Management Access > API.",
+        "data": {
+          "host": "Server IP or Hostname",
+          "api_key": "API Key"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Unraid",
+        "description": "The API key for {host} is no longer valid. Please enter a new API key.",
+        "data": {
+          "api_key": "API Key"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Unraid",
+        "description": "Update the connection settings for your Unraid server.",
+        "data": {
+          "host": "Server IP or Hostname",
+          "api_key": "API Key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the server. Check network connection and firewall settings.",
+      "invalid_auth": "Invalid API key or insufficient permissions.",
+      "unsupported_version": "Unsupported Unraid version. Requires 7.2.0 or later.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Unraid server is already configured.",
+      "reauth_successful": "Reauthentication successful.",
+      "reauth_failed": "Reauthentication failed.",
+      "reconfigure_successful": "Reconfiguration successful.",
+      "reconfigure_failed": "Reconfiguration failed - entry not found."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Unraid Options",
+        "description": "Adjust polling intervals and UPS settings. Set UPS capacity to enable power consumption tracking for the Energy Dashboard.",
+        "data": {
+          "system_interval": "System polling interval (seconds)",
+          "storage_interval": "Storage polling interval (seconds)",
+          "ups_capacity_va": "UPS capacity (VA) - set to 0 to disable power sensor"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Authentication Failed",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reauthenticate Unraid",
+            "description": "The API key for {host} is no longer valid. Click submit to enter a new API key."
+          }
+        }
+      }
+    }
+  }
+}

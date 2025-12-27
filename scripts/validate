@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Quick validation script to ensure modernization is complete
+# This script checks that all required files and configurations are in place
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+echo "🔍 Validating modernization..."
+echo ""
+
+# Check for required files
+echo "📁 Checking files..."
+required_files=(
+    "pyproject.toml"
+    ".pre-commit-config.yaml"
+    "scripts/setup"
+    "scripts/lint"
+    "scripts/test"
+    ".devcontainer.json"
+    "DEVELOPMENT.md"
+)
+
+missing_files=0
+for file in "${required_files[@]}"; do
+    if [ -f "$file" ]; then
+        echo "  ✅ $file"
+    else
+        echo "  ❌ $file (MISSING)"
+        missing_files=$((missing_files + 1))
+    fi
+done
+
+# Check for removed files
+echo ""
+echo "🗑️  Checking removed files..."
+if [ -f "requirements.txt" ]; then
+    echo "  ⚠️  requirements.txt should be removed"
+else
+    echo "  ✅ requirements.txt removed"
+fi
+
+# Check pyproject.toml content
+echo ""
+echo "📋 Checking pyproject.toml..."
+if grep -q "uv pip install" pyproject.toml 2>/dev/null; then
+    echo "  ❌ pyproject.toml should not contain install commands"
+elif grep -q '\[project\]' pyproject.toml && grep -q 'dependencies =' pyproject.toml; then
+    echo "  ✅ pyproject.toml structure valid"
+else
+    echo "  ⚠️  pyproject.toml may have issues"
+fi
+
+# Check scripts are executable
+echo ""
+echo "⚙️  Checking script permissions..."
+scripts=(
+    "scripts/setup"
+    "scripts/lint"
+    "scripts/test"
+    "scripts/develop"
+)
+
+for script in "${scripts[@]}"; do
+    if [ -x "$script" ]; then
+        echo "  ✅ $script is executable"
+    else
+        echo "  ⚠️  $script is not executable (run: chmod +x $script)"
+    fi
+done
+
+# Summary
+echo ""
+if [ $missing_files -eq 0 ]; then
+    echo "✅ Modernization validation PASSED"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Rebuild devcontainer (will install uv automatically)"
+    echo "  2. Run ./scripts/setup inside container"
+    echo "  3. Run ./scripts/lint to verify ruff works"
+    echo "  4. Run ./scripts/test to verify pytest works"
+    exit 0
+else
+    echo "❌ Modernization validation FAILED ($missing_files missing files)"
+    exit 1
+fi

@@ -1,7 +1,41 @@
 #!/usr/bin/env bash
+# Setup script for Home Assistant Unraid Integration
+# Uses uv for fast, modern Python package management
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-python3 -m pip install --requirement requirements.txt
+echo "🔧 Setting up Home Assistant Unraid Integration..."
+
+# Check for uv installation
+if ! command -v uv &> /dev/null; then
+    echo "📦 Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+echo "📦 Installing dependencies with uv..."
+# In devcontainers, let uv create a venv in .venv
+# This avoids permission issues with system Python
+uv sync --all-extras
+
+echo "🎣 Setting up pre-commit hooks..."
+# Activate venv for pre-commit installation
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+fi
+
+pre-commit install
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "Available commands:"
+echo "  ./scripts/lint        - Run linters and formatters"
+echo "  ./scripts/test        - Run test suite"
+echo "  ./scripts/develop     - Start Home Assistant for testing"
+echo "  pre-commit run --all-files - Run all pre-commit hooks"
+echo ""
+echo "Virtual environment: .venv/"
+echo "To activate: source .venv/bin/activate"

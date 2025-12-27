@@ -13,6 +13,47 @@ ignore = [
     "D212", # multi-line-summary-first-line (incompatible with formatter)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "N815",  # Mixed case variable names (GraphQL API uses camelCase)
+    "TRY003", # Long exception messages (acceptable for user-facing errors)
+    "EM101", # Exception string literals (acceptable for simple cases)
+    "EM102", # Exception f-string literals (acceptable for simple cases)
+    "FBT001", # Boolean positional arguments (common in HA)
+    "FBT002", # Boolean default arguments (common in HA)
+    "PLR0913", # Too many arguments (sometimes necessary)
+    "D101",  # Missing class docstring (data models are self-documenting via field names)
+    "D102",  # Missing method docstring (properties/validators are self-documenting)
+    "D104",  # Missing package docstring (module docstring is sufficient)
+    "ARG002", # Unused method argument kwargs (required by interface)
+    "TRY300", # Consider moving to else block (clearer as-is)
+    "TRY301", # Abstract raise (not needed for simple cases)
+    "TRY201", # Use raise without name (reraise with context is clearer)
+    "TRY203", # Remove handler (reraise for logging is intentional)
+    "TRY002", # Create own exception (HA exceptions are sufficient)
+    "TRY400", # Use logging.exception (logging.error with exc_info is acceptable)
+    "TC001", # Move to type-checking block (runtime needed)
+    "TC002", # Move to type-checking block (runtime needed)
+    "TC003", # Move to type-checking block (runtime needed)
+    "PERF401", # Use list.extend (list comprehension is clearer)
+    "RET504", # Unnecessary assignment (improves readability)
+    "SIM108", # Use ternary (if/else is clearer)
+    "PYI034", # __aenter__ return type (typing stub rule, not runtime)
+    "PT011",  # pytest.raises too broad (acceptable for test simplicity)
+    "PLC0415", # Import not at top (local import is intentional)
+    "ANN002", # Missing *args annotation (not needed for forwarding)
+]
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101",    # Use of assert in tests is expected
+    "PLR2004", # Magic values in tests are acceptable  
+    "DTZ001",  # Datetime without tzinfo in tests is acceptable
+    "PLC0415", # Import outside top-level in tests for local imports
+    "D103",    # Missing docstring in public function (tests are self-documenting)
+    "ANN201",  # Missing return type annotation (test functions don't need -> None)
+    "ANN001",  # Missing type annotation for function arguments (fixtures)
+    "SLF001",  # Private member access (testing internal methods is valid)
+    "N806",    # Variable naming (Mock classes can be PascalCase)
+    "ARG001",  # Unused function arguments (mock decorators)
 ]
 
 [lint.flake8-pytest-style]
