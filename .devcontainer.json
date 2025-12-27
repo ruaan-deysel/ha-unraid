@@ -2,9 +2,10 @@
     "name": "Home Assistant Unraid Integration",
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "features": {
-        "ghcr.io/devcontainers-extra/features/uv:1": {}
+        "ghcr.io/devcontainers-extra/features/uv:1": {},
+        "ghcr.io/devcontainers/features/node:1": {}
     },
-    "postCreateCommand": "./scripts/setup",
+    "postCreateCommand": "npm install -g @anthropic-ai/claude-code && ./scripts/setup",
     "forwardPorts": [8123],
     "customizations": {
         "vscode": {
