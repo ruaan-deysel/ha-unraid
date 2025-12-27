@@ -12,7 +12,8 @@
                 "ms-python.python",
                 "ms-python.vscode-pylance",
                 "charliermarsh.ruff",
-                "github.vscode-pull-request-github"
+                "github.vscode-pull-request-github",
+                "anthropic.claude-code"
             ],
             "settings": {
                 "files.eol": "\n",
