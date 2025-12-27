@@ -1,55 +1,201 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 2025.04.09)'
-        required: true
-        type: string
-      release_notes:
-        description: 'Release notes (markdown format)'
-        required: true
-        type: string
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Create Release
+    name: Build and Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/checkout@v4
         with:
-          python-version: '3.11'
+          fetch-depth: 0
 
-      - name: Update version in manifest.json
+      - name: Extract version from tag
+        id: version
         run: |
-          sed -i 's/"version": "[^"]*"/"version": "${{ github.event.inputs.version }}"/' custom_components/unraid/manifest.json
+          # Extract version from tag (e.g., v2025.12.0 -> 2025.12.0)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
 
-      - name: Commit version changes
+          # Check if this is a pre-release
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "This is a pre-release"
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "This is a stable release"
+          fi
+
+      - name: Verify manifest.json version matches tag
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add custom_components/unraid/manifest.json
-          git commit -m "Bump version to ${{ github.event.inputs.version }}"
-          git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
-          git push origin main --tags
+          MANIFEST_VERSION=$(python3 -c "import json; print(json.load(open('custom_components/unraid/manifest.json'))['version'])")
+          TAG_VERSION="${{ steps.version.outputs.version }}"
 
-      - name: Create Release
+          if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: manifest.json version ($MANIFEST_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+          echo "✅ manifest.json version matches tag: $TAG_VERSION"
+
+      - name: Build release package
+        run: |
+          echo "Building release package..."
+
+          # Create build directory
+          mkdir -p build
+
+          # Create the integration package (zip file for HACS compatibility)
+          PACKAGE_FILE="build/unraid-${{ steps.version.outputs.version }}.zip"
+
+          # Package the custom_components directory
+          cd custom_components
+          zip -r "../$PACKAGE_FILE" unraid/ \
+            -x "*.pyc" \
+            -x "*__pycache__*" \
+            -x "*.git*" \
+            -x "*.DS_Store"
+          cd ..
+
+          # Verify the package was created
+          if [ ! -f "$PACKAGE_FILE" ]; then
+            echo "ERROR: Package file not found: $PACKAGE_FILE"
+            ls -la build/
+            exit 1
+          fi
+
+          echo "✅ Package created: $PACKAGE_FILE"
+          ls -lh "$PACKAGE_FILE"
+
+          # Show package contents
+          echo ""
+          echo "Package contents:"
+          unzip -l "$PACKAGE_FILE" | head -20
+
+      - name: Calculate SHA256 checksum
+        id: checksum
+        run: |
+          PACKAGE_FILE="build/unraid-${{ steps.version.outputs.version }}.zip"
+
+          # Calculate SHA256 checksum
+          SHA256=$(sha256sum "$PACKAGE_FILE" | awk '{print $1}')
+
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "✅ SHA256 checksum: $SHA256"
+
+          # Save checksum to file for release notes
+          echo "$SHA256" > build/SHA256SUM
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Check if CHANGELOG.md exists
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "⚠️  CHANGELOG.md not found, using default release notes"
+            NOTES="Release v$VERSION of the Unraid Home Assistant integration."
+          else
+            # Extract release notes for this version from CHANGELOG.md
+            # Look for the section between [VERSION] and the next version header
+
+            if grep -q "\[$VERSION\]" CHANGELOG.md; then
+              # Extract the section for this version
+              NOTES=$(awk "/\[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
+
+              if [ -z "$NOTES" ]; then
+                echo "⚠️  No release notes found for version $VERSION in CHANGELOG.md"
+                NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+              else
+                echo "✅ Extracted release notes for version $VERSION"
+              fi
+            else
+              echo "⚠️  Version $VERSION not found in CHANGELOG.md"
+              NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+            fi
+          fi
+
+          # Save to file (GitHub Actions doesn't handle multiline outputs well)
+          echo "$NOTES" > build/RELEASE_NOTES.md
+
+          # Add installation instructions
+          echo "" >> build/RELEASE_NOTES.md
+          echo "---" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "## 📦 Installation" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "### Via HACS (Recommended)" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "1. Open HACS in Home Assistant" >> build/RELEASE_NOTES.md
+          echo "2. Go to **Integrations**" >> build/RELEASE_NOTES.md
+          echo "3. Click the **⋮** menu → **Custom repositories**" >> build/RELEASE_NOTES.md
+          echo "4. Add this repository: \`https://github.com/${{ github.repository }}\`" >> build/RELEASE_NOTES.md
+          echo "5. Category: **Integration**" >> build/RELEASE_NOTES.md
+          echo "6. Click **Add**" >> build/RELEASE_NOTES.md
+          echo "7. Search for **Unraid**" >> build/RELEASE_NOTES.md
+          echo "8. Click **Download**" >> build/RELEASE_NOTES.md
+          echo "9. Restart Home Assistant" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "### Manual Installation" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "1. Download \`unraid-$VERSION.zip\`" >> build/RELEASE_NOTES.md
+          echo "2. Extract to \`config/custom_components/\`" >> build/RELEASE_NOTES.md
+          echo "3. Restart Home Assistant" >> build/RELEASE_NOTES.md
+          echo "4. Add the integration via **Settings** → **Devices & Services** → **Add Integration**" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+
+          # Add SHA256 checksum to release notes
+          echo "---" >> build/RELEASE_NOTES.md
+          echo "" >> build/RELEASE_NOTES.md
+          echo "**SHA256 Checksum:**" >> build/RELEASE_NOTES.md
+          echo "\`\`\`" >> build/RELEASE_NOTES.md
+          echo "${{ steps.checksum.outputs.sha256 }}  unraid-$VERSION.zip" >> build/RELEASE_NOTES.md
+          echo "\`\`\`" >> build/RELEASE_NOTES.md
+
+          cat build/RELEASE_NOTES.md
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Release v${{ github.event.inputs.version }}
-          body: |
-            # Release ${{ github.event.inputs.version }}
-
-            ${{ github.event.inputs.release_notes }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: build/RELEASE_NOTES.md
+          files: |
+            build/unraid-${{ steps.version.outputs.version }}.zip
+            build/SHA256SUM
+          prerelease: ${{ steps.version.outputs.prerelease }}
           draft: false
-          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## 🎉 v${{ steps.version.outputs.version }} Released Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** \`unraid-${{ steps.version.outputs.version }}.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA256 Checksum:** \`${{ steps.checksum.outputs.sha256 }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release URL:** https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.version.outputs.prerelease }}" == "true" ]; then
+            echo "**Type:** Pre-release" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Type:** Stable release" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Release created and package uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ HACS users can now update to v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Manual installation package available for download" >> $GITHUB_STEP_SUMMARY
