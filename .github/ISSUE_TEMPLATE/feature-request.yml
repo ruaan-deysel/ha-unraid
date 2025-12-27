@@ -1,62 +1,40 @@
 name: ✨ Feature Request
 description: Suggest a new feature or enhancement for the Unraid Integration
-title: "[Enhancement] "
-labels: ["enhancement"]
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
 assignees: []
 
 body:
   - type: markdown
     attributes:
       value: |
-        # ✨ Feature Request
+        ## ✨ Feature Request
 
-        Thank you for suggesting a new feature! This template is for requesting **new features or enhancements** for the Unraid Integration for Home Assistant.
+        Thanks for suggesting a new feature! Your ideas help make this integration better.
 
-        ## 📋 When to use this template:
-        - ✅ You want to add new functionality to the Unraid integration
-        - ✅ You have ideas for better automation or control options
-        - ✅ You want to suggest monitoring improvements or new sensors
-        - ✅ You want to suggest UI/UX improvements
-        - ✅ You have ideas for new services or entity types
-
-        ## ❌ When NOT to use this template:
-        - 🚫 **Bug Reports**: Existing features are broken → Use "Bug Report" template
-        - 🚫 **Setup Help**: Need help with configuration → Check [documentation](https://domalab.github.io/ha-unraid/) first
+        **Before submitting**, please:
+        - Search existing [open](https://github.com/ruaan-deysel/ha-unraid/issues) and [closed](https://github.com/ruaan-deysel/ha-unraid/issues?q=is%3Aissue+is%3Aclosed) issues
+        - Check if the feature is available in Unraid's GraphQL API (required for implementation)
+        - Consider if this aligns with Home Assistant integration standards
 
   - type: dropdown
     id: feature_category
     attributes:
-      label: 🏷️ Feature Category
-      description: "What type of feature are you requesting?"
+      label: 📂 Feature Category
+      description: "What area of the integration does this feature relate to?"
       options:
-        - "New sensor type (monitoring, status, etc.)"
-        - "New switch/control entity"
-        - "Enhanced Docker container management"
-        - "Enhanced VM management"
-        - "New user script capabilities"
-        - "Improved disk/array monitoring"
-        - "Network monitoring enhancements"
-        - "UPS monitoring improvements"
-        - "New custom service"
-        - "Configuration options"
-        - "Performance optimization"
-        - "UI/UX improvements"
-        - "Documentation improvement"
-        - "Other"
-    validations:
-      required: true
-
-  - type: textarea
-    id: feature_description
-    attributes:
-      label: 📝 Feature Description
-      description: "Clear description of the feature you'd like to see"
-      placeholder: |
-        **What feature would you like:**
-        Add a sensor that shows the current parity check progress as a percentage instead of just showing "running" or "stopped".
-
-        **Why would this be useful:**
-        It would help users monitor long-running parity checks and set up automations based on progress.
+        - "System Monitoring - CPU, RAM, temperatures, uptime"
+        - "Storage Monitoring - Array status, disk health, SMART data"
+        - "Docker Management - Container controls, status, updates"
+        - "VM Management - Virtual machine controls and monitoring"
+        - "UPS Monitoring - Battery status, power metrics"
+        - "Notifications - Unraid alerts and warnings in HA"
+        - "Network Monitoring - Network interfaces, bandwidth"
+        - "Shares - User share monitoring and management"
+        - "Parity Operations - Parity check status and controls"
+        - "Configuration - Setup, options, polling intervals"
+        - "Services - Service management (array start/stop, etc.)"
+        - "Other - Something not listed above"
     validations:
       required: true
 
@@ -86,8 +64,8 @@ body:
       placeholder: |
         **Implementation idea:**
         - Add a new sensor entity: `sensor.unraid_parity_check_progress`
-        - Parse parity check status from Unraid logs or API
-        - Update every few minutes during active parity checks
+        - Query parity check status from Unraid GraphQL API
+        - Update based on storage polling interval
 
         **UI/UX:**
         - Show progress percentage in entity state
@@ -105,13 +83,11 @@ body:
       placeholder: |
         **Current workarounds:**
         - Manually checking Unraid web interface
-        - Using template sensors with SSH commands
-        - Setting up external monitoring scripts
+        - Using external monitoring tools
 
         **Why they're not ideal:**
-        - Requires manual checking or complex setup
+        - Requires manual checking
         - Not integrated with Home Assistant automations
-        - May not be reliable or efficient
       render: markdown
     validations:
       required: false
@@ -122,10 +98,11 @@ body:
       label: 🖥️ Unraid Context
       description: "Relevant information about your Unraid setup"
       placeholder: |
-        - Unraid version: 6.12.6
+        - Unraid version: 7.2.0
         - Array size: 8 drives
+        - Number of Docker containers: 25
+        - Number of VMs: 3
         - Specific hardware or configuration that might be relevant
-        - Current monitoring setup you're using
       render: markdown
     validations:
       required: false
@@ -164,6 +141,7 @@ body:
         - Examples from other integrations
         - Technical considerations
         - Related feature requests
+        - GraphQL API fields that could be used (if known)
       render: markdown
     validations:
       required: false
@@ -174,7 +152,7 @@ body:
       label: ✅ Checklist
       description: "Please confirm you have done the following:"
       options:
-        - label: "I have searched existing [open](https://github.com/domalab/ha-unraid/issues) and [closed](https://github.com/domalab/ha-unraid/issues?q=is%3Aissue+is%3Aclosed) issues to ensure this isn't a duplicate"
+        - label: "I have searched existing [open](https://github.com/ruaan-deysel/ha-unraid/issues) and [closed](https://github.com/ruaan-deysel/ha-unraid/issues?q=is%3Aissue+is%3Aclosed) issues to ensure this isn't a duplicate"
           required: true
         - label: "I have clearly described the problem this feature would solve"
           required: true
