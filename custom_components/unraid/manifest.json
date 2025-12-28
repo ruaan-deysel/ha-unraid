@@ -11,11 +11,5 @@
   "iot_class": "local_polling",
   "loggers": [
     "custom_components.unraid"
-  ],
-  "platforms": [
-    "binary_sensor",
-    "button",
-    "sensor",
-    "switch"
   ]
 }
