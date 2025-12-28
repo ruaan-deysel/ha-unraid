@@ -1,15 +1,15 @@
 {
   "domain": "unraid",
   "name": "Unraid",
-  "version": "2025.12.1",
-  "documentation": "https://github.com/ruaan-deysel/ha-unraid",
-  "requirements": [],
   "codeowners": [
     "@ruaan-deysel"
   ],
   "config_flow": true,
+  "documentation": "https://github.com/ruaan-deysel/ha-unraid",
   "iot_class": "local_polling",
   "loggers": [
     "custom_components.unraid"
-  ]
+  ],
+  "requirements": [],
+  "version": "2025.12.1"
 }
