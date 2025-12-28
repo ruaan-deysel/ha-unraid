@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import ssl
 from typing import Any
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -134,11 +135,20 @@ class UnraidAPIClient:
                 if response.status in (301, 302, 307, 308):
                     redirect_url = response.headers.get("Location")
                     _LOGGER.debug("Redirect location: %s", redirect_url)
-                    if redirect_url and "myunraid.net" in redirect_url:
-                        _LOGGER.info(
-                            "Discovered myunraid.net redirect URL: %s", redirect_url
-                        )
-                        return redirect_url
+                    if redirect_url:
+                        # Properly parse URL and validate hostname to prevent
+                        # URL substring bypass attacks
+                        # (CodeQL py/incomplete-url-substring-sanitization)
+                        parsed = urlparse(redirect_url)
+                        hostname = parsed.hostname
+                        if hostname and (
+                            hostname == "myunraid.net"
+                            or hostname.endswith(".myunraid.net")
+                        ):
+                            _LOGGER.info(
+                                "Discovered myunraid.net redirect URL: %s", redirect_url
+                            )
+                            return redirect_url
         except aiohttp.ClientError as err:
             _LOGGER.debug("HTTP check failed (expected): %s", err)
 
