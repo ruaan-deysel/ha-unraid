@@ -7,6 +7,12 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2025.12.1] - 2025-12-28
+
+### Changed
+- Updated `iot_class` to `local_polling` (communicates with local Unraid servers, not cloud)
+- Added Claude Code CLI to devcontainer for development
+
 ## [2025.12.0] - 2025-12-27
 
 ### Added
