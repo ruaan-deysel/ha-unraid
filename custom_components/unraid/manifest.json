@@ -1,7 +1,7 @@
 {
   "domain": "unraid",
   "name": "Unraid",
-  "version": "2025.12.0",
+  "version": "2025.12.1",
   "documentation": "https://github.com/ruaan-deysel/ha-unraid",
   "requirements": [],
   "codeowners": [
