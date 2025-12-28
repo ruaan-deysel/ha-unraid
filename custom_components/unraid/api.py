@@ -119,6 +119,10 @@ class UnraidAPIClient:
         if self._session is None:
             await self._create_session()
 
+        # Session must exist after creation - use conditional for proper error handling
+        if self._session is None:
+            raise RuntimeError("Failed to create HTTP session")
+
         # Strip any existing protocol from host
         clean_host = self.host
         if "://" in clean_host:
@@ -230,7 +234,7 @@ class UnraidAPIClient:
             aiohttp.ClientError: On network errors
 
         """
-        payload = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
 
