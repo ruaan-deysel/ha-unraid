@@ -6,6 +6,7 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/ruaan-deysel/ha-unraid",
+  "issue_tracker": "https://github.com/ruaan-deysel/ha-unraid/issues",
   "iot_class": "local_polling",
   "loggers": [
     "custom_components.unraid"
