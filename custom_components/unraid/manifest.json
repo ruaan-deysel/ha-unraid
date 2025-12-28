@@ -1,18 +1,13 @@
 {
   "domain": "unraid",
   "name": "Unraid",
-  "codeowners": [
-    "@ruaan-deysel"
-  ],
+  "codeowners": ["@ruaan-deysel" ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/ruaan-deysel/ha-unraid",
   "homekit": {},
-  "issue_tracker": "https://github.com/ruaan-deysel/ha-unraid/issues",
   "iot_class": "local_polling",
-  "loggers": [
-    "custom_components.unraid"
-  ],
+  "issue_tracker": "https://github.com/ruaan-deysel/ha-unraid/issues",
   "requirements": [],
   "ssdp": [],
   "version": "2025.12.1",
