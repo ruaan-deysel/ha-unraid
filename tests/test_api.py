@@ -126,6 +126,49 @@ async def test_graphql_query_error_handling():
 
 
 @pytest.mark.asyncio
+async def test_graphql_query_partial_errors_returns_data():
+    """
+    Test GraphQL query with partial errors still returns data.
+
+    This simulates the case where VMs or UPS aren't available but other data is.
+    """
+    client = UnraidAPIClient(
+        host="https://192.168.1.100",
+        api_key="test_key",
+        port=443,
+        verify_ssl=True,
+    )
+
+    # Simulate partial failure - some data returned, some errors
+    mock_response_data = {
+        "data": {
+            "info": {"system": {"uuid": "abc123"}},
+            "vms": None,  # VMs not available
+            "upsDevices": None,  # No UPS
+        },
+        "errors": [
+            {
+                "message": "VMs are not available",
+                "path": ["vms", "domains"],
+            },
+            {
+                "message": "No UPS data returned from apcaccess",
+                "path": ["upsDevices"],
+            },
+        ],
+    }
+
+    with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = mock_response_data
+
+        # Should NOT raise exception - data is available
+        result = await client.query("query { info { system { uuid } } }")
+
+        # Should return the data that was available
+        assert result["info"]["system"]["uuid"] == "abc123"
+
+
+@pytest.mark.asyncio
 async def test_graphql_mutation_success():
     """Test successful GraphQL mutation execution."""
     client = UnraidAPIClient(

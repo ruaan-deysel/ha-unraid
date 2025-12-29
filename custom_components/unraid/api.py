@@ -254,6 +254,9 @@ class UnraidAPIClient:
 
         response = await self._make_request(payload)
 
+        # Extract data first - GraphQL can return partial data with errors
+        data = response.get("data", {})
+
         if "errors" in response:
             errors = response["errors"]
             # Extract error messages for logging
@@ -269,18 +272,26 @@ class UnraidAPIClient:
                 else:
                     error_messages.append(str(err))
 
-            # Log at warning level so users can see what's wrong
-            _LOGGER.warning(
-                "GraphQL query failed with %d error(s): %s",
-                len(errors),
-                "; ".join(error_messages),
-            )
-            # Also log full details at debug for troubleshooting
+            # Log full details at debug for troubleshooting
             _LOGGER.debug("Full GraphQL error response: %s", errors)
 
-            raise Exception(f"GraphQL query failed: {'; '.join(error_messages)}")
+            # If we have data, treat errors as partial failures
+            # (e.g., VMs not enabled, no UPS connected)
+            # Only raise exception if we have no data at all
+            if data:
+                _LOGGER.warning(
+                    "GraphQL query returned partial errors (data still available): %s",
+                    "; ".join(error_messages),
+                )
+            else:
+                _LOGGER.error(
+                    "GraphQL query failed with %d error(s): %s",
+                    len(errors),
+                    "; ".join(error_messages),
+                )
+                raise Exception(f"GraphQL query failed: {'; '.join(error_messages)}")
 
-        return response.get("data", {})
+        return data
 
     async def mutate(
         self, mutation: str, variables: dict[str, Any] | None = None
