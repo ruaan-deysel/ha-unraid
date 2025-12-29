@@ -202,6 +202,80 @@ Entities are automatically created when services become available.
 - Check Unraid server responsiveness
 - View integration diagnostics for coordinator status
 
+### Reauthentication
+
+If your API key becomes invalid:
+1. A repair notification will appear in Home Assistant
+2. Click the notification and follow the steps to enter a new API key
+3. Alternatively, go to **Settings** → **Devices & Services**, find Unraid, and use the "Reconfigure" option
+
+## Removal
+
+To remove the integration:
+
+1. Go to **Settings** → **Devices & Services**
+2. Find the **Unraid** entry
+3. Click the three-dot menu (⋮) and select **Delete**
+4. Confirm removal
+
+If you installed via HACS, you can also uninstall from HACS after removing the integration.
+
+## Known Limitations
+
+- **Unraid 7.2+ Required**: This integration uses the GraphQL API which was introduced in Unraid 7.2.0
+- **No Network Discovery**: Unraid servers must be manually configured (no SSDP/mDNS discovery)
+- **Disk SMART Data**: SMART queries can be slow on large arrays; storage polling is less frequent to compensate
+- **Container/VM Actions**: Start/stop operations may take up to 60 seconds to complete
+- **SSL Certificates**: Self-signed certificates require enabling "Allow insecure connections" (or configuring custom CA)
+
+## Automation Examples
+
+### Alert on Parity Check Errors
+
+```yaml
+automation:
+  - alias: "Unraid Parity Check Error Alert"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.unraid_tower_parity_valid
+        to: "off"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "⚠️ Unraid Parity Error"
+          message: "Parity check has detected errors on your Unraid server."
+```
+
+### Notify When Array Stops
+
+```yaml
+automation:
+  - alias: "Unraid Array Stopped"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.unraid_tower_array_started
+        to: "off"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Unraid Array"
+          message: "The Unraid array has stopped."
+```
+
+### Start Container on Schedule
+
+```yaml
+automation:
+  - alias: "Start Plex at 6PM"
+    trigger:
+      - platform: time
+        at: "18:00:00"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.unraid_tower_plex
+```
+
 ## Development
 
 ### Prerequisites

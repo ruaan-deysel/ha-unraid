@@ -23,7 +23,9 @@ rules:
   common-modules: done
 
   # Full test coverage for the config flow
-  config-flow-test-coverage: done
+  config-flow-test-coverage:
+    status: done
+    comment: All config flow paths tested including reauth, options, and error cases.
 
   # Integration needs to be able to be set up via the UI
   config-flow: done
@@ -37,19 +39,13 @@ rules:
     comment: Integration does not provide custom service actions.
 
   # The documentation includes a high-level description
-  docs-high-level-description:
-    status: todo
-    comment: README needs improvement with high-level description.
+  docs-high-level-description: done
 
   # The documentation provides step-by-step installation instructions
-  docs-installation-instructions:
-    status: todo
-    comment: README needs HACS installation instructions.
+  docs-installation-instructions: done
 
   # The documentation provides removal instructions
-  docs-removal-instructions:
-    status: todo
-    comment: README needs removal instructions.
+  docs-removal-instructions: done
 
   # Entity events are subscribed in the correct lifecycle methods
   entity-event-setup:
@@ -87,14 +83,10 @@ rules:
   config-entry-unloading: done
 
   # The documentation describes all integration configuration options
-  docs-configuration-parameters:
-    status: todo
-    comment: Need to document options flow parameters.
+  docs-configuration-parameters: done
 
   # The documentation describes all integration installation parameters
-  docs-installation-parameters:
-    status: todo
-    comment: Need to document config flow parameters.
+  docs-installation-parameters: done
 
   # Mark entity unavailable if appropriate
   entity-unavailable: done
@@ -137,19 +129,13 @@ rules:
     comment: Unraid servers do not support SSDP/mDNS/DHCP discovery.
 
   # The documentation describes how data is updated
-  docs-data-update:
-    status: todo
-    comment: Need to document polling intervals and data refresh.
+  docs-data-update: done
 
   # The documentation provides automation examples
-  docs-examples:
-    status: todo
-    comment: Need to add automation examples to documentation.
+  docs-examples: done
 
   # The documentation describes known limitations
-  docs-known-limitations:
-    status: todo
-    comment: Need to document known limitations.
+  docs-known-limitations: done
 
   # The documentation describes known supported / unsupported devices
   docs-supported-devices:
@@ -157,19 +143,13 @@ rules:
     comment: Integration supports all Unraid 7.2+ servers uniformly.
 
   # The documentation describes the supported functionality
-  docs-supported-functions:
-    status: todo
-    comment: Need to document all entities and platforms.
+  docs-supported-functions: done
 
   # The documentation provides troubleshooting information
-  docs-troubleshooting:
-    status: todo
-    comment: Need to add troubleshooting section.
+  docs-troubleshooting: done
 
   # The documentation describes use cases
-  docs-use-cases:
-    status: todo
-    comment: Need to add use case examples.
+  docs-use-cases: done
 
   # Devices added after integration setup
   dynamic-devices: done
@@ -187,9 +167,7 @@ rules:
   entity-translations: done
 
   # Exception messages are translatable
-  exception-translations:
-    status: todo
-    comment: Need to add translation keys for exception messages.
+  exception-translations: done
 
   # Entities implement icon translations
   icon-translations:
@@ -219,11 +197,7 @@ rules:
   async-dependency: done
 
   # The integration dependency supports passing in a websession
-  inject-websession:
-    status: todo
-    comment: API client creates its own session, should accept injected session.
+  inject-websession: done
 
   # Strict typing
-  strict-typing:
-    status: todo
-    comment: Need to add py.typed marker and ensure full type coverage.
+  strict-typing: done

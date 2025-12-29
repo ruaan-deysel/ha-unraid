@@ -22,6 +22,7 @@ class UnraidAPIClient:
         port: int = 443,
         verify_ssl: bool = True,
         timeout: int = 30,
+        session: aiohttp.ClientSession | None = None,
     ) -> None:
         """
         Initialize the API client.
@@ -32,6 +33,7 @@ class UnraidAPIClient:
             port: HTTPS port (default 443)
             verify_ssl: Whether to verify SSL certificates (default True)
             timeout: Request timeout in seconds (default 30s for queries)
+            session: Optional aiohttp session (for HA websession injection)
 
         """
         self.host = host.strip()
@@ -39,7 +41,8 @@ class UnraidAPIClient:
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self._api_key = api_key
-        self._session: aiohttp.ClientSession | None = None
+        self._session: aiohttp.ClientSession | None = session
+        self._owns_session: bool = session is None  # Track if we created the session
         self._resolved_url: str | None = None  # Cached redirect URL
 
     @property
@@ -86,8 +89,8 @@ class UnraidAPIClient:
         )
 
     async def close(self) -> None:
-        """Close the aiohttp session."""
-        if self._session is not None:
+        """Close the aiohttp session if we created it."""
+        if self._session is not None and self._owns_session:
             await self._session.close()
             self._session = None
 
@@ -133,8 +136,13 @@ class UnraidAPIClient:
         http_url = f"http://{clean_host}/graphql"
         _LOGGER.debug("Checking for redirect at %s", http_url)
 
+        # Include API key header for authentication
+        headers = {"x-api-key": self._api_key}
+
         try:
-            async with self._session.get(http_url, allow_redirects=False) as response:
+            async with self._session.get(
+                http_url, headers=headers, allow_redirects=False
+            ) as response:
                 _LOGGER.debug("HTTP response status: %d", response.status)
                 if response.status in (301, 302, 307, 308):
                     redirect_url = response.headers.get("Location")
@@ -192,9 +200,12 @@ class UnraidAPIClient:
 
         url = self._resolved_url
 
+        # Always include API key header in requests (may be using injected session)
+        headers = {"x-api-key": self._api_key}
+
         try:
             async with self._session.post(
-                url, json=payload, allow_redirects=False
+                url, json=payload, headers=headers, allow_redirects=False
             ) as response:
                 # If we still get a redirect, follow it
                 if response.status in (301, 302, 307, 308):
@@ -203,7 +214,10 @@ class UnraidAPIClient:
                         # Cache the new URL
                         self._resolved_url = redirect_url
                         async with self._session.post(
-                            redirect_url, json=payload, allow_redirects=False
+                            redirect_url,
+                            json=payload,
+                            headers=headers,
+                            allow_redirects=False,
                         ) as redirect_response:
                             redirect_response.raise_for_status()
                             return await redirect_response.json()

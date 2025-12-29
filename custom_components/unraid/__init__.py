@@ -20,6 +20,7 @@ from homeassistant.const import (
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import UnraidAPIClient
 from .const import (
@@ -75,12 +76,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
     )
 
-    # Create API client
+    # Get HA's aiohttp session for proper connection pooling
+    # Use verify_ssl=False session if user disabled SSL verification
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+
+    # Create API client with injected session
     api_client = UnraidAPIClient(
         host=host,
         port=port,
         api_key=api_key,
         verify_ssl=verify_ssl,
+        session=session,
     )
 
     # Test connection and get server info

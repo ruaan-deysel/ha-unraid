@@ -42,6 +42,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._reauth_entry: config_entries.ConfigEntry | None = None
+        self._server_uuid: str | None = None
+        self._server_hostname: str | None = None
 
     @staticmethod
     def async_get_options_flow(
@@ -91,13 +93,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # If no errors, create entry
             if not errors:
-                host = user_input[CONF_HOST]
-                await self.async_set_unique_id(host)
+                # Use server UUID as unique ID (stable across hostname changes)
+                # Fall back to host if UUID not available
+                unique_id = self._server_uuid or user_input[CONF_HOST]
+                await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
-                _LOGGER.info("Creating config entry for %s", host)
+                # Use server hostname as title (more readable than IP)
+                title = self._server_hostname or user_input[CONF_HOST]
+
+                _LOGGER.info(
+                    "Creating config entry for %s (UUID: %s)", title, unique_id
+                )
                 return self.async_create_entry(
-                    title=host,
+                    title=title,
                     data=user_input,
                     options={
                         CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
@@ -118,6 +127,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=schema,
             errors=errors,
+            description_placeholders={
+                "min_version": MIN_UNRAID_VERSION,
+            },
         )
 
     def _validate_inputs(self, user_input: dict[str, Any]) -> dict[str, str]:
@@ -153,10 +165,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         try:
+            await self._validate_connection(api_client, host)
+        finally:
+            await api_client.close()
+
+    async def _validate_connection(
+        self, api_client: UnraidAPIClient, host: str
+    ) -> None:
+        """Validate connection, version, and fetch server info."""
+        try:
             # Test connection
             await api_client.test_connection()
 
-            # Get version
+            # Get version and server info
             version_info = await api_client.get_version()
 
             # Check version - api.py returns "api" not "api_version"
@@ -171,37 +192,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 raise UnsupportedVersionError(msg)
 
-        except InvalidAuthError:
-            raise
-        except CannotConnectError:
-            raise
-        except UnsupportedVersionError:
+            # Get server UUID and hostname for unique identification
+            await self._fetch_server_info(api_client, host)
+
+        except (InvalidAuthError, CannotConnectError, UnsupportedVersionError):
             raise
         except aiohttp.ClientResponseError as err:
-            if err.status in (401, 403):
-                msg = "Invalid API key or insufficient permissions"
-                raise InvalidAuthError(msg) from err
-            msg = f"HTTP error {err.status}: {err.message}"
-            raise CannotConnectError(msg) from err
+            self._handle_http_error(err, host)
         except aiohttp.ClientConnectorError as err:
             msg = f"Cannot connect to {host} - {err}"
             raise CannotConnectError(msg) from err
         except aiohttp.ClientError as err:
             msg = f"Connection error: {err}"
             raise CannotConnectError(msg) from err
-        except Exception as err:
-            error_str = str(err).lower()
-            if "401" in error_str or "unauthorized" in error_str:
-                msg = "Invalid API key or insufficient permissions"
-                raise InvalidAuthError(msg) from err
-            if "ssl" in error_str or "certificate" in error_str:
-                msg = f"SSL error: {err}. Try disabling SSL verification."
-                raise CannotConnectError(msg) from err
-            _LOGGER.exception("Unexpected error during connection test")
-            raise CannotConnectError(f"Unexpected error: {err}") from err
+        except Exception as err:  # noqa: BLE001
+            self._handle_generic_error(err)
 
-        finally:
-            await api_client.close()
+    async def _fetch_server_info(self, api_client: UnraidAPIClient, host: str) -> None:
+        """Fetch server UUID and hostname for unique identification."""
+        info_query = """
+            query {
+                info {
+                    system { uuid }
+                    os { hostname }
+                }
+            }
+        """
+        info_data = await api_client.query(info_query)
+        info = info_data.get("info", {})
+        system = info.get("system", {})
+        os_info = info.get("os", {})
+
+        self._server_uuid = system.get("uuid")
+        self._server_hostname = os_info.get("hostname") or host
+
+    def _handle_http_error(self, err: aiohttp.ClientResponseError, host: str) -> None:
+        """Handle HTTP errors from API client."""
+        if err.status in (401, 403):
+            msg = "Invalid API key or insufficient permissions"
+            raise InvalidAuthError(msg) from err
+        msg = f"HTTP error {err.status}: {err.message}"
+        raise CannotConnectError(msg) from err
+
+    def _handle_generic_error(self, err: Exception) -> None:
+        """Handle generic errors, mapping to appropriate exception types."""
+        error_str = str(err).lower()
+        if "401" in error_str or "unauthorized" in error_str:
+            msg = "Invalid API key or insufficient permissions"
+            raise InvalidAuthError(msg) from err
+        if "ssl" in error_str or "certificate" in error_str:
+            msg = f"SSL error: {err}. Try disabling SSL verification."
+            raise CannotConnectError(msg) from err
+        _LOGGER.exception("Unexpected error during connection test")
+        raise CannotConnectError(f"Unexpected error: {err}") from err
 
     def _is_supported_version(self, api_version: str) -> bool:
         """Check if API version is supported using proper version parsing."""

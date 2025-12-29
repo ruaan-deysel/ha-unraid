@@ -4,10 +4,14 @@
     "step": {
       "user": {
         "title": "Connect to Unraid",
-        "description": "Enter your Unraid server IP address or hostname and API key. You can find the API key in Unraid Settings > Management Access > API.",
+        "description": "Connect to your Unraid server ({min_version}+) using the GraphQL API.",
         "data": {
           "host": "Server IP or Hostname",
           "api_key": "API Key"
+        },
+        "data_description": {
+          "host": "IP address (e.g., 192.168.1.100) or hostname/domain of your Unraid server",
+          "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
         }
       },
       "reauth_confirm": {
@@ -15,6 +19,9 @@
         "description": "The API key for {host} is no longer valid. Please enter a new API key.",
         "data": {
           "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "Generate a new API key in Unraid Settings → Management Access → API Keys"
         }
       },
       "reconfigure": {
@@ -23,6 +30,10 @@
         "data": {
           "host": "Server IP or Hostname",
           "api_key": "API Key"
+        },
+        "data_description": {
+          "host": "IP address or hostname of your Unraid server",
+          "api_key": "API key with ADMIN role permissions"
         }
       }
     },
@@ -51,7 +62,12 @@
         "data": {
           "system_interval": "System polling interval (seconds)",
           "storage_interval": "Storage polling interval (seconds)",
-          "ups_capacity_va": "UPS capacity (VA) - set to 0 to disable power sensor"
+          "ups_capacity_va": "UPS capacity (VA)"
+        },
+        "data_description": {
+          "system_interval": "How often to poll CPU, memory, Docker, VMs (10-300 seconds)",
+          "storage_interval": "How often to poll disks and shares (60-3600 seconds). Higher values prevent disk spin-up.",
+          "ups_capacity_va": "Your UPS VA rating to calculate power consumption. Set to 0 to disable."
         }
       }
     }
@@ -67,6 +83,47 @@
           }
         }
       }
+    }
+  },
+  "exceptions": {
+    "container_start_failed": {
+      "message": "Failed to start container {name}: {error}"
+    },
+    "container_stop_failed": {
+      "message": "Failed to stop container {name}: {error}"
+    },
+    "vm_start_failed": {
+      "message": "Failed to start VM {name}: {error}"
+    },
+    "vm_stop_failed": {
+      "message": "Failed to stop VM {name}: {error}"
+    },
+    "array_start_failed": {
+      "message": "Failed to start array: {error}"
+    },
+    "array_stop_failed": {
+      "message": "Failed to stop array: {error}"
+    },
+    "parity_check_start_failed": {
+      "message": "Failed to start parity check: {error}"
+    },
+    "parity_check_pause_failed": {
+      "message": "Failed to pause parity check: {error}"
+    },
+    "parity_check_resume_failed": {
+      "message": "Failed to resume parity check: {error}"
+    },
+    "parity_check_stop_failed": {
+      "message": "Failed to stop parity check: {error}"
+    },
+    "disk_spin_up_failed": {
+      "message": "Failed to spin up disk {name}: {error}"
+    },
+    "disk_spin_down_failed": {
+      "message": "Failed to spin down disk {name}: {error}"
+    },
+    "graphql_query_failed": {
+      "message": "GraphQL query failed: {error}"
     }
   }
 }

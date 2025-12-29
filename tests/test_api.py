@@ -120,8 +120,9 @@ async def test_graphql_query_error_handling():
         with pytest.raises(Exception) as exc_info:
             await client.query("query { invalid }")
 
-        # Error message is now sanitized (doesn't expose server details)
-        assert "GraphQL query failed with 1 error(s)" in str(exc_info.value)
+        # Error message now includes the actual error for user diagnostics
+        assert "GraphQL query failed" in str(exc_info.value)
+        assert "Field 'invalid' not found" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
