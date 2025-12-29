@@ -13,6 +13,8 @@ A Home Assistant custom integration for monitoring and controlling Unraid server
 
 > **Note**: This integration requires **Unraid 7.2.0 or later** which includes the GraphQL API.
 
+> ⚠️ **Migration Notice**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with **2025.12.0**, this integration has been completely rebuilt to use Unraid's official GraphQL API. **There is no direct migration or upgrade path** from SSH to GraphQL - you will need to remove the old integration and set up fresh with a new API key. Users who prefer the SSH-based integration can continue using [release 2025.06.11](https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.06.11).
+
 ## Installation
 
 ### HACS (Recommended)

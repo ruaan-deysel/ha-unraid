@@ -7,11 +7,20 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2025.12.1] - 2025-12-28
+## [2025.12.1] - 2025-12-29
+
+### Important Migration Notice
+
+> ⚠️ **SSH to GraphQL Transition**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with 2025.12.0, this integration uses Unraid's official GraphQL API exclusively. **There is no direct migration path** - you must remove the old integration and configure fresh with a new Unraid API key. Users preferring SSH can continue using [release 2025.06.11](https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.06.11).
 
 ### Changed
 - Updated `iot_class` to `local_polling` (communicates with local Unraid servers, not cloud)
 - Added Claude Code CLI to devcontainer for development
+- Improved GraphQL error logging - errors now shown at WARNING level for easier diagnostics
+
+### Fixed
+- Security: URL validation now uses proper hostname parsing instead of substring matching
+- Type safety improvements in API client
 
 ## [2025.12.0] - 2025-12-27
 
@@ -75,5 +84,6 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v0.0.1
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...HEAD
+[2025.12.1]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.1
+[2025.12.0]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.0
