@@ -14,6 +14,7 @@ from custom_components.unraid.coordinator import UnraidStorageData, UnraidSystem
 from custom_components.unraid.models import (
     ArrayCapacity,
     ArrayDisk,
+    CapacityKilobytes,
     CpuPackages,
     CpuUtilization,
     DockerContainer,
@@ -22,6 +23,7 @@ from custom_components.unraid.models import (
     MemoryUtilization,
     Metrics,
     ParityCheck,
+    Share,
     SystemInfo,
     UPSDevice,
     VmDomain,
@@ -45,15 +47,19 @@ def make_system_data(
     memory_total: int | None = None,
     memory_percent: float | None = None,
     cpu_temps: list[float] | None = None,
+    cpu_power: float | None = None,
     uptime: datetime | None = None,
     ups_devices: list[UPSDevice] | None = None,
     containers: list[DockerContainer] | None = None,
     vms: list[VmDomain] | None = None,
+    notifications_unread: int = 0,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
     return UnraidSystemData(
         info=SystemInfo(
-            cpu=InfoCpu(packages=CpuPackages(temp=cpu_temps or [])),
+            cpu=InfoCpu(
+                packages=CpuPackages(temp=cpu_temps or [], totalPower=cpu_power)
+            ),
             os=InfoOs(uptime=uptime),
         ),
         metrics=Metrics(
@@ -67,6 +73,7 @@ def make_system_data(
         ups_devices=ups_devices or [],
         containers=containers or [],
         vms=vms or [],
+        notifications_unread=notifications_unread,
     )
 
 
@@ -77,8 +84,15 @@ def make_storage_data(
     disks: list[ArrayDisk] | None = None,
     parities: list[ArrayDisk] | None = None,
     caches: list[ArrayDisk] | None = None,
+    shares: list[Share] | None = None,
+    boot: ArrayDisk | None = None,
 ) -> UnraidStorageData:
     """Create a UnraidStorageData instance for testing."""
+    # Provide default capacity if not specified and array_state is set
+    if capacity is None and array_state is not None:
+        capacity = ArrayCapacity(
+            kilobytes=CapacityKilobytes(total=1000, used=500, free=500)
+        )
     return UnraidStorageData(
         array_state=array_state,
         capacity=capacity,
@@ -86,6 +100,8 @@ def make_storage_data(
         disks=disks or [],
         parities=parities or [],
         caches=caches or [],
+        shares=shares or [],
+        boot=boot,
     )
 
 

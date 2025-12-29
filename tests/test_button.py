@@ -307,3 +307,323 @@ class TestDiskSpinDownButton:
         await button.async_press()
         mock_api_client.spin_down_disk.assert_called_once_with("disk:1")
         mock_storage_coordinator.async_request_refresh.assert_called_once()
+
+
+# =============================================================================
+# Error Handling Tests
+# =============================================================================
+
+
+class TestButtonErrorHandling:
+    """Test button error handling."""
+
+    @pytest.mark.asyncio
+    async def test_array_start_button_error(self, mock_api_client):
+        """Test array start button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.start_array = AsyncMock(side_effect=Exception("API Error"))
+        button = ArrayStartButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to start array"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_array_stop_button_error(self, mock_api_client):
+        """Test array stop button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.stop_array = AsyncMock(side_effect=Exception("API Error"))
+        button = ArrayStopButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to stop array"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_parity_check_start_button_error(self, mock_api_client):
+        """Test parity check start button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.start_parity_check = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        button = ParityCheckStartButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to start parity check"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_parity_check_correction_button_error(self, mock_api_client):
+        """Test parity check correction button raises HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.start_parity_check = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        button = ParityCheckStartCorrectionButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(
+            HomeAssistantError, match="Failed to start correcting parity check"
+        ):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_parity_check_pause_button_error(self, mock_api_client):
+        """Test parity check pause button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.pause_parity_check = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        button = ParityCheckPauseButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to pause parity check"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_parity_check_resume_button_error(self, mock_api_client):
+        """Test parity check resume button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.resume_parity_check = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        button = ParityCheckResumeButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to resume parity check"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_parity_check_stop_button_error(self, mock_api_client):
+        """Test parity check stop button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.cancel_parity_check = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        button = ParityCheckStopButton(
+            api_client=mock_api_client,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to stop parity check"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_disk_spin_up_button_error(
+        self, mock_api_client, mock_storage_coordinator, mock_disk
+    ):
+        """Test disk spin up button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.spin_up_disk = AsyncMock(side_effect=Exception("API Error"))
+        button = DiskSpinUpButton(
+            api_client=mock_api_client,
+            coordinator=mock_storage_coordinator,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+            disk=mock_disk,
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to spin up disk"):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_disk_spin_down_button_error(
+        self, mock_api_client, mock_storage_coordinator, mock_disk
+    ):
+        """Test disk spin down button raises HomeAssistantError on failure."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_api_client.spin_down_disk = AsyncMock(side_effect=Exception("API Error"))
+        button = DiskSpinDownButton(
+            api_client=mock_api_client,
+            coordinator=mock_storage_coordinator,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+            disk=mock_disk,
+        )
+        with pytest.raises(HomeAssistantError, match="Failed to spin down disk"):
+            await button.async_press()
+
+
+# =============================================================================
+# async_setup_entry Tests
+# =============================================================================
+
+
+class TestButtonSetupEntry:
+    """Test async_setup_entry for button platform."""
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_array_buttons(self, hass):
+        """Test that setup creates array control buttons."""
+        from custom_components.unraid.button import async_setup_entry
+
+        mock_api = MagicMock()
+        mock_storage_coordinator = MagicMock()
+        mock_storage_coordinator.data = None
+
+        runtime_data = MagicMock()
+        runtime_data.api_client = mock_api
+        runtime_data.storage_coordinator = mock_storage_coordinator
+        runtime_data.server_info = {
+            "uuid": "test-uuid",
+            "name": "Test Server",
+            "manufacturer": "Test",
+            "model": "Server",
+        }
+
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = runtime_data
+        mock_entry.data = {"host": "192.168.1.100"}
+
+        entities = []
+
+        def capture_entities(ents) -> None:
+            entities.extend(ents)
+
+        await async_setup_entry(hass, mock_entry, capture_entities)
+
+        # Should have array start, stop, parity check start, stop = 4 buttons
+        assert len(entities) == 4
+        entity_types = [type(e).__name__ for e in entities]
+        assert "ArrayStartButton" in entity_types
+        assert "ArrayStopButton" in entity_types
+        assert "ParityCheckStartButton" in entity_types
+        assert "ParityCheckStopButton" in entity_types
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_disk_buttons(self, hass):
+        """Test that setup creates disk spin buttons when storage data exists."""
+        from custom_components.unraid.button import async_setup_entry
+        from custom_components.unraid.coordinator import UnraidStorageData
+        from custom_components.unraid.models import ArrayDisk
+
+        mock_api = MagicMock()
+
+        # Create mock storage data with disks
+        storage_data = UnraidStorageData(
+            disks=[
+                ArrayDisk(id="disk:1", idx=1, name="Disk 1"),
+                ArrayDisk(id="disk:2", idx=2, name="Disk 2"),
+            ],
+            parities=[ArrayDisk(id="parity:1", idx=0, name="Parity")],
+            caches=[ArrayDisk(id="cache:1", idx=0, name="Cache")],
+            shares=[],
+            array_state="STARTED",
+            capacity=None,
+            parity_status=None,
+        )
+
+        mock_storage_coordinator = MagicMock()
+        mock_storage_coordinator.data = storage_data
+
+        runtime_data = MagicMock()
+        runtime_data.api_client = mock_api
+        runtime_data.storage_coordinator = mock_storage_coordinator
+        runtime_data.server_info = {"uuid": "test-uuid", "name": "Test Server"}
+
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = runtime_data
+        mock_entry.data = {"host": "192.168.1.100"}
+
+        entities = []
+
+        def capture_entities(ents) -> None:
+            entities.extend(ents)
+
+        await async_setup_entry(hass, mock_entry, capture_entities)
+
+        # 4 base buttons + 4 disks * 2 spin buttons = 12 buttons
+        assert len(entities) == 12
+
+        # Verify disk buttons were created
+        spin_up_buttons = [
+            e for e in entities if type(e).__name__ == "DiskSpinUpButton"
+        ]
+        spin_down_buttons = [
+            e for e in entities if type(e).__name__ == "DiskSpinDownButton"
+        ]
+        assert len(spin_up_buttons) == 4
+        assert len(spin_down_buttons) == 4
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_with_missing_server_uuid(self, hass):
+        """Test setup with missing server UUID uses 'unknown'."""
+        from custom_components.unraid.button import async_setup_entry
+
+        mock_api = MagicMock()
+        mock_storage_coordinator = MagicMock()
+        mock_storage_coordinator.data = None
+
+        runtime_data = MagicMock()
+        runtime_data.api_client = mock_api
+        runtime_data.storage_coordinator = mock_storage_coordinator
+        runtime_data.server_info = {}  # No uuid
+
+        mock_entry = MagicMock()
+        mock_entry.runtime_data = runtime_data
+        mock_entry.data = {"host": "192.168.1.100"}
+
+        entities = []
+
+        def capture_entities(ents) -> None:
+            entities.extend(ents)
+
+        await async_setup_entry(hass, mock_entry, capture_entities)
+
+        # Check that entities were created with "unknown" uuid
+        assert len(entities) == 4
+        assert entities[0].unique_id.startswith("unknown_")
+
+
+class TestDiskButtonWithNoName:
+    """Test disk buttons when disk has no name."""
+
+    def test_disk_spin_up_uses_id_when_no_name(
+        self, mock_api_client, mock_storage_coordinator
+    ):
+        """Test disk spin up uses disk ID when name is None."""
+        disk = ArrayDisk(id="disk:5", idx=5, name=None)
+        button = DiskSpinUpButton(
+            api_client=mock_api_client,
+            coordinator=mock_storage_coordinator,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+            disk=disk,
+        )
+        # Should fall back to disk.id
+        assert button.name == "Spin Up disk:5"
+
+    def test_disk_spin_down_uses_id_when_no_name(
+        self, mock_api_client, mock_storage_coordinator
+    ):
+        """Test disk spin down uses disk ID when name is None."""
+        disk = ArrayDisk(id="disk:5", idx=5, name=None)
+        button = DiskSpinDownButton(
+            api_client=mock_api_client,
+            coordinator=mock_storage_coordinator,
+            server_uuid="test-uuid",
+            server_name="Test Server",
+            disk=disk,
+        )
+        # Should fall back to disk.id
+        assert button.name == "Spin Down disk:5"

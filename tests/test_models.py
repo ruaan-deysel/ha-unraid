@@ -1,5 +1,7 @@
 """Model tests for the Unraid integration."""
 
+from datetime import UTC
+
 import pytest
 
 from custom_components.unraid import models
@@ -111,3 +113,211 @@ def test_ups_device_parses_battery_and_power():
     assert ups.power.inputVoltage == pytest.approx(120.0)
     assert ups.power.outputVoltage == pytest.approx(118.5)
     assert ups.power.loadPercentage == pytest.approx(20.5)
+
+
+def test_datetime_parsing_with_z_suffix():
+    """Test that datetime with Z suffix is correctly parsed."""
+    data = {"time": "2025-12-25T15:30:00Z"}
+    info = models.SystemInfo.model_validate(data)
+    assert info.time.isoformat() == "2025-12-25T15:30:00+00:00"
+
+
+def test_datetime_parsing_with_offset():
+    """Test that datetime with offset is correctly parsed."""
+    data = {"time": "2025-12-25T15:30:00+05:00"}
+    info = models.SystemInfo.model_validate(data)
+    assert info.time.isoformat() == "2025-12-25T15:30:00+05:00"
+
+
+def test_datetime_parsing_with_none():
+    """Test that None datetime values are handled."""
+    data = {"time": None}
+    info = models.SystemInfo.model_validate(data)
+    assert info.time is None
+
+
+def test_datetime_parsing_already_datetime():
+    """Test that datetime objects pass through unchanged."""
+    from datetime import datetime
+
+    dt = datetime(2025, 12, 25, 15, 30, 0, tzinfo=UTC)
+    result = models._parse_datetime(dt)
+    assert result == dt
+
+
+def test_array_capacity_zero_total():
+    """Test array capacity with zero total doesn't divide by zero."""
+    capacity = models.ArrayCapacity(
+        kilobytes=models.CapacityKilobytes(total=0, used=0, free=0)
+    )
+    assert capacity.usage_percent == 0.0
+
+
+def test_disk_usage_percent_none_when_no_fs_size():
+    """Test disk usage_percent returns None when fsSize is missing."""
+    disk = models.ArrayDisk(id="disk:1", fsSize=None, fsUsed=100)
+    assert disk.usage_percent is None
+
+
+def test_disk_usage_percent_none_when_fs_size_zero():
+    """Test disk usage_percent returns None when fsSize is zero."""
+    disk = models.ArrayDisk(id="disk:1", fsSize=0, fsUsed=0)
+    assert disk.usage_percent is None
+
+
+def test_disk_size_bytes_none_when_missing():
+    """Test disk size_bytes returns None when size is missing."""
+    disk = models.ArrayDisk(id="disk:1", size=None)
+    assert disk.size_bytes is None
+
+
+def test_share_size_calculation():
+    """Test share size calculation from used + free."""
+    share = models.Share(id="share:1", name="appdata", size=0, used=500, free=500)
+    # Size is 0 but calculated from used + free
+    assert share.size_bytes == 1000 * 1024
+
+
+def test_share_usage_percent_with_zero_size():
+    """Test share usage_percent with zero calculated size."""
+    share = models.Share(id="share:1", name="empty", size=0, used=0, free=0)
+    assert share.usage_percent is None
+
+
+def test_share_usage_percent_calculated():
+    """Test share usage_percent is calculated correctly."""
+    share = models.Share(id="share:1", name="data", size=1000, used=250, free=750)
+    assert share.usage_percent == pytest.approx(25.0)
+
+
+def test_share_used_bytes():
+    """Test share used_bytes calculation."""
+    share = models.Share(id="share:1", name="data", used=1000)
+    assert share.used_bytes == 1000 * 1024
+
+
+def test_share_free_bytes():
+    """Test share free_bytes calculation."""
+    share = models.Share(id="share:1", name="data", free=500)
+    assert share.free_bytes == 500 * 1024
+
+
+def test_model_defaults():
+    """Test that models have proper defaults."""
+    # SystemInfo with minimal data
+    info = models.SystemInfo.model_validate({})
+    assert info.time is None
+    assert info.system.uuid is None
+    assert info.cpu.brand is None
+    assert info.cpu.packages.temp == []
+
+    # Metrics with minimal data
+    metrics = models.Metrics.model_validate({})
+    assert metrics.cpu.percentTotal is None
+    assert metrics.memory.total is None
+
+
+def test_ups_uptime_parsing():
+    """Test InfoOs uptime field parsing."""
+    data = {"uptime": "2025-12-01T00:00:00Z"}
+    os_info = models.InfoOs.model_validate(data)
+    assert os_info.uptime.isoformat() == "2025-12-01T00:00:00+00:00"
+
+
+def test_disk_fs_properties():
+    """Test all disk filesystem byte properties."""
+    disk = models.ArrayDisk(
+        id="disk:1",
+        size=1000,
+        fsSize=900,
+        fsUsed=450,
+        fsFree=450,
+    )
+    assert disk.size_bytes == 1000 * 1024
+    assert disk.fs_size_bytes == 900 * 1024
+    assert disk.fs_used_bytes == 450 * 1024
+    assert disk.fs_free_bytes == 450 * 1024
+    assert disk.usage_percent == pytest.approx(50.0)
+
+
+def test_container_port_defaults():
+    """Test container port model with partial data."""
+    port = models.ContainerPort.model_validate({"privatePort": 80})
+    assert port.privatePort == 80
+    assert port.publicPort is None
+    assert port.type is None
+
+
+def test_datetime_parsing_invalid_type():
+    """Test _parse_datetime returns None for invalid types."""
+    result = models._parse_datetime(12345)  # Not a valid type
+    assert result is None
+
+
+def test_share_size_bytes_none_when_all_missing():
+    """Test Share.size_bytes returns None when size, used, and free are all missing."""
+    share = models.Share(id="share:1", name="empty", size=None, used=None, free=None)
+    assert share.size_bytes is None
+
+
+def test_share_size_bytes_with_valid_size():
+    """Test Share.size_bytes uses size when it's non-zero."""
+    share = models.Share(id="share:1", name="data", size=1000, used=500, free=500)
+    assert share.size_bytes == 1000 * 1024  # Uses size directly when non-zero
+
+
+def test_share_used_bytes_none():
+    """Test Share.used_bytes returns None when used is None."""
+    share = models.Share(id="share:1", name="empty", used=None)
+    assert share.used_bytes is None
+
+
+def test_share_free_bytes_none():
+    """Test Share.free_bytes returns None when free is None."""
+    share = models.Share(id="share:1", name="empty", free=None)
+    assert share.free_bytes is None
+
+
+def test_share_usage_percent_none_when_used_none():
+    """Test Share.usage_percent returns None when used is None."""
+    share = models.Share(id="share:1", name="data", size=1000, used=None, free=500)
+    assert share.usage_percent is None
+
+
+def test_disk_fs_used_bytes_none():
+    """Test ArrayDisk.fs_used_bytes returns None when fsUsed is None."""
+    disk = models.ArrayDisk(id="disk:1", fsUsed=None)
+    assert disk.fs_used_bytes is None
+
+
+def test_disk_fs_free_bytes_none():
+    """Test ArrayDisk.fs_free_bytes returns None when fsFree is None."""
+    disk = models.ArrayDisk(id="disk:1", fsFree=None)
+    assert disk.fs_free_bytes is None
+
+
+def test_disk_fs_size_bytes_none():
+    """Test ArrayDisk.fs_size_bytes returns None when fsSize is None."""
+    disk = models.ArrayDisk(id="disk:1", fsSize=None)
+    assert disk.fs_size_bytes is None
+
+
+def test_disk_usage_percent_none_when_fsused_none():
+    """Test ArrayDisk.usage_percent returns None when fsUsed is None."""
+    disk = models.ArrayDisk(id="disk:1", fsSize=1000, fsUsed=None)
+    assert disk.usage_percent is None
+
+
+def test_array_parities_and_caches():
+    """Test array parities and caches lists parse correctly."""
+    data = {
+        "state": "STARTED",
+        "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+        "parities": [{"id": "parity:1", "name": "Parity", "type": "PARITY"}],
+        "caches": [{"id": "cache:1", "name": "Cache", "type": "CACHE"}],
+    }
+    array = models.UnraidArray.model_validate(data)
+    assert len(array.parities) == 1
+    assert array.parities[0].id == "parity:1"
+    assert len(array.caches) == 1
+    assert array.caches[0].id == "cache:1"

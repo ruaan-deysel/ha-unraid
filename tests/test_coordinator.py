@@ -257,3 +257,593 @@ async def test_coordinator_data_refresh_cycle(hass, mock_api_client):
     data2 = await coordinator._async_update_data()
     assert data2 is not None
     assert data2.metrics.cpu.percentTotal == 35.5
+
+
+# =============================================================================
+# Storage Coordinator Error Handling Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_network_error_handling(hass, mock_api_client):
+    """Test storage coordinator handles network errors with UpdateFailed."""
+    from aiohttp import ClientError
+
+    mock_api_client.query.side_effect = ClientError("Connection refused")
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="Connection error"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_authentication_error_handling(hass, mock_api_client):
+    """Test storage coordinator handles authentication errors with UpdateFailed."""
+    from aiohttp import ClientResponseError
+
+    mock_api_client.query.side_effect = ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=403,
+        message="Forbidden",
+    )
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="Authentication failed"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_http_error_handling(hass, mock_api_client):
+    """Test storage coordinator handles HTTP errors with UpdateFailed."""
+    from aiohttp import ClientResponseError
+
+    mock_api_client.query.side_effect = ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=500,
+        message="Internal Server Error",
+    )
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="HTTP error 500"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_timeout_error_handling(hass, mock_api_client):
+    """Test storage coordinator handles timeout errors with UpdateFailed."""
+    import builtins
+
+    mock_api_client.query.side_effect = builtins.TimeoutError("Timeout")
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="timeout"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_unexpected_error_handling(hass, mock_api_client):
+    """Test storage coordinator handles unexpected errors with UpdateFailed."""
+    mock_api_client.query.side_effect = ValueError("Unexpected error")
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="Unexpected error"):
+        await coordinator._async_update_data()
+
+
+# =============================================================================
+# System Coordinator HTTP Error Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_http_error_handling(hass, mock_api_client):
+    """Test system coordinator handles non-auth HTTP errors."""
+    from aiohttp import ClientResponseError
+
+    mock_api_client.query.side_effect = ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=500,
+        message="Server Error",
+    )
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed, match="HTTP error 500"):
+        await coordinator._async_update_data()
+
+
+# =============================================================================
+# Connection Recovery Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_connection_recovery(hass, mock_api_client, caplog):
+    """Test system coordinator logs connection recovery."""
+    from aiohttp import ClientError
+
+    # First call fails
+    mock_api_client.query.side_effect = ClientError("Connection refused")
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Now simulate recovery
+    mock_api_client.query.side_effect = None
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert "Connection restored" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_connection_recovery(hass, mock_api_client, caplog):
+    """Test storage coordinator logs connection recovery."""
+    from aiohttp import ClientError
+
+    # First call fails
+    mock_api_client.query.side_effect = ClientError("Connection refused")
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Now simulate recovery
+    mock_api_client.query.side_effect = None
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [],
+    }
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert "Connection restored" in caplog.text
+
+
+# =============================================================================
+# Parsing Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_parses_docker_containers(hass, mock_api_client):
+    """Test system coordinator correctly parses Docker containers."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {
+            "containers": [
+                {
+                    "id": "ct:1",
+                    "names": ["/plex"],
+                    "state": "RUNNING",
+                    "image": "plexinc/pms-docker",
+                    "ports": [
+                        {"privatePort": 32400, "publicPort": 32400, "type": "tcp"}
+                    ],
+                }
+            ]
+        },
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.containers) == 1
+    assert data.containers[0].name == "plex"  # Should strip leading /
+    assert data.containers[0].state == "RUNNING"
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_parses_vms(hass, mock_api_client):
+    """Test system coordinator correctly parses VMs."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {
+            "domains": [
+                {"id": "vm:1", "name": "Ubuntu", "state": "RUNNING"},
+                {"id": "vm:2", "name": "Windows", "state": "SHUTOFF"},
+            ]
+        },
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.vms) == 2
+    assert data.vms[0].name == "Ubuntu"
+    assert data.vms[1].state == "SHUTOFF"
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_parses_ups_devices(hass, mock_api_client):
+    """Test system coordinator correctly parses UPS devices."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": [
+            {
+                "id": "ups:1",
+                "name": "APC UPS",
+                "status": "Online",
+                "battery": {"chargeLevel": 100, "estimatedRuntime": 1800},
+                "power": {"loadPercentage": 25.5},
+            }
+        ],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.ups_devices) == 1
+    assert data.ups_devices[0].name == "APC UPS"
+    assert data.ups_devices[0].battery.chargeLevel == 100
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_parses_notifications(hass, mock_api_client):
+    """Test system coordinator correctly parses notifications."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 5}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.notifications_unread == 5
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_invalid_container(
+    hass, mock_api_client, caplog
+):
+    """Test system coordinator skips invalid containers."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {
+            "containers": [
+                {"id": "ct:1", "names": ["/good"], "state": "RUNNING"},
+                {"invalid": "data"},  # Missing required fields
+            ]
+        },
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.containers) == 1
+    assert "Failed to parse container" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_invalid_vm(hass, mock_api_client, caplog):
+    """Test system coordinator skips invalid VMs."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {
+            "domains": [
+                {"id": "vm:1", "name": "Good", "state": "RUNNING"},
+                {"invalid": "vm_data"},  # Missing required fields
+            ]
+        },
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.vms) == 1
+    assert "Failed to parse VM" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_invalid_ups(hass, mock_api_client, caplog):
+    """Test system coordinator skips invalid UPS devices."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": [
+            {"id": "ups:1", "name": "Good UPS", "status": "Online"},
+            {"invalid": "ups_data"},  # Missing required fields
+        ],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.ups_devices) == 1
+    assert "Failed to parse UPS" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_parses_disks_with_type(hass, mock_api_client):
+    """Test storage coordinator sets default disk types."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [
+                {"id": "disk:1", "idx": 1, "name": "Disk 1"},  # No type
+            ],
+            "parities": [
+                {"id": "parity:1", "idx": 0, "name": "Parity"},  # No type
+            ],
+            "caches": [
+                {"id": "cache:1", "idx": 0, "name": "Cache"},  # No type
+            ],
+        },
+        "shares": [],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.disks[0].type == "DATA"
+    assert data.parities[0].type == "PARITY"
+    assert data.caches[0].type == "CACHE"
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_parses_boot_device(hass, mock_api_client):
+    """Test storage coordinator parses boot device."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "boot": {
+                "id": "boot:1",
+                "name": "Flash",
+                "device": "sde",
+                "fsSize": 32000,
+                "fsUsed": 8000,
+                "fsFree": 24000,
+            },
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.boot is not None
+    assert data.boot.name == "Flash"
+    assert data.boot.type == "FLASH"  # Default type set
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_parses_shares(hass, mock_api_client):
+    """Test storage coordinator parses shares."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [
+            {
+                "id": "share:1",
+                "name": "appdata",
+                "size": 100000,
+                "used": 50000,
+                "free": 50000,
+            },
+            {
+                "id": "share:2",
+                "name": "media",
+                "size": 500000,
+                "used": 400000,
+                "free": 100000,
+            },
+        ],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.shares) == 2
+    assert data.shares[0].name == "appdata"
+    assert data.shares[1].name == "media"
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_handles_invalid_disk(hass, mock_api_client, caplog):
+    """Test storage coordinator skips invalid disks."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [
+                {"id": "disk:1", "idx": 1, "name": "Good Disk"},
+                {"invalid": "disk_data"},  # Missing required id field
+            ],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.disks) == 1
+    assert "Failed to parse disk" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_handles_invalid_share(hass, mock_api_client, caplog):
+    """Test storage coordinator skips invalid shares."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [
+            {"id": "share:1", "name": "good"},
+            {"invalid": "share_data"},  # Missing required fields
+        ],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert len(data.shares) == 1
+    assert "Failed to parse share" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_handles_none_boot(hass, mock_api_client):
+    """Test storage coordinator handles missing boot device."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "boot": None,
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.boot is None
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_handles_none_capacity(hass, mock_api_client):
+    """Test storage coordinator handles missing capacity."""
+    mock_api_client.query.return_value = {
+        "array": {
+            "state": "STARTED",
+            "capacity": None,
+            "disks": [],
+            "parities": [],
+            "caches": [],
+        },
+        "shares": [],
+    }
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.capacity is None
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_none_ups_list(hass, mock_api_client):
+    """Test system coordinator handles None upsDevices list."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": None,  # Can be None instead of empty list
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.ups_devices == []
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_none_notifications(hass, mock_api_client):
+    """Test system coordinator handles missing notifications count."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {"containers": []},
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": None}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    assert data.notifications_unread == 0
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_container_without_names(
+    hass, mock_api_client, caplog
+):
+    """Test system coordinator handles container without names list."""
+    mock_api_client.query.return_value = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "docker": {
+            "containers": [
+                {"id": "ct:1", "names": [], "state": "RUNNING"},  # Empty names list
+            ]
+        },
+        "vms": {"domains": []},
+        "upsDevices": [],
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    # Container without name is skipped due to validation error
+    assert len(data.containers) == 0
+    assert "Failed to parse container" in caplog.text
