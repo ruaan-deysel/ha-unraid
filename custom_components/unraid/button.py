@@ -307,6 +307,7 @@ class DiskSpinUpButton(UnraidButtonEntity):
 
     _attr_translation_key = "disk_spin_up"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -348,6 +349,7 @@ class DiskSpinDownButton(UnraidButtonEntity):
 
     _attr_translation_key = "disk_spin_down"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
