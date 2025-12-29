@@ -279,8 +279,8 @@ class UnraidAPIClient:
             # (e.g., VMs not enabled, no UPS connected)
             # Only raise exception if we have no data at all
             if data:
-                _LOGGER.warning(
-                    "GraphQL query returned partial errors (data still available): %s",
+                _LOGGER.info(
+                    "Some optional features unavailable: %s",
                     "; ".join(error_messages),
                 )
             else:
