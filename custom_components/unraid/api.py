@@ -242,9 +242,29 @@ class UnraidAPIClient:
 
         if "errors" in response:
             errors = response["errors"]
-            # Log full error details but raise sanitized message
-            _LOGGER.debug("GraphQL error details: %s", errors)
-            raise Exception(f"GraphQL query failed with {len(errors)} error(s)")
+            # Extract error messages for logging
+            error_messages = []
+            for err in errors:
+                if isinstance(err, dict):
+                    msg = err.get("message", str(err))
+                    # Include path if available for context
+                    path = err.get("path")
+                    if path:
+                        msg = f"{msg} (path: {path})"
+                    error_messages.append(msg)
+                else:
+                    error_messages.append(str(err))
+
+            # Log at warning level so users can see what's wrong
+            _LOGGER.warning(
+                "GraphQL query failed with %d error(s): %s",
+                len(errors),
+                "; ".join(error_messages),
+            )
+            # Also log full details at debug for troubleshooting
+            _LOGGER.debug("Full GraphQL error response: %s", errors)
+
+            raise Exception(f"GraphQL query failed: {'; '.join(error_messages)}")
 
         return response.get("data", {})
 
