@@ -200,6 +200,10 @@ jobs:
           # Save to file (GitHub Actions doesn't handle multiline outputs well)
           echo "$NOTES" > build/RELEASE_NOTES.md
 
+          # Add link to full changelog
+          echo "" >> build/RELEASE_NOTES.md
+          echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> build/RELEASE_NOTES.md
+
           # Add installation instructions
           echo "" >> build/RELEASE_NOTES.md
           echo "---" >> build/RELEASE_NOTES.md
