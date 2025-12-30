@@ -69,7 +69,7 @@
           "system_interval": "How often to poll CPU, memory, Docker, VMs (10-300 seconds)",
           "storage_interval": "How often to poll disks and shares (60-3600 seconds). Higher values prevent disk spin-up.",
           "ups_capacity_va": "Optional. Your UPS VA rating (e.g., 1000 for a 1000VA UPS). Shown in sensor attributes for reference.",
-          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value shown in Unraid UPS settings (e.g., 800 for a 1000VA/800W UPS)."
+          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA × 0.6."
         }
       }
     }
