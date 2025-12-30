@@ -320,11 +320,11 @@ async def test_api_handles_redirect_without_location():
         host="192.168.1.1", api_key="test_key", port=80, verify_ssl=False
     )
 
-    # Mock _discover_redirect_url to return None (no redirect found)
+    # Mock _discover_redirect_url to return tuple (no redirect, use SSL)
     with patch.object(
         client, "_discover_redirect_url", new_callable=AsyncMock
     ) as mock_discover:
-        mock_discover.return_value = None
+        mock_discover.return_value = (None, True)
 
         # Mock _make_request to simulate a 302 without Location header
         with patch.object(
@@ -349,11 +349,11 @@ async def test_api_direct_https_no_redirect():
         host="https://192.168.1.1", api_key="test_key", port=443, verify_ssl=False
     )
 
-    # Mock _discover_redirect_url to return None (no redirect needed)
+    # Mock _discover_redirect_url to return tuple (no redirect, use SSL)
     with patch.object(
         client, "_discover_redirect_url", new_callable=AsyncMock
     ) as mock_discover:
-        mock_discover.return_value = None
+        mock_discover.return_value = (None, True)
 
         # Mock _make_request
         with patch.object(
@@ -977,7 +977,7 @@ async def test_get_base_url_with_trailing_slash():
 
 @pytest.mark.asyncio
 async def test_discover_redirect_url_no_redirect():
-    """Test _discover_redirect_url returns None when no redirect."""
+    """Test _discover_redirect_url returns (None, False) for HTTP-only mode."""
     from unittest.mock import MagicMock
 
     client = UnraidAPIClient(
@@ -987,7 +987,7 @@ async def test_discover_redirect_url_no_redirect():
 
     # Create a proper async context manager mock
     mock_response = MagicMock()
-    mock_response.status = 200  # No redirect
+    mock_response.status = 200  # HTTP 200 = SSL/TLS mode "No"
 
     mock_cm = AsyncMock()
     mock_cm.__aenter__.return_value = mock_response
@@ -999,12 +999,45 @@ async def test_discover_redirect_url_no_redirect():
 
     result = await client._discover_redirect_url()
 
-    assert result is None
+    # HTTP 200 means SSL/TLS is "No" - use HTTP directly
+    assert result == (None, False)
+
+
+@pytest.mark.asyncio
+async def test_discover_redirect_url_http_400_means_http_available():
+    """
+    Test _discover_redirect_url treats HTTP 400 as HTTP mode available.
+
+    GraphQL endpoints return 400 for GET requests without query params,
+    but this still means HTTP is accessible (SSL/TLS mode is 'No').
+    """
+    from unittest.mock import MagicMock
+
+    client = UnraidAPIClient(
+        host="192.168.1.100",
+        api_key="test_key",
+    )
+
+    mock_response = MagicMock()
+    mock_response.status = 400  # Bad Request (GraphQL rejects GET without query)
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_response
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_cm
+
+    client._session = mock_session
+
+    result = await client._discover_redirect_url()
+
+    # HTTP 400 still means HTTP endpoint is responding - use HTTP
+    assert result == (None, False)
 
 
 @pytest.mark.asyncio
 async def test_discover_redirect_url_with_myunraid_redirect():
-    """Test _discover_redirect_url detects myunraid.net redirect."""
+    """Test _discover_redirect_url detects myunraid.net redirect (Strict mode)."""
     from unittest.mock import MagicMock
 
     client = UnraidAPIClient(
@@ -1026,12 +1059,13 @@ async def test_discover_redirect_url_with_myunraid_redirect():
 
     result = await client._discover_redirect_url()
 
-    assert result == "https://example.myunraid.net/graphql"
+    # myunraid.net redirect = SSL/TLS "Strict" mode
+    assert result == ("https://example.myunraid.net/graphql", True)
 
 
 @pytest.mark.asyncio
-async def test_discover_redirect_url_ignores_non_myunraid_redirect():
-    """Test _discover_redirect_url ignores non-myunraid redirects."""
+async def test_discover_redirect_url_https_redirect():
+    """Test _discover_redirect_url detects HTTPS redirect (Yes mode - self-signed)."""
     from unittest.mock import MagicMock
 
     client = UnraidAPIClient(
@@ -1041,7 +1075,7 @@ async def test_discover_redirect_url_ignores_non_myunraid_redirect():
 
     mock_response = MagicMock()
     mock_response.status = 302
-    mock_response.headers = {"Location": "https://someother.example.com/graphql"}
+    mock_response.headers = {"Location": "https://192.168.1.100:443/graphql"}
 
     mock_cm = AsyncMock()
     mock_cm.__aenter__.return_value = mock_response
@@ -1053,8 +1087,9 @@ async def test_discover_redirect_url_ignores_non_myunraid_redirect():
 
     result = await client._discover_redirect_url()
 
-    # Should return None because it's not myunraid.net
-    assert result is None
+    # HTTPS redirect = SSL/TLS "Yes" mode (self-signed cert)
+    # Port 443 should be normalized out
+    assert result == ("https://192.168.1.100/graphql", True)
 
 
 @pytest.mark.asyncio
@@ -1077,8 +1112,8 @@ async def test_discover_redirect_url_handles_client_error():
 
     result = await client._discover_redirect_url()
 
-    # Should return None on error, not raise
-    assert result is None
+    # On error, fallback to HTTPS (assume SSL needed)
+    assert result == (None, True)
 
 
 @pytest.mark.asyncio
@@ -1108,6 +1143,103 @@ async def test_discover_redirect_url_creates_session_if_none():
         await client._discover_redirect_url()
 
         mock_create.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_redirect_url_https_redirect_custom_port():
+    """Test HTTPS redirect with non-standard port is preserved."""
+    from unittest.mock import MagicMock
+
+    client = UnraidAPIClient(
+        host="192.168.1.100",
+        api_key="test_key",
+    )
+
+    mock_response = MagicMock()
+    mock_response.status = 302
+    # Custom port should be preserved
+    mock_response.headers = {"Location": "https://192.168.1.100:8443/graphql"}
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_response
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_cm
+
+    client._session = mock_session
+
+    result = await client._discover_redirect_url()
+
+    # Custom port should be preserved in URL
+    assert result == ("https://192.168.1.100:8443/graphql", True)
+
+
+@pytest.mark.asyncio
+async def test_discover_redirect_url_strips_trailing_slash_from_host():
+    """Test that trailing slashes are stripped from host."""
+    from unittest.mock import MagicMock
+
+    client = UnraidAPIClient(
+        host="192.168.1.100/",  # Trailing slash
+        api_key="test_key",
+    )
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_response
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_cm
+
+    client._session = mock_session
+
+    result = await client._discover_redirect_url()
+
+    # Should return HTTP mode tuple
+    assert result == (None, False)
+    # Verify the URL used in the request doesn't have double slashes
+    call_args = mock_session.get.call_args
+    assert call_args[0][0] == "http://192.168.1.100/graphql"
+
+
+@pytest.mark.asyncio
+async def test_make_request_builds_http_url_when_no_ssl():
+    """Test _make_request builds correct HTTP URL when SSL is not needed."""
+    from unittest.mock import MagicMock
+
+    client = UnraidAPIClient(
+        host="192.168.1.100",
+        api_key="test_key",
+        port=443,
+    )
+
+    expected_data = {"data": {"online": True}}
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=expected_data)
+    mock_response.raise_for_status = MagicMock()
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_response
+
+    mock_session = MagicMock()
+    mock_session.post.return_value = mock_cm
+
+    client._session = mock_session
+
+    # Mock discover to return HTTP-only mode
+    with patch.object(
+        client, "_discover_redirect_url", new_callable=AsyncMock
+    ) as mock_discover:
+        mock_discover.return_value = (None, False)  # HTTP mode
+
+        await client._make_request({"query": "query { online }"})
+
+        # Verify HTTP URL was built
+        assert client._resolved_url == "http://192.168.1.100/graphql"
 
 
 @pytest.mark.asyncio
@@ -1238,7 +1370,8 @@ async def test_make_request_creates_session_if_none():
             client, "_discover_redirect_url", new_callable=AsyncMock
         ) as mock_discover,
     ):
-        mock_discover.return_value = None
+        # Now returns tuple (url, use_ssl)
+        mock_discover.return_value = (None, True)
 
         async def create_and_set_session() -> None:
             mock_cm = AsyncMock()

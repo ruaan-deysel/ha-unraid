@@ -172,22 +172,44 @@ async def test_system_coordinator_queries_all_endpoints(hass, mock_api_client):
     mock_response = {
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
-        "docker": {"containers": []},
-        "vms": {"domains": []},
-        "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
-    mock_api_client.query.return_value = mock_response
+    # Docker query returns empty containers
+    mock_docker_response = {"docker": {"containers": []}}
+    # VMs query returns empty domains
+    mock_vms_response = {"vms": {"domains": []}}
+    # UPS query returns empty list
+    mock_ups_response = {"upsDevices": []}
+
+    mock_api_client.query.side_effect = [
+        mock_response,
+        mock_docker_response,
+        mock_vms_response,
+        mock_ups_response,
+    ]
 
     coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
     await coordinator._async_update_data()
 
-    # Verify query was called (may be combined into one or multiple queries)
-    assert mock_api_client.query.called
-    call_args = mock_api_client.query.call_args[0][0]
+    # Verify query was called 4 times (main + Docker + VMs + UPS)
+    assert mock_api_client.query.call_count == 4
 
-    # Check that query includes key fields
-    assert "info" in call_args.lower() or "metrics" in call_args.lower()
+    # Check first query includes key fields (system info, metrics)
+    first_call_args = mock_api_client.query.call_args_list[0][0][0]
+    assert "info" in first_call_args.lower()
+    assert "metrics" in first_call_args.lower()
+
+    # Check second query is for Docker
+    second_call_args = mock_api_client.query.call_args_list[1][0][0]
+    assert "docker" in second_call_args.lower()
+
+    # Check third query is for VMs
+    third_call_args = mock_api_client.query.call_args_list[2][0][0]
+    assert "vms" in third_call_args.lower()
+
+    # Check fourth query is for UPS
+    fourth_call_args = mock_api_client.query.call_args_list[3][0][0]
+    assert "upsdevices" in fourth_call_args.lower()
 
 
 @pytest.mark.asyncio
@@ -511,6 +533,158 @@ async def test_system_coordinator_parses_ups_devices(hass, mock_api_client):
     assert len(data.ups_devices) == 1
     assert data.ups_devices[0].name == "APC UPS"
     assert data.ups_devices[0].battery.chargeLevel == 100
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_ups_query_failure(
+    hass, mock_api_client, caplog
+):
+    """
+    Test system coordinator handles UPS query failure gracefully.
+
+    When no UPS is configured, Unraid returns a GraphQL error for upsDevices.
+    The coordinator should continue working with empty UPS list.
+    """
+    from custom_components.unraid.api import UnraidAPIError
+
+    # Main query succeeds
+    main_response = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    # Docker query succeeds
+    docker_response = {"docker": {"containers": []}}
+
+    # VMs query succeeds
+    vms_response = {"vms": {"domains": []}}
+
+    # UPS query fails (no UPS configured)
+    ups_error = UnraidAPIError(
+        "GraphQL query failed: No UPS data returned from apcaccess"
+    )
+
+    mock_api_client.query.side_effect = [
+        main_response,
+        docker_response,
+        vms_response,
+        ups_error,
+    ]
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    # System data should be parsed successfully
+    assert data is not None
+    assert data.info.system.uuid == "abc-123"
+    assert data.metrics.cpu.percentTotal == 25.5
+
+    # UPS list should be empty (not failed)
+    assert data.ups_devices == []
+
+    # Debug log should indicate UPS not available
+    assert "UPS data not available" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_vms_query_failure(
+    hass, mock_api_client, caplog
+):
+    """
+    Test system coordinator handles VMs query failure gracefully.
+
+    When VMs are not enabled, Unraid returns a GraphQL error for vms.
+    The coordinator should continue working with empty VMs list.
+    """
+    from custom_components.unraid.api import UnraidAPIError
+
+    # Main query succeeds
+    main_response = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    # Docker query succeeds
+    docker_response = {"docker": {"containers": []}}
+
+    # VMs query fails (VMs not enabled)
+    vms_error = UnraidAPIError("GraphQL query failed: VMs are not available")
+
+    # UPS query succeeds
+    ups_response = {"upsDevices": []}
+
+    mock_api_client.query.side_effect = [
+        main_response,
+        docker_response,
+        vms_error,
+        ups_response,
+    ]
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    # System data should be parsed successfully
+    assert data is not None
+    assert data.info.system.uuid == "abc-123"
+    assert data.metrics.cpu.percentTotal == 25.5
+
+    # VMs list should be empty (not failed)
+    assert data.vms == []
+
+    # Debug log should indicate VMs not available
+    assert "VM data not available" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_handles_docker_query_failure(
+    hass, mock_api_client, caplog
+):
+    """
+    Test system coordinator handles Docker query failure gracefully.
+
+    When Docker is not enabled, Unraid returns a GraphQL error for docker.
+    The coordinator should continue working with empty containers list.
+    """
+    from custom_components.unraid.api import UnraidAPIError
+
+    # Main query succeeds
+    main_response = {
+        "info": {"system": {"uuid": "abc-123"}},
+        "metrics": {"cpu": {"percentTotal": 25.5}},
+        "notifications": {"overview": {"unread": {"total": 0}}},
+    }
+
+    # Docker query fails (Docker not enabled)
+    docker_error = UnraidAPIError("GraphQL query failed: Docker is not available")
+
+    # VMs query succeeds
+    vms_response = {"vms": {"domains": []}}
+
+    # UPS query succeeds
+    ups_response = {"upsDevices": []}
+
+    mock_api_client.query.side_effect = [
+        main_response,
+        docker_error,
+        vms_response,
+        ups_response,
+    ]
+
+    coordinator = UnraidSystemCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    # System data should be parsed successfully
+    assert data is not None
+    assert data.info.system.uuid == "abc-123"
+    assert data.metrics.cpu.percentTotal == 25.5
+
+    # Containers list should be empty (not failed)
+    assert data.containers == []
+
+    # Debug log should indicate Docker not available
+    assert "Docker data not available" in caplog.text
 
 
 @pytest.mark.asyncio

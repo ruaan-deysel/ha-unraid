@@ -1,11 +1,12 @@
 #!/bin/bash
 # Curl-based script to test the Unraid GraphQL API
+# Supports all three SSL/TLS modes: No, Yes, Strict
 
 # Configuration (default values)
 SERVER_IP=""
 API_KEY=""
 QUERY_TYPE="info"
-DIRECT_IP=false
+SSL_MODE="auto"  # auto, no, yes, strict
 
 # Help message
 show_help() {
@@ -13,17 +14,28 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  -h, --help       Show this help message"
-    echo "  -i, --ip         Server IP address (default: $SERVER_IP)"
-    echo "  -k, --key        API key (default: predefined key)"
+    echo "  -i, --ip         Server IP address (required)"
+    echo "  -k, --key        API key (required)"
     echo "  -t, --type       Query type: info, array, docker, disks, network, shares, vms,"
-    echo "                   notifications, users, apikeys, memory, cpu, ups, disk-sleep,
-                   system-uptime, array-usage, disk-health, parity-status (default: info)"
-    echo "  -d, --direct     Use direct IP connection without checking for redirects"
+    echo "                   notifications, users, apikeys, memory, cpu, ups, disk-sleep,"
+    echo "                   system-uptime, array-usage, disk-health, parity-status (default: info)"
+    echo "  -s, --ssl        SSL/TLS mode: auto, no, yes, strict (default: auto)"
+    echo "                   - auto: Auto-detect by checking for redirects"
+    echo "                   - no: HTTP only (Unraid SSL/TLS = No)"
+    echo "                   - yes: HTTPS with self-signed cert (Unraid SSL/TLS = Yes)"
+    echo "                   - strict: HTTPS via myunraid.net (Unraid SSL/TLS = Strict)"
+    echo ""
+    echo "SSL/TLS Modes Explained:"
+    echo "  When Unraid's Settings > Management Access > SSL/TLS is set to:"
+    echo "  - 'No': Server only accepts HTTP connections on local IP"
+    echo "  - 'Yes': Server redirects to HTTPS with self-signed certificate"
+    echo "  - 'Strict': Server redirects to myunraid.net with Let's Encrypt cert"
     echo ""
     echo "Examples:"
-    echo "  $0 --type info"
-    echo "  $0 --ip 192.168.1.100 --type docker"
-    echo "  $0 --ip 192.168.1.100 --direct"
+    echo "  $0 -i 192.168.1.100 -k YOUR_API_KEY --type info"
+    echo "  $0 -i 192.168.1.100 -k YOUR_API_KEY --ssl no"
+    echo "  $0 -i 192.168.1.100 -k YOUR_API_KEY --ssl yes --type docker"
+    echo "  $0 -i 192.168.1.100 -k YOUR_API_KEY --ssl strict --type array"
 }
 
 # Parse command line arguments
@@ -49,8 +61,9 @@ while [[ $# -gt 0 ]]; do
             shift
             shift
             ;;
-        -d|--direct)
-            DIRECT_IP=true
+        -s|--ssl)
+            SSL_MODE="$2"
+            shift
             shift
             ;;
         *)
@@ -220,36 +233,107 @@ case $QUERY_TYPE in
         ;;
 esac
 
-echo "Connecting to Unraid at $SERVER_IP to query $TITLE..."
+echo "============================================="
+echo "Unraid GraphQL API Test"
+echo "============================================="
+echo "Server IP: $SERVER_IP"
+echo "Query: $TITLE"
+echo "SSL Mode: $SSL_MODE"
 echo "---------------------------------------------"
 
-# Check for redirect first
-REDIRECT_URL=""
-if [ "$DIRECT_IP" = false ]; then
-    echo "Checking for redirect..."
-    REDIRECT_URL=$(curl -s -I "http://$SERVER_IP/graphql" | grep -i "Location:" | awk '{print $2}' | tr -d '\r')
+# Determine the URL and curl options based on SSL mode
+CURL_OPTS="-s"
+GRAPHQL_URL=""
+DOMAIN=""
 
-    if [ -n "$REDIRECT_URL" ]; then
-        echo "Found redirect URL: $REDIRECT_URL"
-        # Extract domain for headers
-        DOMAIN=$(echo "$REDIRECT_URL" | sed -E 's|https?://([^/]+).*|\1|')
-        echo "Using domain: $DOMAIN for headers"
-    else
-        echo "No redirect found, using direct IP"
+case $SSL_MODE in
+    no)
+        # SSL/TLS = No: Direct HTTP connection
+        echo "Mode: HTTP only (SSL/TLS = No)"
+        GRAPHQL_URL="http://$SERVER_IP/graphql"
         DOMAIN="$SERVER_IP"
-        REDIRECT_URL="http://$SERVER_IP/graphql"
-    fi
-else
-    echo "Using direct IP as requested"
-    DOMAIN="$SERVER_IP"
-    REDIRECT_URL="http://$SERVER_IP/graphql"
-fi
+        ;;
+    yes)
+        # SSL/TLS = Yes: HTTPS with self-signed certificate
+        echo "Mode: HTTPS with self-signed cert (SSL/TLS = Yes)"
+        GRAPHQL_URL="https://$SERVER_IP/graphql"
+        DOMAIN="$SERVER_IP"
+        CURL_OPTS="$CURL_OPTS -k"  # Allow insecure (self-signed cert)
+        ;;
+    strict)
+        # SSL/TLS = Strict: Check for myunraid.net redirect
+        echo "Mode: HTTPS via myunraid.net (SSL/TLS = Strict)"
+        echo "Checking for redirect..."
+        REDIRECT_URL=$(curl -s -I -k "http://$SERVER_IP/graphql" 2>/dev/null | grep -i "^Location:" | awk '{print $2}' | tr -d '\r\n')
 
-# Execute the GraphQL query using curl and follow redirects
-# Adding -s for silent operation (removes progress bar) but keeping errors
+        if [ -n "$REDIRECT_URL" ] && [[ "$REDIRECT_URL" == *"myunraid.net"* ]]; then
+            echo "Found myunraid.net redirect: $REDIRECT_URL"
+            GRAPHQL_URL="$REDIRECT_URL"
+            DOMAIN=$(echo "$REDIRECT_URL" | sed -E 's|https?://([^/]+).*|\1|')
+        else
+            echo "Warning: No myunraid.net redirect found. Trying direct HTTPS..."
+            GRAPHQL_URL="https://$SERVER_IP/graphql"
+            DOMAIN="$SERVER_IP"
+            CURL_OPTS="$CURL_OPTS -k"
+        fi
+        ;;
+    auto|*)
+        # Auto-detect: Check what kind of redirect we get
+        echo "Mode: Auto-detecting SSL/TLS configuration..."
+
+        # First, try HTTP and check for redirect
+        HTTP_RESPONSE=$(curl -s -I -o /dev/null -w "%{http_code}" "http://$SERVER_IP/graphql" 2>/dev/null)
+        REDIRECT_URL=$(curl -s -I "http://$SERVER_IP/graphql" 2>/dev/null | grep -i "^Location:" | awk '{print $2}' | tr -d '\r\n')
+
+        echo "HTTP response code: $HTTP_RESPONSE"
+
+        if [ "$HTTP_RESPONSE" = "302" ] || [ "$HTTP_RESPONSE" = "301" ]; then
+            if [ -n "$REDIRECT_URL" ]; then
+                echo "Found redirect: $REDIRECT_URL"
+
+                if [[ "$REDIRECT_URL" == *"myunraid.net"* ]]; then
+                    # SSL/TLS = Strict (myunraid.net)
+                    echo "Detected: SSL/TLS = Strict (myunraid.net)"
+                    GRAPHQL_URL="$REDIRECT_URL"
+                    DOMAIN=$(echo "$REDIRECT_URL" | sed -E 's|https?://([^/]+).*|\1|')
+                elif [[ "$REDIRECT_URL" == https://* ]]; then
+                    # SSL/TLS = Yes (HTTPS redirect to same IP)
+                    echo "Detected: SSL/TLS = Yes (self-signed cert)"
+                    GRAPHQL_URL="$REDIRECT_URL"
+                    DOMAIN=$(echo "$REDIRECT_URL" | sed -E 's|https?://([^/]+).*|\1|')
+                    CURL_OPTS="$CURL_OPTS -k"  # Allow insecure
+                else
+                    # Some other redirect
+                    echo "Detected: Unknown redirect, following..."
+                    GRAPHQL_URL="$REDIRECT_URL"
+                    DOMAIN=$(echo "$REDIRECT_URL" | sed -E 's|https?://([^/]+).*|\1|')
+                fi
+            fi
+        elif [ "$HTTP_RESPONSE" = "200" ] || [ "$HTTP_RESPONSE" = "400" ]; then
+            # HTTP returned 200 or 400 (GraphQL expects POST, so GET returns 400)
+            # This means SSL/TLS = No
+            echo "Detected: SSL/TLS = No (HTTP only)"
+            GRAPHQL_URL="http://$SERVER_IP/graphql"
+            DOMAIN="$SERVER_IP"
+        else
+            # Fallback to HTTPS with insecure
+            echo "Could not detect mode (HTTP code: $HTTP_RESPONSE), trying HTTPS..."
+            GRAPHQL_URL="https://$SERVER_IP/graphql"
+            DOMAIN="$SERVER_IP"
+            CURL_OPTS="$CURL_OPTS -k"
+        fi
+        ;;
+esac
+
+echo ""
+echo "Using URL: $GRAPHQL_URL"
+echo "Domain: $DOMAIN"
+echo "---------------------------------------------"
+
+# Execute the GraphQL query using curl
 # Using jq for pretty output if available
 if command -v jq &> /dev/null; then
-    curl -s -L \
+    curl $CURL_OPTS -L \
       -X POST \
       -H "Content-Type: application/json" \
       -H "x-api-key: $API_KEY" \
@@ -257,9 +341,10 @@ if command -v jq &> /dev/null; then
       -H "Host: $DOMAIN" \
       -H "Referer: https://$DOMAIN/dashboard" \
       -d "$QUERY" \
-      "$REDIRECT_URL" | jq '.'
+      "$GRAPHQL_URL" | jq '.'
+    CURL_EXIT=$?
 else
-    curl -L \
+    curl $CURL_OPTS -L \
       -X POST \
       -H "Content-Type: application/json" \
       -H "x-api-key: $API_KEY" \
@@ -267,8 +352,16 @@ else
       -H "Host: $DOMAIN" \
       -H "Referer: https://$DOMAIN/dashboard" \
       -d "$QUERY" \
-      "$REDIRECT_URL"
+      "$GRAPHQL_URL"
+    CURL_EXIT=$?
 fi
 
 echo ""
+echo "---------------------------------------------"
+
+if [ $CURL_EXIT -eq 0 ]; then
+    echo "✅ Query completed successfully"
+else
+    echo "❌ Query failed with exit code: $CURL_EXIT"
+fi
 echo "---------------------------------------------"

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_VERIFY_SSL
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
@@ -44,6 +44,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
         self._server_uuid: str | None = None
         self._server_hostname: str | None = None
+        self._verify_ssl: bool = True  # Track SSL verification setting
 
     @staticmethod
     def async_get_options_flow(
@@ -102,12 +103,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Use server hostname as title (more readable than IP)
                 title = self._server_hostname or user_input[CONF_HOST]
 
+                # Include SSL verification setting in config entry data
+                entry_data = {
+                    **user_input,
+                    CONF_VERIFY_SSL: self._verify_ssl,
+                }
+
                 _LOGGER.info(
-                    "Creating config entry for %s (UUID: %s)", title, unique_id
+                    "Creating config entry for %s (UUID: %s, verify_ssl: %s)",
+                    title,
+                    unique_id,
+                    self._verify_ssl,
                 )
                 return self.async_create_entry(
                     title=title,
-                    data=user_input,
+                    data=entry_data,
                     options={
                         CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
                         CONF_STORAGE_INTERVAL: DEFAULT_STORAGE_POLL_INTERVAL,
@@ -155,8 +165,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         host = user_input[CONF_HOST].strip()
         api_key = user_input[CONF_API_KEY].strip()
 
-        # Auto-detect settings: default port 443, SSL verification enabled
-        # The API client handles myunraid.net redirects automatically
+        # Reset verify_ssl to default
+        self._verify_ssl = True
+
+        # First attempt: try with SSL verification enabled
+        # This works for: HTTP-only mode (No SSL) and Strict mode (myunraid.net)
         api_client = UnraidAPIClient(
             host=host,
             api_key=api_key,
@@ -166,6 +179,33 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             await self._validate_connection(api_client, host)
+        except CannotConnectError as err:
+            # Check if this might be a self-signed certificate error
+            error_str = str(err).lower()
+            if "ssl" in error_str or "certificate" in error_str:
+                # Retry with SSL verification disabled (for self-signed certs)
+                _LOGGER.debug(
+                    "SSL verification failed, retrying with verify_ssl=False: %s", err
+                )
+                await api_client.close()
+                api_client = UnraidAPIClient(
+                    host=host,
+                    api_key=api_key,
+                    port=443,
+                    verify_ssl=False,
+                )
+                try:
+                    await self._validate_connection(api_client, host)
+                    # Success with SSL verification disabled - remember this
+                    self._verify_ssl = False
+                    _LOGGER.info(
+                        "Connected to %s with self-signed cert (SSL verify disabled)",
+                        host,
+                    )
+                finally:
+                    await api_client.close()
+            else:
+                raise
         finally:
             await api_client.close()
 

@@ -6,7 +6,7 @@ from typing import Final
 # Integration Info
 # =============================================================================
 DOMAIN: Final = "unraid"
-INTEGRATION_VERSION: Final = "2025.12.1"
+INTEGRATION_VERSION: Final = "2025.12.2"
 MANUFACTURER: Final = "Lime Technology"
 
 # =============================================================================

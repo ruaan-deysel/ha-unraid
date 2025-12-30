@@ -154,11 +154,25 @@ async def test_coordinator_custom_update_interval(mock_report, hass_simple, mock
 @patch("homeassistant.helpers.frame.report_usage")
 async def test_coordinator_multiple_fetches(mock_report, hass_simple, mock_api):
     """Test coordinator handles multiple data fetches."""
-    mock_api.query.return_value = {
+    main_response = {
         "info": {"system": {"uuid": "test-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
-        "docker": {"containers": []},
     }
+    docker_response = {"docker": {"containers": []}}
+    vms_response = {"vms": {"domains": []}}
+    ups_response = {"upsDevices": []}
+
+    # Each fetch does main query + Docker + VMs + UPS query
+    mock_api.query.side_effect = [
+        main_response,
+        docker_response,
+        vms_response,
+        ups_response,
+        main_response,
+        docker_response,
+        vms_response,
+        ups_response,
+    ]
 
     coordinator = UnraidSystemCoordinator(hass_simple, mock_api, "tower")
 
@@ -170,5 +184,5 @@ async def test_coordinator_multiple_fetches(mock_report, hass_simple, mock_api):
     data2 = await coordinator._async_update_data()
     assert data2 is not None
 
-    # Verify called twice
-    assert mock_api.query.call_count == 2
+    # Verify called 8 times (2 fetches x 4 queries each)
+    assert mock_api.query.call_count == 8

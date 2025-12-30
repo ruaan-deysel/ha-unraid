@@ -7,6 +7,24 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2025.12.2] - 2025-12-30
+
+### Fixed
+- **SSL/TLS Mode Detection**: Fixed connection issues when Unraid SSL/TLS setting is configured as "No" (HTTP-only) or "Yes" (self-signed certificate). Previously only "Strict" mode with myunraid.net URLs was properly detected. ([#124](https://github.com/ruaan-deysel/ha-unraid/issues/124))
+- **HTTP-Only Mode Support**: Integration now correctly detects and uses HTTP when Unraid's SSL/TLS is set to "No", connecting directly to `http://server-ip/graphql`
+- **Self-Signed Certificate Support**: When Unraid's SSL/TLS is set to "Yes", the integration now automatically retries with SSL verification disabled after detecting self-signed certificate errors
+- **SSL Verification Persistence**: The `verify_ssl` setting is now properly saved to the config entry, ensuring connections work correctly after Home Assistant restarts
+- **UPS Query Failure**: Fixed integration failing when no UPS is configured on the Unraid server. UPS data is now queried separately, so users without a UPS will no longer see errors. ([#126](https://github.com/ruaan-deysel/ha-unraid/issues/126))
+- **VM Query Failure**: Fixed integration failing when VMs are not enabled on the Unraid server. VM data is now queried separately, so users without VMs enabled will no longer see errors.
+- **Docker Query Failure**: Fixed integration failing when Docker is not enabled on the Unraid server. Docker data is now queried separately, so users without Docker enabled will no longer see errors.
+
+### Changed
+- Improved redirect URL discovery to handle all three Unraid SSL/TLS modes:
+  - **No**: HTTP-only mode (no redirect)
+  - **Yes**: HTTPS with self-signed certificate (302 redirect to HTTPS)
+  - **Strict**: HTTPS via myunraid.net with Let's Encrypt certificate (302 redirect to myunraid.net)
+- Refactored system coordinator to query optional services (Docker, VMs, UPS) separately for better fault tolerance
+
 ## [2025.12.1] - 2025-12-29
 
 ### Important Migration Notice
@@ -84,6 +102,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.2...HEAD
+[2025.12.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...v2025.12.2
 [2025.12.1]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.1
 [2025.12.0]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.0

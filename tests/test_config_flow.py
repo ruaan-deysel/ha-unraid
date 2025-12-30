@@ -338,6 +338,63 @@ class TestConfigFlow:
         assert result2["type"] == FlowResultType.FORM
         assert result2["errors"]["base"] == "cannot_connect"
 
+    async def test_ssl_error_retries_with_verify_disabled(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test SSL errors trigger retry with verify_ssl=False (self-signed certs)."""
+        from custom_components.unraid.config_flow import CannotConnectError
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+        # Track the number of UnraidAPIClient instantiations and their verify_ssl values
+        call_count = 0
+
+        with patch(
+            "custom_components.unraid.config_flow.UnraidAPIClient"
+        ) as MockAPIClient:
+
+            def create_client(**kwargs: object) -> AsyncMock:
+                nonlocal call_count
+                call_count += 1
+                mock_api = AsyncMock()
+                mock_api.close = AsyncMock()
+
+                # First call (verify_ssl=True) fails with SSL error
+                if kwargs.get("verify_ssl", True) is True:
+                    mock_api.test_connection = AsyncMock(
+                        side_effect=CannotConnectError("SSL certificate verify failed")
+                    )
+                else:
+                    # Second call (verify_ssl=False) succeeds
+                    mock_api.test_connection = AsyncMock(return_value=True)
+                    mock_api.get_version = AsyncMock(
+                        return_value={"unraid": "7.2.0", "api": "4.29.2"}
+                    )
+                    mock_api.query = AsyncMock(
+                        return_value={
+                            "info": {
+                                "system": {"uuid": "test-uuid"},
+                                "os": {"hostname": "tower"},
+                            }
+                        }
+                    )
+
+                return mock_api
+
+            MockAPIClient.side_effect = create_client
+
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {CONF_HOST: "unraid.local", CONF_API_KEY: "valid-key"},
+            )
+
+        # Should have been called twice (first with verify_ssl=True, then False)
+        assert call_count == 2
+        # Should succeed after retry
+        assert result2["type"] == FlowResultType.CREATE_ENTRY
+
     async def test_ssl_error_shows_cannot_connect_with_hint(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:

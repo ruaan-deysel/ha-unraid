@@ -11,6 +11,14 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
+# HTTP status codes
+HTTP_OK = 200
+HTTPS_DEFAULT_PORT = 443
+
+
+class UnraidAPIError(Exception):
+    """Exception raised for Unraid API errors (GraphQL errors, etc.)."""
+
 
 class UnraidAPIClient:
     """Client for interacting with Unraid GraphQL API."""
@@ -107,16 +115,23 @@ class UnraidAPIClient:
             return f"{base_url}:{self.port}"
         return base_url
 
-    async def _discover_redirect_url(self) -> str | None:
+    async def _discover_redirect_url(self) -> tuple[str | None, bool]:
         """
-        Discover if the server redirects to a myunraid.net URL.
+        Discover the correct URL and SSL mode for the Unraid server.
 
-        Some Unraid servers are configured to redirect all traffic through
-        the Unraid cloud relay service (myunraid.net). This method checks
-        for such redirects by making an HTTP request and following redirects.
+        Unraid servers have three SSL/TLS modes:
+        - No: HTTP only, no redirect
+        - Yes: HTTP redirects to HTTPS (self-signed certificate)
+        - Strict: HTTP redirects to myunraid.net (valid certificate)
+
+        This method checks for redirects by making an HTTP request.
 
         Returns:
-            The redirect URL if found, or None if no redirect is needed.
+            Tuple of (redirect_url, use_ssl):
+            - (myunraid_url, True) for Strict mode
+            - (https_url, True) for Yes mode
+            - (None, False) for No mode (HTTP works directly)
+            - (None, True) if HTTP check fails (fallback to HTTPS)
 
         """
         if self._session is None:
@@ -130,9 +145,10 @@ class UnraidAPIClient:
         clean_host = self.host
         if "://" in clean_host:
             clean_host = clean_host.split("://", 1)[1]
+        # Remove trailing slashes
+        clean_host = clean_host.rstrip("/")
 
-        # Try HTTP first to discover redirects
-        # (Unraid often redirects HTTP -> cloud URL)
+        # Try HTTP first to discover redirects and SSL mode
         http_url = f"http://{clean_host}/graphql"
         _LOGGER.debug("Checking for redirect at %s", http_url)
 
@@ -144,6 +160,8 @@ class UnraidAPIClient:
                 http_url, headers=headers, allow_redirects=False
             ) as response:
                 _LOGGER.debug("HTTP response status: %d", response.status)
+
+                # Check for redirects first (SSL/TLS = Yes or Strict)
                 if response.status in (301, 302, 307, 308):
                     redirect_url = response.headers.get("Location")
                     _LOGGER.debug("Redirect location: %s", redirect_url)
@@ -153,18 +171,48 @@ class UnraidAPIClient:
                         # (CodeQL py/incomplete-url-substring-sanitization)
                         parsed = urlparse(redirect_url)
                         hostname = parsed.hostname
+
+                        # Check for myunraid.net redirect (Strict mode)
                         if hostname and (
                             hostname == "myunraid.net"
                             or hostname.endswith(".myunraid.net")
                         ):
                             _LOGGER.info(
-                                "Discovered myunraid.net redirect URL: %s", redirect_url
+                                "Discovered myunraid.net redirect (Strict mode): %s",
+                                redirect_url,
                             )
-                            return redirect_url
-        except aiohttp.ClientError as err:
-            _LOGGER.debug("HTTP check failed (expected): %s", err)
+                            return (redirect_url, True)
 
-        return None
+                        # Check for HTTPS redirect (Yes mode - self-signed cert)
+                        if parsed.scheme == "https":
+                            # Normalize the redirect URL (remove default port)
+                            port = parsed.port
+                            if port == HTTPS_DEFAULT_PORT:
+                                # Rebuild URL without port
+                                normalized = f"https://{hostname}{parsed.path}"
+                            else:
+                                normalized = redirect_url
+                            _LOGGER.info(
+                                "Discovered HTTPS redirect (Yes mode): %s",
+                                normalized,
+                            )
+                            return (normalized, True)
+
+                # Any non-redirect HTTP response means HTTP endpoint is available
+                # This includes 200 (OK), 400 (Bad Request for GET on GraphQL), etc.
+                # SSL/TLS is set to "No" - use HTTP directly
+                _LOGGER.info(
+                    "HTTP endpoint accessible (status %d), SSL/TLS mode is 'No' for %s",
+                    response.status,
+                    clean_host,
+                )
+                return (None, False)
+
+        except aiohttp.ClientError as err:
+            _LOGGER.debug("HTTP check failed, will try HTTPS: %s", err)
+
+        # Default: HTTP check failed, assume HTTPS is needed
+        return (None, True)
 
     async def _make_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
@@ -189,13 +237,29 @@ class UnraidAPIClient:
 
         # Use cached URL if available, otherwise discover it
         if self._resolved_url is None:
-            # Try to discover redirect URL first
-            redirect_url = await self._discover_redirect_url()
+            # Discover redirect URL and SSL mode
+            redirect_url, use_ssl = await self._discover_redirect_url()
             if redirect_url:
+                # Use the discovered redirect URL (myunraid.net or HTTPS redirect)
                 self._resolved_url = redirect_url
             else:
-                # No redirect, use direct URL
-                self._resolved_url = f"{self._get_base_url()}/graphql"
+                # No redirect - build URL based on SSL mode
+                # Strip protocol from host if present
+                clean_host = self.host
+                if "://" in clean_host:
+                    clean_host = clean_host.split("://", 1)[1]
+                clean_host = clean_host.rstrip("/")
+
+                # Build URL based on discovered SSL mode
+                if use_ssl:
+                    protocol = "https"
+                    port_suffix = f":{self.port}" if self.port not in (80, 443) else ""
+                else:
+                    protocol = "http"
+                    # For HTTP, use port 80 by default
+                    port_suffix = "" if self.port in (80, 443) else f":{self.port}"
+
+                self._resolved_url = f"{protocol}://{clean_host}{port_suffix}/graphql"
             _LOGGER.debug("Using URL: %s", self._resolved_url)
 
         url = self._resolved_url
@@ -284,12 +348,16 @@ class UnraidAPIClient:
                     "; ".join(error_messages),
                 )
             else:
-                _LOGGER.error(
-                    "GraphQL query failed with %d error(s): %s",
+                # Don't log at ERROR - let the caller decide how to handle
+                # (e.g., UPS query failure is expected when no UPS configured)
+                _LOGGER.debug(
+                    "GraphQL query returned no data with %d error(s): %s",
                     len(errors),
                     "; ".join(error_messages),
                 )
-                raise Exception(f"GraphQL query failed: {'; '.join(error_messages)}")
+                raise UnraidAPIError(
+                    f"GraphQL query failed: {'; '.join(error_messages)}"
+                )
 
         return data
 

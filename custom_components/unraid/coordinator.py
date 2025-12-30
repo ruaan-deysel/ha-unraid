@@ -11,7 +11,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import UnraidAPIClient
+from .api import UnraidAPIClient, UnraidAPIError
 from .const import DEFAULT_STORAGE_POLL_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL
 from .models import (
     ArrayCapacity,
@@ -91,6 +91,72 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         self._server_name = server_name
         self._previously_unavailable = False
 
+    async def _query_optional_docker(self) -> dict:
+        """Query Docker data separately (fails gracefully if Docker not enabled)."""
+        try:
+            docker_query = """
+                query {
+                    docker {
+                        containers {
+                            id names state image
+                            ports { privatePort publicPort type }
+                        }
+                    }
+                }
+            """
+            result = await self.api_client.query(docker_query)
+            return result.get("docker") or {"containers": []}
+        except (
+            UnraidAPIError,
+            aiohttp.ClientError,
+            RuntimeError,
+            ValueError,
+        ) as err:
+            _LOGGER.debug("Docker data not available: %s", err)
+            return {"containers": []}
+
+    async def _query_optional_vms(self) -> dict:
+        """Query VM data separately (fails gracefully if VMs not enabled)."""
+        try:
+            vms_query = """
+                query {
+                    vms { domains { id name state } }
+                }
+            """
+            result = await self.api_client.query(vms_query)
+            return result.get("vms") or {"domains": []}
+        except (
+            UnraidAPIError,
+            aiohttp.ClientError,
+            RuntimeError,
+            ValueError,
+        ) as err:
+            _LOGGER.debug("VM data not available: %s", err)
+            return {"domains": []}
+
+    async def _query_optional_ups(self) -> list[dict]:
+        """Query UPS data separately (fails gracefully if no UPS configured)."""
+        try:
+            ups_query = """
+                query {
+                    upsDevices {
+                        id name status
+                        battery { chargeLevel estimatedRuntime }
+                        power { inputVoltage outputVoltage loadPercentage }
+                    }
+                }
+            """
+            result = await self.api_client.query(ups_query)
+            return result.get("upsDevices") or []
+        except (
+            UnraidAPIError,
+            aiohttp.ClientError,
+            RuntimeError,
+            ValueError,
+        ) as err:
+            _LOGGER.debug("UPS data not available: %s", err)
+            return []
+
     async def _async_update_data(self) -> UnraidSystemData:
         """
         Fetch system data from Unraid server.
@@ -104,7 +170,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         """
         _LOGGER.debug("Starting system data update")
         try:
-            # Build combined query for system data
+            # Query core system data (must succeed)
             query = """
                 query {
                     info {
@@ -121,25 +187,17 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                             swapTotal swapUsed swapFree percentSwapTotal
                         }
                     }
-                    docker {
-                        containers {
-                            id names state image
-                            ports { privatePort publicPort type }
-                        }
-                    }
-                    vms { domains { id name state } }
-                    upsDevices {
-                        id name status
-                        battery { chargeLevel estimatedRuntime }
-                        power { inputVoltage outputVoltage loadPercentage }
-                    }
                     notifications {
                         overview { unread { total info warning alert } }
                     }
                 }
             """
-
             raw_data = await self.api_client.query(query)
+
+            # Query optional services separately (fail gracefully if not enabled)
+            raw_data["docker"] = await self._query_optional_docker()
+            raw_data["vms"] = await self._query_optional_vms()
+            raw_data["upsDevices"] = await self._query_optional_ups()
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:
