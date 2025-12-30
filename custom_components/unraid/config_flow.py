@@ -434,32 +434,48 @@ class UnraidOptionsFlowHandler(config_entries.OptionsFlow):
 
         options = self.config_entry.options
 
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SYSTEM_INTERVAL,
-                    default=options.get(
-                        CONF_SYSTEM_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
-                vol.Optional(
-                    CONF_STORAGE_INTERVAL,
-                    default=options.get(
-                        CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=60, max=3600)),
+        # Check if UPS devices are detected
+        has_ups = False
+        if (
+            hasattr(self.config_entry, "runtime_data")
+            and self.config_entry.runtime_data
+        ):
+            system_coordinator = self.config_entry.runtime_data.system_coordinator
+            if system_coordinator.data and system_coordinator.data.ups_devices:
+                has_ups = True
+
+        # Build schema - base options always shown
+        schema_dict: dict[vol.Marker, Any] = {
+            vol.Optional(
+                CONF_SYSTEM_INTERVAL,
+                default=options.get(CONF_SYSTEM_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL),
+            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
+            vol.Optional(
+                CONF_STORAGE_INTERVAL,
+                default=options.get(
+                    CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=60, max=3600)),
+        }
+
+        # Add UPS options only if UPS is detected
+        if has_ups:
+            schema_dict[
                 vol.Optional(
                     CONF_UPS_CAPACITY_VA,
                     default=options.get(CONF_UPS_CAPACITY_VA, DEFAULT_UPS_CAPACITY_VA),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100000)),
+                )
+            ] = vol.All(vol.Coerce(int), vol.Range(min=0, max=100000))
+            schema_dict[
                 vol.Optional(
                     CONF_UPS_NOMINAL_POWER,
                     default=options.get(
                         CONF_UPS_NOMINAL_POWER, DEFAULT_UPS_NOMINAL_POWER
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100000)),
-            }
-        )
+                )
+            ] = vol.All(vol.Coerce(int), vol.Range(min=0, max=100000))
+
+        data_schema = vol.Schema(schema_dict)
 
         return self.async_show_form(
             step_id="init",

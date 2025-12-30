@@ -15,9 +15,11 @@ from custom_components.unraid.const import (
     CONF_STORAGE_INTERVAL,
     CONF_SYSTEM_INTERVAL,
     CONF_UPS_CAPACITY_VA,
+    CONF_UPS_NOMINAL_POWER,
     DEFAULT_STORAGE_POLL_INTERVAL,
     DEFAULT_SYSTEM_POLL_INTERVAL,
     DEFAULT_UPS_CAPACITY_VA,
+    DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
 )
 
@@ -731,10 +733,42 @@ class TestReauthFlow:
 class TestOptionsFlow:
     """Test Unraid options flow."""
 
-    async def test_options_flow_shows_form(
+    async def test_options_flow_shows_form_without_ups(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test options flow shows form with current values."""
+        """Test options flow shows form without UPS options when no UPS detected."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="tower",
+            data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+            options={
+                CONF_SYSTEM_INTERVAL: 60,
+                CONF_STORAGE_INTERVAL: 600,
+            },
+            unique_id="test-uuid",
+        )
+        entry.add_to_hass(hass)
+
+        # No runtime_data means no UPS detected
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "init"
+        # UPS options should not be in schema when no UPS detected
+        schema_keys = list(result["data_schema"].schema.keys())
+        schema_key_names = [str(k) for k in schema_keys]
+        assert CONF_UPS_CAPACITY_VA not in schema_key_names
+        assert CONF_UPS_NOMINAL_POWER not in schema_key_names
+
+    async def test_options_flow_shows_ups_options_when_ups_detected(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test options flow shows UPS options when UPS is detected."""
+        from dataclasses import dataclass
+        from unittest.mock import MagicMock
+
+        from custom_components.unraid.models import UPSDevice
+
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -743,20 +777,41 @@ class TestOptionsFlow:
                 CONF_SYSTEM_INTERVAL: 60,
                 CONF_STORAGE_INTERVAL: 600,
                 CONF_UPS_CAPACITY_VA: 1000,
+                CONF_UPS_NOMINAL_POWER: 800,
             },
             unique_id="test-uuid",
         )
         entry.add_to_hass(hass)
 
+        # Mock runtime_data with UPS device
+        @dataclass
+        class MockSystemData:
+            ups_devices: list
+
+        @dataclass
+        class MockRuntimeData:
+            system_coordinator: MagicMock
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.data = MockSystemData(
+            ups_devices=[UPSDevice(id="ups:1", name="APC")]
+        )
+        entry.runtime_data = MockRuntimeData(system_coordinator=mock_coordinator)
+
         result = await hass.config_entries.options.async_init(entry.entry_id)
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "init"
+        # UPS options should be in schema when UPS detected
+        schema_keys = list(result["data_schema"].schema.keys())
+        schema_key_names = [str(k) for k in schema_keys]
+        assert CONF_UPS_CAPACITY_VA in schema_key_names
+        assert CONF_UPS_NOMINAL_POWER in schema_key_names
 
-    async def test_options_flow_saves_values(
+    async def test_options_flow_saves_values_without_ups(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test options flow saves new values."""
+        """Test options flow saves values when no UPS is present."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -764,7 +819,6 @@ class TestOptionsFlow:
             options={
                 CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
                 CONF_STORAGE_INTERVAL: DEFAULT_STORAGE_POLL_INTERVAL,
-                CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
             },
             unique_id="test-uuid",
         )
@@ -777,7 +831,60 @@ class TestOptionsFlow:
             {
                 CONF_SYSTEM_INTERVAL: 45,
                 CONF_STORAGE_INTERVAL: 120,
+            },
+        )
+
+        assert result2["type"] == FlowResultType.CREATE_ENTRY
+        assert entry.options[CONF_SYSTEM_INTERVAL] == 45
+        assert entry.options[CONF_STORAGE_INTERVAL] == 120
+
+    async def test_options_flow_saves_values_with_ups(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test options flow saves UPS values when UPS is present."""
+        from dataclasses import dataclass
+        from unittest.mock import MagicMock
+
+        from custom_components.unraid.models import UPSDevice
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="tower",
+            data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+            options={
+                CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
+                CONF_STORAGE_INTERVAL: DEFAULT_STORAGE_POLL_INTERVAL,
+                CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
+                CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
+            },
+            unique_id="test-uuid",
+        )
+        entry.add_to_hass(hass)
+
+        # Mock runtime_data with UPS device
+        @dataclass
+        class MockSystemData:
+            ups_devices: list
+
+        @dataclass
+        class MockRuntimeData:
+            system_coordinator: MagicMock
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.data = MockSystemData(
+            ups_devices=[UPSDevice(id="ups:1", name="APC")]
+        )
+        entry.runtime_data = MockRuntimeData(system_coordinator=mock_coordinator)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                CONF_SYSTEM_INTERVAL: 45,
+                CONF_STORAGE_INTERVAL: 120,
                 CONF_UPS_CAPACITY_VA: 1500,
+                CONF_UPS_NOMINAL_POWER: 1200,
             },
         )
 
@@ -785,6 +892,7 @@ class TestOptionsFlow:
         assert entry.options[CONF_SYSTEM_INTERVAL] == 45
         assert entry.options[CONF_STORAGE_INTERVAL] == 120
         assert entry.options[CONF_UPS_CAPACITY_VA] == 1500
+        assert entry.options[CONF_UPS_NOMINAL_POWER] == 1200
 
 
 class TestReconfigureFlow:
