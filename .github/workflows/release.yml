@@ -1,6 +1,8 @@
+---
+# yamllint disable rule:line-length
 name: Release
 
-on:
+"on":
   push:
     branches:
       - main
