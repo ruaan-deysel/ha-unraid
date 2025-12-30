@@ -61,6 +61,66 @@ class UnraidRuntimeData:
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 
 
+def _build_server_info(info: dict, host: str, verify_ssl: bool) -> dict:
+    """Build server info dictionary from API response."""
+    info_data = info.get("info", {})
+    system_data = info_data.get("system", {})
+    baseboard_data = info_data.get("baseboard", {})
+    os_data = info_data.get("os", {})
+    cpu_data = info_data.get("cpu", {})
+    versions_data = info_data.get("versions", {}).get("core", {})
+    server_data = info.get("server", {})
+    registration_data = info.get("registration", {})
+
+    # Use Lime Technology as manufacturer (Unraid vendor)
+    manufacturer = "Lime Technology"
+
+    # Model shows "Unraid {version}" for prominent display in Device Info
+    unraid_version = versions_data.get("unraid", "Unknown")
+    model = f"Unraid {unraid_version}"
+
+    # Store hardware info separately for diagnostics/attributes
+    hw_manufacturer = system_data.get("manufacturer") or baseboard_data.get(
+        "manufacturer"
+    )
+    hw_model = system_data.get("model") or baseboard_data.get("model")
+    serial_number = system_data.get("serial") or baseboard_data.get("serial") or None
+
+    server_name = os_data.get("hostname") or host
+    server_uuid = system_data.get("uuid")
+
+    # Determine configuration URL for device info
+    configuration_url = server_data.get("localurl")
+    if not configuration_url:
+        lan_ip = server_data.get("lanip")
+        if lan_ip:
+            protocol = "https" if verify_ssl else "http"
+            configuration_url = f"{protocol}://{lan_ip}"
+
+    return {
+        "uuid": server_uuid,
+        "name": server_name,
+        "manufacturer": manufacturer,
+        "model": model,
+        "serial_number": serial_number,
+        "sw_version": unraid_version,
+        "hw_version": os_data.get("kernel"),
+        "os_distro": os_data.get("distro"),
+        "os_release": os_data.get("release"),
+        "os_arch": os_data.get("arch"),
+        "api_version": versions_data.get("api"),
+        "license_type": registration_data.get("type"),
+        "lan_ip": server_data.get("lanip"),
+        "configuration_url": configuration_url,
+        "cpu_brand": cpu_data.get("brand"),
+        "cpu_cores": cpu_data.get("cores"),
+        "cpu_threads": cpu_data.get("threads"),
+        # Hardware info for diagnostics
+        "hw_manufacturer": hw_manufacturer,
+        "hw_model": hw_model,
+    }
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
     """Set up Unraid from a config entry."""
     host = entry.data[CONF_HOST]
@@ -96,11 +156,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
             """
             query SystemInfo {
                 info {
-                    system { uuid manufacturer model }
-                    baseboard { manufacturer model }
+                    system { uuid manufacturer model serial }
+                    baseboard { manufacturer model serial }
                     os { hostname distro release kernel arch }
+                    cpu { manufacturer brand cores threads }
                     versions { core { unraid api } }
                 }
+                server { lanip localurl remoteurl }
                 registration { type state }
             }
             """
@@ -128,39 +190,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         msg = f"Failed to connect to Unraid server: {err}"
         raise ConfigEntryNotReady(msg) from err
 
-    # Extract server info for device registration
-    info_data = info.get("info", {})
-    system_data = info_data.get("system", {})
-    baseboard_data = info_data.get("baseboard", {})
-    os_data = info_data.get("os", {})
-    versions_data = info_data.get("versions", {}).get("core", {})
-    registration_data = info.get("registration", {})
-
-    # Use baseboard manufacturer/model if system is empty
-    manufacturer = (
-        system_data.get("manufacturer")
-        or baseboard_data.get("manufacturer")
-        or "Lime Technology"
-    )
-    model = system_data.get("model") or baseboard_data.get("model") or "Unraid Server"
-
-    server_name = os_data.get("hostname") or host
-    server_uuid = system_data.get("uuid")
-
-    # Build comprehensive server info for device registration
-    server_info = {
-        "uuid": server_uuid,
-        "name": server_name,
-        "manufacturer": manufacturer,
-        "model": model,
-        "sw_version": versions_data.get("unraid"),
-        "hw_version": os_data.get("kernel"),
-        "os_distro": os_data.get("distro"),
-        "os_release": os_data.get("release"),
-        "os_arch": os_data.get("arch"),
-        "api_version": versions_data.get("api"),
-        "license_type": registration_data.get("type"),
-    }
+    # Build server info using helper function
+    server_info = _build_server_info(info, host, verify_ssl)
+    server_name = server_info["name"]
 
     # Create coordinators
     system_coordinator = UnraidSystemCoordinator(

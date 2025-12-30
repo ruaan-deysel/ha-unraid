@@ -169,7 +169,7 @@ class TestAsyncSetupEntry:
                 await async_setup_entry(hass, entry)
 
     async def test_setup_uses_baseboard_fallback(self, hass: HomeAssistant) -> None:
-        """Test setup uses baseboard info when system info is empty."""
+        """Test setup captures baseboard info for hw_manufacturer/hw_model."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -219,9 +219,12 @@ class TestAsyncSetupEntry:
             ):
                 await async_setup_entry(hass, entry)
 
-        # Should use baseboard manufacturer/model as fallback
-        assert entry.runtime_data.server_info["manufacturer"] == "Supermicro"
-        assert entry.runtime_data.server_info["model"] == "X11SSH-F"
+        # DeviceInfo should show Lime Technology and Unraid version
+        assert entry.runtime_data.server_info["manufacturer"] == "Lime Technology"
+        assert entry.runtime_data.server_info["model"] == "Unraid 7.2.0"
+        # Hardware info should be captured from baseboard fallback
+        assert entry.runtime_data.server_info["hw_manufacturer"] == "Supermicro"
+        assert entry.runtime_data.server_info["hw_model"] == "X11SSH-F"
 
     async def test_setup_with_default_options(self, hass: HomeAssistant) -> None:
         """Test setup uses default polling intervals when options not set."""
