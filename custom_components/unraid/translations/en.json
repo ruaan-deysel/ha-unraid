@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to Unraid",
-        "description": "Connect to your Unraid server ({min_version}+) using the GraphQL API.",
+        "description": "Connect to your Unraid server using the GraphQL API. Requires Unraid {min_version} or newer.",
         "data": {
           "host": "Server IP or Hostname",
           "api_key": "API Key"
