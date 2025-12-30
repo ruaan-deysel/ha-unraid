@@ -1196,8 +1196,8 @@ class TestUPSPowerSensor:
 
     def test_ups_power_sensor_calculates_power(self) -> None:
         """Test UPS power sensor calculates power from load and capacity."""
-        # Load: 20.5%, Capacity: 1000VA, Power Factor: 0.6
-        # Expected: 20.5 / 100 * 1000 * 0.6 = 123W
+        # Load: 20.5%, Capacity: 1000VA, Power Factor: 0.8
+        # Expected: 20.5 / 100 * 1000 * 0.8 = 164W
         ups = UPSDevice(
             id="ups:1",
             name="APC",
@@ -1218,7 +1218,7 @@ class TestUPSPowerSensor:
             ups_capacity_va=1000,
         )
 
-        assert sensor.native_value == 123.0
+        assert sensor.native_value == 164.0
 
     def test_ups_power_sensor_unavailable_when_capacity_zero(self) -> None:
         """Test UPS power sensor is unavailable when capacity is 0."""
@@ -1272,7 +1272,7 @@ class TestUPSPowerSensor:
         assert attrs["model"] == "APC"
         assert attrs["status"] == "Online"
         assert attrs["ups_capacity_va"] == 1000
-        assert attrs["power_factor"] == 0.6
+        assert attrs["power_factor"] == 0.8
         assert attrs["load_percentage"] == 20.5
         assert attrs["input_voltage"] == 120.0
         assert attrs["output_voltage"] == 118.5
@@ -1280,7 +1280,7 @@ class TestUPSPowerSensor:
     def test_ups_power_sensor_real_world_example(self) -> None:
         """Test UPS power sensor with real-world values from API."""
         # Based on actual UPS data: PR1000ELCDRT1U (1000VA), 12% load
-        # Expected: 12 / 100 * 1000 * 0.6 = 72W
+        # Expected: 12 / 100 * 1000 * 0.8 = 96W (matches Unraid UI)
         ups = UPSDevice(
             id="PR1000ELCDRT1U",
             name="PR1000ELCDRT1U",
@@ -1301,7 +1301,7 @@ class TestUPSPowerSensor:
             ups_capacity_va=1000,
         )
 
-        assert sensor.native_value == 72.0
+        assert sensor.native_value == 96.0
 
 
 class TestAsyncSetupEntry:

@@ -825,8 +825,11 @@ class UPSPowerSensor(UnraidSensorEntity):
     Calculates power consumption from load percentage and UPS capacity.
     Formula: Power (W) = Load% / 100 * Capacity (VA) * Power Factor
 
+    Example: 12% load on 1000VA UPS with 0.8 power factor = 96W
+
     The UPS capacity must be configured in the integration options.
     If not configured (0), this sensor will be unavailable.
+    Default power factor is 0.8 (typical for modern UPS units).
     """
 
     _attr_translation_key = "ups_power"

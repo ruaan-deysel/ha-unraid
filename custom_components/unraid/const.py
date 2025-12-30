@@ -22,7 +22,7 @@ CONF_UPS_CAPACITY_VA: Final = "ups_capacity_va"
 DEFAULT_SYSTEM_POLL_INTERVAL: Final = 30  # seconds
 DEFAULT_STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes)
 DEFAULT_UPS_CAPACITY_VA: Final = 0  # 0 = disabled, user must set their UPS VA rating
-DEFAULT_UPS_POWER_FACTOR: Final = 0.6  # Typical UPS power factor
+DEFAULT_UPS_POWER_FACTOR: Final = 0.8  # Common UPS power factor (800W/1000VA typical)
 
 # =============================================================================
 # Platforms
