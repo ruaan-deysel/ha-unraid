@@ -29,12 +29,7 @@ jobs:
       - name: Read version from manifest
         id: manifest
         run: |
-          VERSION=$(python3 - <<'PY'
-            import json
-            with open('custom_components/unraid/manifest.json', 'r', encoding='utf-8') as f:
-              print(json.load(f)['version'])
-            PY
-          )
+          VERSION=$(python3 -c "import json; print(json.load(open('custom_components/unraid/manifest.json'))['version'])")
 
           if [ -z "$VERSION" ]; then
             echo "Version not found in manifest.json"
