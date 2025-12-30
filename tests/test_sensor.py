@@ -1186,6 +1186,7 @@ class TestUPSPowerSensor:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         assert sensor.unique_id == "test-uuid_ups_ups:1_power"
@@ -1195,9 +1196,9 @@ class TestUPSPowerSensor:
         assert sensor.state_class == SensorStateClass.MEASUREMENT
 
     def test_ups_power_sensor_calculates_power(self) -> None:
-        """Test UPS power sensor calculates power from load and capacity."""
-        # Load: 20.5%, Capacity: 1000VA, Power Factor: 0.8
-        # Expected: 20.5 / 100 * 1000 * 0.8 = 164W
+        """Test UPS power sensor calculates power from load and nominal power."""
+        # Load: 20.5%, Nominal Power: 800W
+        # Expected: 20.5 / 100 * 800 = 164W
         ups = UPSDevice(
             id="ups:1",
             name="APC",
@@ -1216,12 +1217,13 @@ class TestUPSPowerSensor:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         assert sensor.native_value == 164.0
 
-    def test_ups_power_sensor_unavailable_when_capacity_zero(self) -> None:
-        """Test UPS power sensor is unavailable when capacity is 0."""
+    def test_ups_power_sensor_unavailable_when_nominal_power_zero(self) -> None:
+        """Test UPS power sensor is unavailable when nominal power is 0."""
         ups = UPSDevice(
             id="ups:1",
             name="APC",
@@ -1240,7 +1242,8 @@ class TestUPSPowerSensor:
             server_uuid="test-uuid",
             server_name="test-server",
             ups=ups,
-            ups_capacity_va=0,
+            ups_capacity_va=1000,
+            ups_nominal_power=0,
         )
 
         assert sensor.available is False
@@ -1266,21 +1269,22 @@ class TestUPSPowerSensor:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         attrs = sensor.extra_state_attributes
         assert attrs["model"] == "APC"
         assert attrs["status"] == "Online"
         assert attrs["ups_capacity_va"] == 1000
-        assert attrs["power_factor"] == 0.8
+        assert attrs["nominal_power_watts"] == 800
         assert attrs["load_percentage"] == 20.5
         assert attrs["input_voltage"] == 120.0
         assert attrs["output_voltage"] == 118.5
 
     def test_ups_power_sensor_real_world_example(self) -> None:
         """Test UPS power sensor with real-world values from API."""
-        # Based on actual UPS data: PR1000ELCDRT1U (1000VA), 12% load
-        # Expected: 12 / 100 * 1000 * 0.8 = 96W (matches Unraid UI)
+        # Based on actual UPS data: PR1000ELCDRT1U (1000VA, 800W nominal), 12% load
+        # Expected: 12 / 100 * 800 = 96W (matches Unraid UI)
         ups = UPSDevice(
             id="PR1000ELCDRT1U",
             name="PR1000ELCDRT1U",
@@ -1299,6 +1303,7 @@ class TestUPSPowerSensor:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         assert sensor.native_value == 96.0
@@ -2044,6 +2049,7 @@ class TestUPSSensorNoneData:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         assert sensor.native_value is None
@@ -2064,6 +2070,7 @@ class TestUPSSensorNoneData:
             server_name="test-server",
             ups=ups,
             ups_capacity_va=1000,
+            ups_nominal_power=800,
         )
 
         assert sensor.native_value is None
@@ -2485,7 +2492,10 @@ class TestSetupEntryEdgeCases:
     async def test_setup_entry_uses_ups_capacity_from_options(self, hass) -> None:
         """Test setup uses UPS capacity from entry options."""
         from custom_components.unraid import UnraidRuntimeData
-        from custom_components.unraid.const import CONF_UPS_CAPACITY_VA
+        from custom_components.unraid.const import (
+            CONF_UPS_CAPACITY_VA,
+            CONF_UPS_NOMINAL_POWER,
+        )
         from custom_components.unraid.sensor import async_setup_entry
 
         ups = UPSDevice(
@@ -2503,7 +2513,7 @@ class TestSetupEntryEdgeCases:
 
         mock_entry = MagicMock()
         mock_entry.data = {"host": "192.168.1.100"}
-        mock_entry.options = {CONF_UPS_CAPACITY_VA: 1500}
+        mock_entry.options = {CONF_UPS_CAPACITY_VA: 1500, CONF_UPS_NOMINAL_POWER: 1200}
         mock_entry.runtime_data = UnraidRuntimeData(
             api_client=MagicMock(),
             system_coordinator=system_coordinator,
@@ -2518,7 +2528,8 @@ class TestSetupEntryEdgeCases:
 
         await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-        # Find the UPSPowerSensor and verify capacity
+        # Find the UPSPowerSensor and verify capacity and nominal power
         power_sensors = [e for e in added_entities if isinstance(e, UPSPowerSensor)]
         assert len(power_sensors) == 1
         assert power_sensors[0]._ups_capacity_va == 1500
+        assert power_sensors[0]._ups_nominal_power == 1200

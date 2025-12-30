@@ -58,16 +58,18 @@
     "step": {
       "init": {
         "title": "Unraid Options",
-        "description": "Adjust polling intervals and UPS settings. Set UPS capacity to enable power consumption tracking for the Energy Dashboard.",
+        "description": "Adjust polling intervals and UPS settings. Set UPS Nominal Power to enable power consumption tracking for the Energy Dashboard.",
         "data": {
           "system_interval": "System polling interval (seconds)",
           "storage_interval": "Storage polling interval (seconds)",
-          "ups_capacity_va": "UPS capacity (VA)"
+          "ups_capacity_va": "UPS Capacity (VA)",
+          "ups_nominal_power": "UPS Nominal Power (W)"
         },
         "data_description": {
           "system_interval": "How often to poll CPU, memory, Docker, VMs (10-300 seconds)",
           "storage_interval": "How often to poll disks and shares (60-3600 seconds). Higher values prevent disk spin-up.",
-          "ups_capacity_va": "Your UPS VA rating to calculate power consumption. Set to 0 to disable."
+          "ups_capacity_va": "Your UPS VA rating (informational, shown in sensor attributes).",
+          "ups_nominal_power": "Your UPS nominal power in Watts (shown in Unraid UI). Required for UPS Power sensor. Set to 0 to disable."
         }
       }
     }

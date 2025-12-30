@@ -17,9 +17,11 @@ from .const import (
     CONF_STORAGE_INTERVAL,
     CONF_SYSTEM_INTERVAL,
     CONF_UPS_CAPACITY_VA,
+    CONF_UPS_NOMINAL_POWER,
     DEFAULT_STORAGE_POLL_INTERVAL,
     DEFAULT_SYSTEM_POLL_INTERVAL,
     DEFAULT_UPS_CAPACITY_VA,
+    DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
     REPAIR_AUTH_FAILED,
 )
@@ -122,6 +124,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
                         CONF_STORAGE_INTERVAL: DEFAULT_STORAGE_POLL_INTERVAL,
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
+                        CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
                     },
                 )
 
@@ -448,6 +451,12 @@ class UnraidOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_UPS_CAPACITY_VA,
                     default=options.get(CONF_UPS_CAPACITY_VA, DEFAULT_UPS_CAPACITY_VA),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100000)),
+                vol.Optional(
+                    CONF_UPS_NOMINAL_POWER,
+                    default=options.get(
+                        CONF_UPS_NOMINAL_POWER, DEFAULT_UPS_NOMINAL_POWER
+                    ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100000)),
             }
         )

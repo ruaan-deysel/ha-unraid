@@ -15,14 +15,15 @@ MANUFACTURER: Final = "Lime Technology"
 CONF_SYSTEM_INTERVAL: Final = "system_interval"
 CONF_STORAGE_INTERVAL: Final = "storage_interval"
 CONF_UPS_CAPACITY_VA: Final = "ups_capacity_va"
+CONF_UPS_NOMINAL_POWER: Final = "ups_nominal_power"
 
 # =============================================================================
 # Default Values
 # =============================================================================
 DEFAULT_SYSTEM_POLL_INTERVAL: Final = 30  # seconds
 DEFAULT_STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes)
-DEFAULT_UPS_CAPACITY_VA: Final = 0  # 0 = disabled, user must set their UPS VA rating
-DEFAULT_UPS_POWER_FACTOR: Final = 0.8  # Common UPS power factor (800W/1000VA typical)
+DEFAULT_UPS_CAPACITY_VA: Final = 0  # 0 = informational only
+DEFAULT_UPS_NOMINAL_POWER: Final = 0  # 0 = disabled, user must set for UPS Power sensor
 
 # =============================================================================
 # Platforms

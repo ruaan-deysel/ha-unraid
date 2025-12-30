@@ -16,8 +16,9 @@ from homeassistant.helpers.entity import EntityCategory
 
 from .const import (
     CONF_UPS_CAPACITY_VA,
+    CONF_UPS_NOMINAL_POWER,
     DEFAULT_UPS_CAPACITY_VA,
-    DEFAULT_UPS_POWER_FACTOR,
+    DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
     PARALLEL_UPDATES,
 )
@@ -822,14 +823,14 @@ class UPSPowerSensor(UnraidSensorEntity):
     """
     UPS power consumption sensor for Energy Dashboard.
 
-    Calculates power consumption from load percentage and UPS capacity.
-    Formula: Power (W) = Load% / 100 * Capacity (VA) * Power Factor
+    Calculates power consumption from load percentage and UPS nominal power.
+    Formula: Power (W) = Load% / 100 * Nominal Power (W)
 
-    Example: 12% load on 1000VA UPS with 0.8 power factor = 96W
+    Example: 12% load on UPS with 800W nominal power = 96W
 
-    The UPS capacity must be configured in the integration options.
+    The UPS nominal power must be configured in the integration options.
+    This value is shown in the Unraid UI under Power > Nominal power.
     If not configured (0), this sensor will be unavailable.
-    Default power factor is 0.8 (typical for modern UPS units).
     """
 
     _attr_translation_key = "ups_power"
@@ -845,6 +846,7 @@ class UPSPowerSensor(UnraidSensorEntity):
         server_name: str,
         ups: UPSDevice,
         ups_capacity_va: int = DEFAULT_UPS_CAPACITY_VA,
+        ups_nominal_power: int = DEFAULT_UPS_NOMINAL_POWER,
     ) -> None:
         """
         Initialize UPS power sensor.
@@ -854,13 +856,14 @@ class UPSPowerSensor(UnraidSensorEntity):
             server_uuid: Server unique identifier
             server_name: Server friendly name
             ups: UPS device data
-            ups_capacity_va: UPS capacity in VA (user configured)
+            ups_capacity_va: UPS capacity in VA (informational)
+            ups_nominal_power: UPS nominal power in watts (used for calculation)
 
         """
         self._ups_id = ups.id
         self._ups_name = ups.name
         self._ups_capacity_va = ups_capacity_va
-        self._power_factor = DEFAULT_UPS_POWER_FACTOR
+        self._ups_nominal_power = ups_nominal_power
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -884,9 +887,9 @@ class UPSPowerSensor(UnraidSensorEntity):
         """
         Return if entity is available.
 
-        Only available if UPS capacity is configured (> 0).
+        Only available if UPS nominal power is configured (> 0).
         """
-        if self._ups_capacity_va <= 0:
+        if self._ups_nominal_power <= 0:
             return False
         return super().available
 
@@ -895,9 +898,9 @@ class UPSPowerSensor(UnraidSensorEntity):
         """
         Return calculated UPS power consumption in watts.
 
-        Formula: Power (W) = Load% / 100 * Capacity (VA) * Power Factor
+        Formula: Power (W) = Load% / 100 * Nominal Power (W)
         """
-        if self._ups_capacity_va <= 0:
+        if self._ups_nominal_power <= 0:
             return None
         ups = self._get_ups()
         if ups is None:
@@ -905,8 +908,8 @@ class UPSPowerSensor(UnraidSensorEntity):
         load_percent = ups.power.loadPercentage
         if load_percent is None:
             return None
-        # Calculate power: Load% * Capacity (VA) * Power Factor
-        power_watts = (load_percent / 100) * self._ups_capacity_va * self._power_factor
+        # Calculate power: Load% * Nominal Power
+        power_watts = (load_percent / 100) * self._ups_nominal_power
         return round(power_watts, 1)
 
     @property
@@ -915,9 +918,11 @@ class UPSPowerSensor(UnraidSensorEntity):
         ups = self._get_ups()
         attrs: dict[str, Any] = {
             "model": self._ups_name,
-            "ups_capacity_va": self._ups_capacity_va,
-            "power_factor": self._power_factor,
+            "nominal_power_watts": self._ups_nominal_power,
         }
+        # Include VA rating if configured (informational)
+        if self._ups_capacity_va > 0:
+            attrs["ups_capacity_va"] = self._ups_capacity_va
         if ups is not None:
             attrs["status"] = ups.status
             if ups.power.loadPercentage is not None:
@@ -1073,13 +1078,18 @@ async def async_setup_entry(
 
     # UPS sensors (only created when UPS devices are connected)
     if system_coordinator.data and system_coordinator.data.ups_devices:
-        # Get UPS capacity from config entry options (user configurable)
+        # Get UPS config from entry options (user configurable)
         ups_capacity_va = entry.options.get(
             CONF_UPS_CAPACITY_VA, DEFAULT_UPS_CAPACITY_VA
         )
+        ups_nominal_power = entry.options.get(
+            CONF_UPS_NOMINAL_POWER, DEFAULT_UPS_NOMINAL_POWER
+        )
         _LOGGER.debug(
-            "Found %d UPS device(s), creating sensors",
+            "Found %d UPS device(s), creating sensors (VA: %d, Nominal Power: %dW)",
             len(system_coordinator.data.ups_devices),
+            ups_capacity_va,
+            ups_nominal_power,
         )
         for ups in system_coordinator.data.ups_devices:
             entities.extend(
@@ -1093,6 +1103,7 @@ async def async_setup_entry(
                         server_name,
                         ups,
                         ups_capacity_va,
+                        ups_nominal_power,
                     ),
                 ]
             )
