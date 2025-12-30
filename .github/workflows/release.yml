@@ -2,6 +2,10 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - custom_components/unraid/manifest.json
     tags:
       - 'v*'
 
@@ -9,9 +13,80 @@ permissions:
   contents: write
 
 jobs:
+  auto_tag:
+    name: Tag release on manifest change
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/heads/')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from manifest
+        id: manifest
+        run: |
+          VERSION=$(python3 - <<'PY'
+            import json
+            with open('custom_components/unraid/manifest.json', 'r', encoding='utf-8') as f:
+              print(json.load(f)['version'])
+            PY
+          )
+
+          if [ -z "$VERSION" ]; then
+            echo "Version not found in manifest.json"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Manifest version: $VERSION"
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          TAG="v${{ steps.manifest.outputs.version }}"
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists (local)"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists (remote)"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG does not exist"
+          fi
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          TAG="v${{ steps.manifest.outputs.version }}"
+          echo "Creating tag $TAG"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Summary
+        run: |
+          TAG="v${{ steps.manifest.outputs.version }}"
+          if [ "${{ steps.check_tag.outputs.exists }}" = "true" ]; then
+            echo "Tag $TAG already existed. No new tag created." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Created and pushed tag $TAG from manifest.json version." >> $GITHUB_STEP_SUMMARY
+            echo "Release workflow will trigger from the tag push." >> $GITHUB_STEP_SUMMARY
+          fi
+
   release:
     name: Build and Release
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
 
     steps:
       - name: Checkout code
@@ -172,6 +247,7 @@ jobs:
           files: |
             build/unraid-${{ steps.version.outputs.version }}.zip
             build/SHA256SUM
+            CHANGELOG.md
           prerelease: ${{ steps.version.outputs.prerelease }}
           draft: false
           token: ${{ secrets.GITHUB_TOKEN }}
