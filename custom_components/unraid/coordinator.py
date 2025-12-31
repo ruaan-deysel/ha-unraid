@@ -120,11 +120,11 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         try:
             vms_query = """
                 query {
-                    vms { domains { id name state } }
+                    vms { domain { id name state } }
                 }
             """
             result = await self.api_client.query(vms_query)
-            return result.get("vms") or {"domains": []}
+            return result.get("vms") or {"domain": []}
         except (
             UnraidAPIError,
             aiohttp.ClientError,
@@ -132,7 +132,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             ValueError,
         ) as err:
             _LOGGER.debug("VM data not available: %s", err)
-            return {"domains": []}
+            return {"domain": []}
 
     async def _query_optional_ups(self) -> list[dict]:
         """Query UPS data separately (fails gracefully if no UPS configured)."""
@@ -260,8 +260,8 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
 
         # Parse VMs
         vms: list[VmDomain] = []
-        vms_data = raw_data.get("vms", {})
-        for vm_data in vms_data.get("domains", []):
+        vms_data = raw_data.get("vms") or {}
+        for vm_data in vms_data.get("domain", []) or []:
             try:
                 vms.append(VmDomain.model_validate(vm_data))
             except (ValidationError, TypeError, KeyError) as e:
