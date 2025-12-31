@@ -42,13 +42,14 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the server. Check network connection and firewall settings.",
-      "invalid_auth": "Invalid API key or insufficient permissions. Ensure the API key has ADMIN role.",
+      "cannot_connect": "Cannot connect. Verify the IP address or hostname is correct and reachable.",
+      "check_port": "Verify the port number matches your Unraid server configuration.",
+      "invalid_auth": "Invalid API key or insufficient permissions. Ensure the key has ADMIN role.",
       "unsupported_version": "Unraid version not supported. Minimum required: Unraid 7.2.0 (API v4.21.0).",
-      "unknown": "Unexpected error occurred.",
+      "unknown": "Unexpected error occurred. Check Home Assistant logs for details.",
       "already_configured": "This Unraid server is already configured.",
       "required": "This field is required.",
-      "invalid_hostname": "Hostname too long (max 253 characters)."
+      "invalid_hostname": "Invalid hostname or IP address format."
     },
     "abort": {
       "already_configured": "This Unraid server is already configured.",

@@ -81,12 +81,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         user_input[CONF_HOST],
                     )
                 except InvalidAuthError:
-                    errors["base"] = "invalid_auth"
+                    errors[CONF_API_KEY] = "invalid_auth"
                     _LOGGER.warning(
                         "Invalid authentication for %s", user_input[CONF_HOST]
                     )
                 except CannotConnectError:
-                    errors["base"] = "cannot_connect"
+                    # Show error on both host and port fields for connection issues
+                    errors[CONF_HOST] = "cannot_connect"
+                    errors[CONF_PORT] = "check_port"
                     _LOGGER.warning("Cannot connect to %s", user_input[CONF_HOST])
                 except UnsupportedVersionError:
                     errors["base"] = "unsupported_version"

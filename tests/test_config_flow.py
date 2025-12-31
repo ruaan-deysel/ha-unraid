@@ -114,7 +114,7 @@ class TestConfigFlow:
             )
 
             assert result["type"] == FlowResultType.FORM
-            assert result["errors"]["base"] == "invalid_auth"
+            assert result["errors"][CONF_API_KEY] == "invalid_auth"
 
     async def test_unreachable_server_error(self, hass: HomeAssistant) -> None:
         """Test unreachable server shows connection error."""
@@ -141,7 +141,8 @@ class TestConfigFlow:
             )
 
             assert result["type"] == FlowResultType.FORM
-            assert result["errors"]["base"] == "cannot_connect"
+            assert result["errors"][CONF_HOST] == "cannot_connect"
+            assert result["errors"][CONF_PORT] == "check_port"
 
     async def test_unsupported_version_error(self, hass: HomeAssistant) -> None:
         """Test old Unraid version shows version error."""
@@ -258,7 +259,7 @@ class TestConfigFlow:
 
         # RuntimeError gets wrapped as CannotConnectError by _handle_generic_error
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "cannot_connect"
+        assert result2["errors"][CONF_HOST] == "cannot_connect"
 
     async def test_hostname_max_length_validation(self, hass: HomeAssistant) -> None:
         """Test hostname exceeding max length shows error."""
@@ -305,7 +306,7 @@ class TestConfigFlow:
             )
 
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "invalid_auth"
+        assert result2["errors"][CONF_API_KEY] == "invalid_auth"
 
     async def test_client_connector_error_shows_cannot_connect(
         self, hass: HomeAssistant, mock_setup_entry: None
@@ -338,7 +339,7 @@ class TestConfigFlow:
             )
 
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "cannot_connect"
+        assert result2["errors"][CONF_HOST] == "cannot_connect"
 
     async def test_ssl_error_retries_with_verify_disabled(
         self, hass: HomeAssistant, mock_setup_entry: None
@@ -421,7 +422,7 @@ class TestConfigFlow:
             )
 
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "cannot_connect"
+        assert result2["errors"][CONF_HOST] == "cannot_connect"
 
     async def test_unauthorized_in_error_message_shows_invalid_auth(
         self, hass: HomeAssistant, mock_setup_entry: None
@@ -447,7 +448,7 @@ class TestConfigFlow:
             )
 
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "invalid_auth"
+        assert result2["errors"][CONF_API_KEY] == "invalid_auth"
 
     async def test_http_500_error_shows_cannot_connect(
         self, hass: HomeAssistant, mock_setup_entry: None
@@ -480,7 +481,7 @@ class TestConfigFlow:
             )
 
         assert result2["type"] == FlowResultType.FORM
-        assert result2["errors"]["base"] == "cannot_connect"
+        assert result2["errors"][CONF_HOST] == "cannot_connect"
 
     async def test_user_step_form_includes_port_field(
         self, hass: HomeAssistant
