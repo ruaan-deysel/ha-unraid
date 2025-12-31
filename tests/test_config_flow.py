@@ -6,11 +6,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_API_KEY, CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.unraid.config_flow import (
+    CONF_HTTP_PORT,
+    CONF_HTTPS_PORT,
+)
 from custom_components.unraid.const import (
     CONF_STORAGE_INTERVAL,
     CONF_SYSTEM_INTERVAL,
@@ -142,7 +146,7 @@ class TestConfigFlow:
 
             assert result["type"] == FlowResultType.FORM
             assert result["errors"][CONF_HOST] == "cannot_connect"
-            assert result["errors"][CONF_PORT] == "check_port"
+            assert result["errors"][CONF_HTTPS_PORT] == "check_port"
 
     async def test_unsupported_version_error(self, hass: HomeAssistant) -> None:
         """Test old Unraid version shows version error."""
@@ -486,19 +490,20 @@ class TestConfigFlow:
     async def test_user_step_form_includes_port_field(
         self, hass: HomeAssistant
     ) -> None:
-        """Test user step shows form with port field."""
+        """Test user step shows form with HTTP and HTTPS port fields."""
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "user"
-        assert "port" in result["data_schema"].schema
+        assert "http_port" in result["data_schema"].schema
+        assert "https_port" in result["data_schema"].schema
 
     async def test_successful_connection_with_custom_port(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test successful connection with custom port creates config entry."""
+        """Test successful connection with custom ports creates config entry."""
         with patch(
             "custom_components.unraid.config_flow.UnraidAPIClient"
         ) as MockAPIClient:
@@ -509,28 +514,31 @@ class TestConfigFlow:
                 context={"source": config_entries.SOURCE_USER},
                 data={
                     "host": "unraid.local",
-                    "port": 8443,
+                    "http_port": 8080,
+                    "https_port": 8443,
                     "api_key": "valid-api-key",
                 },
             )
 
             assert result["type"] == FlowResultType.CREATE_ENTRY
             assert result["data"]["host"] == "unraid.local"
-            assert result["data"]["port"] == 8443
+            assert result["data"]["http_port"] == 8080
+            assert result["data"]["https_port"] == 8443
             assert result["data"]["api_key"] == "valid-api-key"
 
-            # Verify API client was called with the custom port
+            # Verify API client was called with the custom ports
             MockAPIClient.assert_called_with(
                 host="unraid.local",
                 api_key="valid-api-key",
-                port=8443,
+                http_port=8080,
+                https_port=8443,
                 verify_ssl=True,
             )
 
     async def test_connection_uses_default_port_when_not_specified(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test that default port 443 is used when not specified."""
+        """Test that default ports 80/443 are used when not specified."""
         with patch(
             "custom_components.unraid.config_flow.UnraidAPIClient"
         ) as MockAPIClient:
@@ -547,11 +555,12 @@ class TestConfigFlow:
 
             assert result["type"] == FlowResultType.CREATE_ENTRY
 
-            # Verify API client was called with default port 443
+            # Verify API client was called with default ports 80/443
             MockAPIClient.assert_called_with(
                 host="unraid.local",
                 api_key="valid-api-key",
-                port=443,
+                http_port=80,
+                https_port=443,
                 verify_ssl=True,
             )
 
@@ -1241,13 +1250,14 @@ class TestReconfigureFlow:
     async def test_reconfigure_flow_shows_port_field(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test reconfigure flow shows form with port field."""
+        """Test reconfigure flow shows form with HTTP and HTTPS port fields."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
             data={
                 CONF_HOST: "unraid.local",
-                CONF_PORT: 8443,
+                CONF_HTTP_PORT: 8080,
+                CONF_HTTPS_PORT: 8443,
                 CONF_API_KEY: "old-key",
             },
             options={},
@@ -1265,18 +1275,20 @@ class TestReconfigureFlow:
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "reconfigure"
-        assert "port" in result["data_schema"].schema
+        assert "http_port" in result["data_schema"].schema
+        assert "https_port" in result["data_schema"].schema
 
     async def test_reconfigure_flow_updates_port(
         self, hass: HomeAssistant, mock_setup_entry: None
     ) -> None:
-        """Test reconfigure flow can update the port."""
+        """Test reconfigure flow can update the ports."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
             data={
                 CONF_HOST: "unraid.local",
-                CONF_PORT: 443,
+                CONF_HTTP_PORT: 80,
+                CONF_HTTPS_PORT: 443,
                 CONF_API_KEY: "old-key",
             },
             options={},
@@ -1301,11 +1313,13 @@ class TestReconfigureFlow:
                 result["flow_id"],
                 {
                     CONF_HOST: "unraid.local",
-                    CONF_PORT: 8443,
+                    CONF_HTTP_PORT: 8080,
+                    CONF_HTTPS_PORT: 8443,
                     CONF_API_KEY: "new-key",
                 },
             )
 
         assert result2["type"] == FlowResultType.ABORT
         assert result2["reason"] == "reconfigure_successful"
-        assert entry.data[CONF_PORT] == 8443
+        assert entry.data[CONF_HTTP_PORT] == 8080
+        assert entry.data[CONF_HTTPS_PORT] == 8443

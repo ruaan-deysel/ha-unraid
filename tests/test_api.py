@@ -16,7 +16,8 @@ def api_client():
     return UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_api_key_12345",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -25,7 +26,7 @@ def api_client():
 async def test_api_client_initialization(api_client):
     """Test UnraidAPIClient initializes with correct parameters."""
     assert api_client.host == "https://192.168.1.100"
-    assert api_client.port == 443
+    assert api_client.https_port == 443
     assert api_client.verify_ssl is True
     assert api_client._api_key == "test_api_key_12345"
     assert api_client.session is None
@@ -37,7 +38,8 @@ async def test_api_client_creates_session():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -52,7 +54,8 @@ async def test_graphql_query_success():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -76,7 +79,8 @@ async def test_graphql_query_with_variables():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -101,7 +105,8 @@ async def test_graphql_query_error_handling():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -135,7 +140,8 @@ async def test_graphql_query_partial_errors_returns_data():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -174,7 +180,8 @@ async def test_graphql_mutation_success():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -201,7 +208,8 @@ async def test_connection_test_online():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -221,7 +229,8 @@ async def test_connection_test_network_error():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -238,7 +247,8 @@ async def test_version_check_success():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -262,7 +272,8 @@ async def test_version_check_unsupported():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -286,7 +297,8 @@ async def test_session_management_context_manager():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
 
@@ -297,7 +309,11 @@ async def test_session_management_context_manager():
 async def test_api_handles_http_redirect():
     """Test that API client handles myunraid.net redirects."""
     client = UnraidAPIClient(
-        host="192.168.1.1", api_key="test_key", port=80, verify_ssl=False
+        host="192.168.1.1",
+        api_key="test_key",
+        http_port=80,
+        https_port=80,
+        verify_ssl=False,
     )
 
     # Mock the _make_request method directly for the query
@@ -317,7 +333,11 @@ async def test_api_handles_http_redirect():
 async def test_api_handles_redirect_without_location():
     """Test that API client handles 302 without Location header gracefully."""
     client = UnraidAPIClient(
-        host="192.168.1.1", api_key="test_key", port=80, verify_ssl=False
+        host="192.168.1.1",
+        api_key="test_key",
+        http_port=80,
+        https_port=80,
+        verify_ssl=False,
     )
 
     # Mock _discover_redirect_url to return tuple (no redirect, use SSL)
@@ -346,7 +366,11 @@ async def test_api_handles_redirect_without_location():
 async def test_api_direct_https_no_redirect():
     """Test that direct HTTPS connections work without redirects."""
     client = UnraidAPIClient(
-        host="https://192.168.1.1", api_key="test_key", port=443, verify_ssl=False
+        host="https://192.168.1.1",
+        api_key="test_key",
+        http_port=80,
+        https_port=443,
+        verify_ssl=False,
     )
 
     # Mock _discover_redirect_url to return tuple (no redirect, use SSL)
@@ -374,7 +398,8 @@ async def test_ssl_verification_disabled():
     client = UnraidAPIClient(
         host="https://192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=False,
     )
 
@@ -391,7 +416,8 @@ async def test_get_base_url_with_protocol():
     client = UnraidAPIClient(
         host="https://myserver.local",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
     assert client._get_base_url() == "https://myserver.local"
@@ -403,7 +429,8 @@ async def test_get_base_url_without_protocol():
     client = UnraidAPIClient(
         host="myserver.local",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
     assert client._get_base_url() == "https://myserver.local"
@@ -415,7 +442,8 @@ async def test_get_base_url_non_standard_port():
     client = UnraidAPIClient(
         host="myserver.local",
         api_key="test_key",
-        port=8443,
+        http_port=80,
+        https_port=8443,
         verify_ssl=True,
     )
     assert client._get_base_url() == "https://myserver.local:8443"
@@ -427,7 +455,8 @@ async def test_get_base_url_strips_trailing_slash():
     client = UnraidAPIClient(
         host="https://myserver.local/",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
         verify_ssl=True,
     )
     assert client._get_base_url() == "https://myserver.local"
@@ -958,7 +987,8 @@ async def test_get_base_url_with_custom_port():
     client = UnraidAPIClient(
         host="192.168.1.100",
         api_key="test_key",
-        port=8443,
+        http_port=80,
+        https_port=8443,
     )
 
     assert client._get_base_url() == "https://192.168.1.100:8443"
@@ -1212,7 +1242,8 @@ async def test_make_request_builds_http_url_when_no_ssl():
     client = UnraidAPIClient(
         host="192.168.1.100",
         api_key="test_key",
-        port=443,
+        http_port=80,
+        https_port=443,
     )
 
     expected_data = {"data": {"online": True}}

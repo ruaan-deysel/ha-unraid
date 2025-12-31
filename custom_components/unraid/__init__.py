@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from homeassistant.const import (
     CONF_API_KEY,
     CONF_HOST,
-    CONF_PORT,
     CONF_VERIFY_SSL,
     Platform,
 )
@@ -23,6 +22,12 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import UnraidAPIClient
+from .config_flow import (
+    CONF_HTTP_PORT,
+    CONF_HTTPS_PORT,
+    DEFAULT_HTTP_PORT,
+    DEFAULT_HTTPS_PORT,
+)
 from .const import (
     CONF_STORAGE_INTERVAL,
     CONF_SYSTEM_INTERVAL,
@@ -124,7 +129,8 @@ def _build_server_info(info: dict, host: str, verify_ssl: bool) -> dict:
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
     """Set up Unraid from a config entry."""
     host = entry.data[CONF_HOST]
-    port = entry.data.get(CONF_PORT, 443)
+    http_port = entry.data.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT)
+    https_port = entry.data.get(CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT)
     api_key = entry.data[CONF_API_KEY]
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
 
@@ -143,7 +149,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     # Create API client with injected session
     api_client = UnraidAPIClient(
         host=host,
-        port=port,
+        http_port=http_port,
+        https_port=https_port,
         api_key=api_key,
         verify_ssl=verify_ssl,
         session=session,

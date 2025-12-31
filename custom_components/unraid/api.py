@@ -13,7 +13,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # HTTP status codes
 HTTP_OK = 200
-HTTPS_DEFAULT_PORT = 443
+DEFAULT_HTTP_PORT = 80
+DEFAULT_HTTPS_PORT = 443
 
 
 class UnraidAPIError(Exception):
@@ -27,7 +28,8 @@ class UnraidAPIClient:
         self,
         host: str,
         api_key: str,
-        port: int = 443,
+        http_port: int = 80,
+        https_port: int = 443,
         verify_ssl: bool = True,
         timeout: int = 30,
         session: aiohttp.ClientSession | None = None,
@@ -38,14 +40,16 @@ class UnraidAPIClient:
         Args:
             host: Server hostname or IP (with or without http:// or https:// prefix)
             api_key: Unraid API key with ADMIN role
-            port: HTTPS port (default 443)
+            http_port: HTTP port for redirect discovery (default 80)
+            https_port: HTTPS port (default 443)
             verify_ssl: Whether to verify SSL certificates (default True)
             timeout: Request timeout in seconds (default 30s for queries)
             session: Optional aiohttp session (for HA websession injection)
 
         """
         self.host = host.strip()
-        self.port = port
+        self.http_port = http_port
+        self.https_port = https_port
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self._api_key = api_key
@@ -110,9 +114,9 @@ class UnraidAPIClient:
         else:
             base_url = f"https://{self.host}"
 
-        # Add port only if non-standard (not 80 or 443)
-        if self.port not in (80, 443):
-            return f"{base_url}:{self.port}"
+        # Add port only if non-standard HTTPS port
+        if self.https_port != DEFAULT_HTTPS_PORT:
+            return f"{base_url}:{self.https_port}"
         return base_url
 
     async def _discover_redirect_url(self) -> tuple[str | None, bool]:
@@ -148,11 +152,13 @@ class UnraidAPIClient:
         # Remove trailing slashes
         clean_host = clean_host.rstrip("/")
 
-        # Build port suffix for custom ports
-        port_suffix = "" if self.port in (80, 443) else f":{self.port}"
+        # Build port suffix for custom HTTP port
+        http_port_suffix = (
+            "" if self.http_port == DEFAULT_HTTP_PORT else f":{self.http_port}"
+        )
 
         # Try HTTP first to discover redirects and SSL mode
-        http_url = f"http://{clean_host}{port_suffix}/graphql"
+        http_url = f"http://{clean_host}{http_port_suffix}/graphql"
         _LOGGER.debug("Checking for redirect at %s", http_url)
 
         # Include API key header for authentication
@@ -190,7 +196,7 @@ class UnraidAPIClient:
                         if parsed.scheme == "https":
                             # Normalize the redirect URL (remove default port)
                             port = parsed.port
-                            if port == HTTPS_DEFAULT_PORT:
+                            if port == DEFAULT_HTTPS_PORT:
                                 # Rebuild URL without port
                                 normalized = f"https://{hostname}{parsed.path}"
                             else:
@@ -256,11 +262,19 @@ class UnraidAPIClient:
                 # Build URL based on discovered SSL mode
                 if use_ssl:
                     protocol = "https"
-                    port_suffix = f":{self.port}" if self.port not in (80, 443) else ""
+                    port_suffix = (
+                        f":{self.https_port}"
+                        if self.https_port != DEFAULT_HTTPS_PORT
+                        else ""
+                    )
                 else:
                     protocol = "http"
-                    # For HTTP, use port 80 by default
-                    port_suffix = "" if self.port in (80, 443) else f":{self.port}"
+                    # For HTTP, use http_port
+                    port_suffix = (
+                        f":{self.http_port}"
+                        if self.http_port != DEFAULT_HTTP_PORT
+                        else ""
+                    )
 
                 self._resolved_url = f"{protocol}://{clean_host}{port_suffix}/graphql"
             _LOGGER.debug("Using URL: %s", self._resolved_url)

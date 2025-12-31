@@ -7,12 +7,14 @@
         "description": "Connect to your Unraid server using the GraphQL API. Requires Unraid {min_version} or newer.",
         "data": {
           "host": "Server IP or Hostname",
-          "port": "Port",
+          "http_port": "HTTP Port",
+          "https_port": "HTTPS Port",
           "api_key": "API Key"
         },
         "data_description": {
           "host": "IP address (e.g., 192.168.1.100) or hostname/domain of your Unraid server",
-          "port": "HTTPS port (default: 443). Change only if you modified the port in Unraid Settings → Management Access.",
+          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
+          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
           "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
         }
       },
@@ -31,12 +33,14 @@
         "description": "Update the connection settings for your Unraid server.",
         "data": {
           "host": "Server IP or Hostname",
-          "port": "Port",
+          "http_port": "HTTP Port",
+          "https_port": "HTTPS Port",
           "api_key": "API Key"
         },
         "data_description": {
           "host": "IP address or hostname of your Unraid server",
-          "port": "HTTPS port (default: 443). Change only if you modified the port in Unraid Settings → Management Access.",
+          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
+          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
           "api_key": "API key with ADMIN role permissions"
         }
       }
