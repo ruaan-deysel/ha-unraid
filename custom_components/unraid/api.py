@@ -148,8 +148,11 @@ class UnraidAPIClient:
         # Remove trailing slashes
         clean_host = clean_host.rstrip("/")
 
+        # Build port suffix for custom ports
+        port_suffix = "" if self.port in (80, 443) else f":{self.port}"
+
         # Try HTTP first to discover redirects and SSL mode
-        http_url = f"http://{clean_host}/graphql"
+        http_url = f"http://{clean_host}{port_suffix}/graphql"
         _LOGGER.debug("Checking for redirect at %s", http_url)
 
         # Include API key header for authentication

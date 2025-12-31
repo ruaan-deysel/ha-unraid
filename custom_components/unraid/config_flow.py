@@ -27,7 +27,7 @@ from .const import (
 )
 
 if TYPE_CHECKING:
-    from homeassistant.data_entry_flow import FlowResult
+    from homeassistant.config_entries import ConfigFlowResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the user step."""
         errors: dict[str, str] = {}
 
@@ -316,16 +316,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self,
         entry_data: dict[str, Any],
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reauth when API key becomes invalid."""
         self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
+            self.context.get("entry_id", "")
         )
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reauth confirmation - prompt for new API key."""
         errors: dict[str, str] = {}
 
@@ -375,11 +375,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reconfiguration of the integration."""
         errors: dict[str, str] = {}
         reconfigure_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
+            self.context.get("entry_id", "")
         )
 
         if reconfigure_entry is None:
@@ -439,7 +439,7 @@ class UnraidOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the init step to configure polling intervals and UPS settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
