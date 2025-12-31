@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -481,6 +481,78 @@ class TestConfigFlow:
 
         assert result2["type"] == FlowResultType.FORM
         assert result2["errors"]["base"] == "cannot_connect"
+
+    async def test_user_step_form_includes_port_field(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test user step shows form with port field."""
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "user"
+        assert "port" in result["data_schema"].schema
+
+    async def test_successful_connection_with_custom_port(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test successful connection with custom port creates config entry."""
+        with patch(
+            "custom_components.unraid.config_flow.UnraidAPIClient"
+        ) as MockAPIClient:
+            MockAPIClient.return_value = _mock_api_client()
+
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+                data={
+                    "host": "unraid.local",
+                    "port": 8443,
+                    "api_key": "valid-api-key",
+                },
+            )
+
+            assert result["type"] == FlowResultType.CREATE_ENTRY
+            assert result["data"]["host"] == "unraid.local"
+            assert result["data"]["port"] == 8443
+            assert result["data"]["api_key"] == "valid-api-key"
+
+            # Verify API client was called with the custom port
+            MockAPIClient.assert_called_with(
+                host="unraid.local",
+                api_key="valid-api-key",
+                port=8443,
+                verify_ssl=True,
+            )
+
+    async def test_connection_uses_default_port_when_not_specified(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test that default port 443 is used when not specified."""
+        with patch(
+            "custom_components.unraid.config_flow.UnraidAPIClient"
+        ) as MockAPIClient:
+            MockAPIClient.return_value = _mock_api_client()
+
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+                data={
+                    "host": "unraid.local",
+                    "api_key": "valid-api-key",
+                },
+            )
+
+            assert result["type"] == FlowResultType.CREATE_ENTRY
+
+            # Verify API client was called with default port 443
+            MockAPIClient.assert_called_with(
+                host="unraid.local",
+                api_key="valid-api-key",
+                port=443,
+                verify_ssl=True,
+            )
 
 
 class TestReauthFlow:
@@ -1164,3 +1236,75 @@ class TestReconfigureFlow:
         # RuntimeError gets wrapped as CannotConnectError by _handle_generic_error
         assert result2["type"] == FlowResultType.FORM
         assert result2["errors"]["base"] == "cannot_connect"
+
+    async def test_reconfigure_flow_shows_port_field(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test reconfigure flow shows form with port field."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="tower",
+            data={
+                CONF_HOST: "unraid.local",
+                CONF_PORT: 8443,
+                CONF_API_KEY: "old-key",
+            },
+            options={},
+            unique_id="test-uuid",
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure"
+        assert "port" in result["data_schema"].schema
+
+    async def test_reconfigure_flow_updates_port(
+        self, hass: HomeAssistant, mock_setup_entry: None
+    ) -> None:
+        """Test reconfigure flow can update the port."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="tower",
+            data={
+                CONF_HOST: "unraid.local",
+                CONF_PORT: 443,
+                CONF_API_KEY: "old-key",
+            },
+            options={},
+            unique_id="test-uuid",
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+
+        with patch(
+            "custom_components.unraid.config_flow.UnraidAPIClient"
+        ) as MockAPIClient:
+            MockAPIClient.return_value = _mock_api_client()
+
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    CONF_HOST: "unraid.local",
+                    CONF_PORT: 8443,
+                    CONF_API_KEY: "new-key",
+                },
+            )
+
+        assert result2["type"] == FlowResultType.ABORT
+        assert result2["reason"] == "reconfigure_successful"
+        assert entry.data[CONF_PORT] == 8443

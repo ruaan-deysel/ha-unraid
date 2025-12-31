@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_VERIFY_SSL
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
@@ -34,6 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 MIN_API_VERSION = "4.21.0"
 MIN_UNRAID_VERSION = "7.2.0"
 MAX_HOSTNAME_LEN = 253
+DEFAULT_PORT = 443
+MIN_PORT = 1
+MAX_PORT = 65535
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -112,9 +115,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
                 _LOGGER.info(
-                    "Creating config entry for %s (UUID: %s, verify_ssl: %s)",
+                    "Creating config entry for %s (UUID: %s, port: %s, verify_ssl: %s)",
                     title,
                     unique_id,
+                    user_input.get(CONF_PORT, DEFAULT_PORT),
                     self._verify_ssl,
                 )
                 return self.async_create_entry(
@@ -128,10 +132,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
-        # Show form - simplified to just Host and API Key
+        # Show form with optional port field
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST): str,
+                vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(
+                    vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)
+                ),
                 vol.Required(CONF_API_KEY): str,
             }
         )
@@ -167,6 +174,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Test connection to Unraid server and validate version."""
         host = user_input[CONF_HOST].strip()
         api_key = user_input[CONF_API_KEY].strip()
+        port = user_input.get(CONF_PORT, DEFAULT_PORT)
 
         # Reset verify_ssl to default
         self._verify_ssl = True
@@ -176,7 +184,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         api_client = UnraidAPIClient(
             host=host,
             api_key=api_key,
-            port=443,
+            port=port,
             verify_ssl=True,
         )
 
@@ -194,7 +202,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 api_client = UnraidAPIClient(
                     host=host,
                     api_key=api_key,
-                    port=443,
+                    port=port,
                     verify_ssl=False,
                 )
                 try:
@@ -415,6 +423,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_HOST, default=reconfigure_entry.data.get(CONF_HOST, "")
                     ): str,
+                    vol.Optional(
+                        CONF_PORT,
+                        default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)),
                     vol.Required(CONF_API_KEY): str,
                 }
             ),
