@@ -2,6 +2,9 @@
 
 [![HACS Integration][hacsbadge]][hacs]
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/commits/main)
+[![GitHub Release](https://img.shields.io/github/v/release/ruaan-deysel/ha-unraid?sort=semver)](https://github.com/ruaan-deysel/ha-unraid/releases)
+[![GitHub Issues](https://img.shields.io/github/issues/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/issues)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/ruaan-deysel)](https://github.com/sponsors/ruaan-deysel)
 [![Community Forum](https://img.shields.io/badge/Community-Forum-blue)](https://community.home-assistant.io/t/unraid-integration)
 [![License](https://img.shields.io/github/license/ruaan-deysel/ha-unraid)](./LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ruaan-deysel/ha-unraid)

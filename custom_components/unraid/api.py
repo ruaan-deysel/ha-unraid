@@ -360,7 +360,9 @@ class UnraidAPIClient:
             # (e.g., VMs not enabled, no UPS connected)
             # Only raise exception if we have no data at all
             if data:
-                _LOGGER.info(
+                # Log at debug level - these are expected for optional features
+                # like UPS (no UPS connected), VMs (not enabled), etc.
+                _LOGGER.debug(
                     "Some optional features unavailable: %s",
                     "; ".join(error_messages),
                 )
