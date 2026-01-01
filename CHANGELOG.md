@@ -7,6 +7,15 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Added
+- **Custom Port Configuration**: Support for custom HTTP and HTTPS ports for users with reverse proxies or non-standard Unraid configurations ([#130](https://github.com/ruaan-deysel/ha-unraid/issues/130), [#131](https://github.com/ruaan-deysel/ha-unraid/issues/131))
+  - Separate HTTP Port field (default: 80) - used for initial connection and redirect discovery
+  - Separate HTTPS Port field (default: 443) - used for secure connections after redirect
+
+### Fixed
+- **VM Detection**: Fixed VMs not being detected due to incorrect GraphQL field name (`domains` → `domain`)
+- **Log Spam Reduction**: Changed "Some optional features unavailable" messages from INFO to DEBUG level to prevent flooding logs when UPS, VMs, or Docker are not configured
+
 ## [2025.12.2] - 2025-12-30
 
 ### Fixed
