@@ -43,7 +43,8 @@ class TestDockerContainerSwitch:
             container=container,
         )
 
-        assert switch.unique_id == "test-uuid_container_switch_ct:1"
+        # unique_id uses container NAME (stable) not ID (ephemeral)
+        assert switch.unique_id == "test-uuid_container_switch_web"
         assert (
             switch.name == "Container web"
         )  # Should strip leading / and prefix with Container
@@ -148,6 +149,59 @@ class TestDockerContainerSwitch:
         assert "web_ui_url" not in attrs
         assert "icon_url" not in attrs
 
+    def test_container_id_updates_after_container_recreate(self) -> None:
+        """
+        Test that container ID is updated when container is recreated.
+
+        This is the key fix for issue #133 - when a container is updated,
+        Docker creates a new container with a new ID but same name. The
+        entity should continue to work with the new container.
+        """
+        # Initial container with original ID
+        container_v1 = DockerContainer(
+            id="ct:original-id-12345",
+            name="/web",
+            state="RUNNING",
+            image="nginx:1.0",
+        )
+        coordinator = MagicMock(spec=UnraidSystemCoordinator)
+        coordinator.data = make_system_data(containers=[container_v1])
+        api_client = MagicMock()
+
+        switch = DockerContainerSwitch(
+            coordinator=coordinator,
+            api_client=api_client,
+            server_uuid="test-uuid",
+            server_name="test-server",
+            container=container_v1,
+        )
+
+        # Verify initial state
+        assert switch._container_id == "ct:original-id-12345"
+        assert switch._container_name == "web"
+        assert switch.unique_id == "test-uuid_container_switch_web"
+        assert switch.is_on is True
+
+        # Simulate container update - new container with NEW ID, same name
+        container_v2 = DockerContainer(
+            id="ct:new-id-67890",  # NEW ID after update
+            name="/web",  # Same name
+            state="RUNNING",
+            image="nginx:2.0",  # Updated image
+        )
+        # Reset cache to force re-lookup
+        switch._cache_data_id = None
+        switch._cached_container = None
+        coordinator.data = make_system_data(containers=[container_v2])
+
+        # Access is_on to trigger lookup and ID update
+        assert switch.is_on is True
+
+        # Verify the container ID was updated
+        assert switch._container_id == "ct:new-id-67890"
+        # But unique_id remains stable (based on name)
+        assert switch.unique_id == "test-uuid_container_switch_web"
+
 
 class TestVirtualMachineSwitch:
     """Test VM switch."""
@@ -173,7 +227,8 @@ class TestVirtualMachineSwitch:
             vm=vm,
         )
 
-        assert switch.unique_id == "test-uuid_vm_switch_vm:1"
+        # unique_id uses VM NAME (stable) not ID (may be ephemeral)
+        assert switch.unique_id == "test-uuid_vm_switch_Ubuntu"
         assert switch.name == "VM Ubuntu"  # Should prefix with VM
 
     def test_vm_switch_is_on_when_running(self) -> None:

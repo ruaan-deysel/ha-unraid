@@ -88,8 +88,12 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         container: DockerContainer,
     ) -> None:
         """Initialize docker container switch."""
-        self._container_id = container.id
+        # Container IDs are ephemeral (change on container update/recreate)
+        # Use container NAME for unique_id to maintain entity stability
         self._container_name = container.name.lstrip("/")
+        # Store the current container ID for API calls (start/stop)
+        # This will be updated when the container is recreated
+        self._container_id = container.id
         self._cached_container: DockerContainer | None = None
         self._cache_data_id: int | None = None
         super().__init__(
@@ -97,12 +101,18 @@ class DockerContainerSwitch(UnraidSwitchEntity):
             api_client=api_client,
             server_uuid=server_uuid,
             server_name=server_name,
-            resource_id=f"container_switch_{container.id}",
+            # Use container NAME for stable unique_id (not ID which changes)
+            resource_id=f"container_switch_{self._container_name}",
             name=f"Container {self._container_name}",
         )
 
     def _get_container(self) -> DockerContainer | None:
-        """Get current container from coordinator data with caching."""
+        """
+        Get current container from coordinator data with caching.
+
+        Looks up container by NAME (stable) not ID (ephemeral).
+        Also updates the stored container_id if it changed (e.g., after update).
+        """
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
@@ -116,10 +126,15 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         ):
             return self._cached_container
 
-        # Build lookup dict for O(1) access
-        container_map = {c.id: c for c in data.containers}
-        self._cached_container = container_map.get(self._container_id)
+        # Build lookup dict by NAME for O(1) access (name is stable, ID is not)
+        container_map = {c.name.lstrip("/"): c for c in data.containers}
+        self._cached_container = container_map.get(self._container_name)
         self._cache_data_id = data_id
+
+        # Update container ID if it changed (after container update/recreate)
+        if self._cached_container is not None:
+            self._container_id = self._cached_container.id
+
         return self._cached_container
 
     @property
@@ -180,8 +195,11 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
         vm: VmDomain,
     ) -> None:
         """Initialize virtual machine switch."""
-        self._vm_id = vm.id
+        # VM names are stable across restarts; IDs may not be
+        # Use VM NAME for unique_id to maintain entity stability
         self._vm_name = vm.name
+        # Store the current VM ID for API calls (start/stop)
+        self._vm_id = vm.id
         self._cached_vm: VmDomain | None = None
         self._cache_data_id: int | None = None
         super().__init__(
@@ -189,12 +207,18 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
             api_client=api_client,
             server_uuid=server_uuid,
             server_name=server_name,
-            resource_id=f"vm_switch_{vm.id}",
+            # Use VM NAME for stable unique_id (not ID which may change)
+            resource_id=f"vm_switch_{self._vm_name}",
             name=f"VM {vm.name}",
         )
 
     def _get_vm(self) -> VmDomain | None:
-        """Get current VM from coordinator data with caching."""
+        """
+        Get current VM from coordinator data with caching.
+
+        Looks up VM by NAME (stable) not ID (may be ephemeral).
+        Also updates the stored vm_id if it changed.
+        """
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
@@ -208,10 +232,15 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
         ):
             return self._cached_vm
 
-        # Build lookup dict for O(1) access
-        vm_map = {v.id: v for v in data.vms}
-        self._cached_vm = vm_map.get(self._vm_id)
+        # Build lookup dict by NAME for O(1) access (name is stable)
+        vm_map = {v.name: v for v in data.vms}
+        self._cached_vm = vm_map.get(self._vm_name)
         self._cache_data_id = data_id
+
+        # Update the VM ID if it changed
+        if self._cached_vm is not None:
+            self._vm_id = self._cached_vm.id
+
         return self._cached_vm
 
     @property
