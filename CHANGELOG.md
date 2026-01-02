@@ -7,11 +7,6 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-### Fixed
-- **Entity Rename Stability**: Fixed Docker container and VM switches reverting to default names after container/VM updates ([#133](https://github.com/ruaan-deysel/ha-unraid/issues/133))
-  - Entity `unique_id` now uses container/VM NAME instead of ID (which changes on update)
-  - Renamed entities now persist correctly across container updates and integration reloads
-
 ## [2025.12.3] - 2026-01-02
 
 ### Added
@@ -22,6 +17,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### Fixed
 - **VM Detection**: Fixed VMs not being detected due to incorrect GraphQL field name (`domains` → `domain`)
 - **Log Spam Reduction**: Changed "Some optional features unavailable" messages from INFO to DEBUG level to prevent flooding logs when UPS, VMs, or Docker are not configured
+- **Entity Rename Stability**: Fixed Docker container and VM switches reverting to default names after container/VM updates ([#133](https://github.com/ruaan-deysel/ha-unraid/issues/133))
+  - Entity `unique_id` now uses container/VM NAME instead of ID (which changes on update)
+  - Renamed entities now persist correctly across container updates and integration reloads
 
 ## [2025.12.2] - 2025-12-30
 
