@@ -7,7 +7,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2025.12.2] - 2025-12-30
+## [2025.12.3] - 2026-01-02
 
 ### Added
 - **Custom Port Configuration**: Support for custom HTTP and HTTPS ports for users with reverse proxies or non-standard Unraid configurations ([#130](https://github.com/ruaan-deysel/ha-unraid/issues/130), [#131](https://github.com/ruaan-deysel/ha-unraid/issues/131))
@@ -17,6 +17,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### Fixed
 - **VM Detection**: Fixed VMs not being detected due to incorrect GraphQL field name (`domains` → `domain`)
 - **Log Spam Reduction**: Changed "Some optional features unavailable" messages from INFO to DEBUG level to prevent flooding logs when UPS, VMs, or Docker are not configured
+
+## [2025.12.2] - 2025-12-30
 
 ### Fixed
 - **SSL/TLS Mode Detection**: Fixed connection issues when Unraid SSL/TLS setting is configured as "No" (HTTP-only) or "Yes" (self-signed certificate). Previously only "Strict" mode with myunraid.net URLs was properly detected. ([#124](https://github.com/ruaan-deysel/ha-unraid/issues/124))
