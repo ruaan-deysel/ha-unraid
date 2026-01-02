@@ -68,7 +68,7 @@ async def test_system_coordinator_fetch_success(hass, mock_api_client):
             "memory": {"total": 17179869184, "used": 8589934592, "percentTotal": 50.0},
         },
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -177,7 +177,7 @@ async def test_system_coordinator_queries_all_endpoints(hass, mock_api_client):
     # Docker query returns empty containers
     mock_docker_response = {"docker": {"containers": []}}
     # VMs query returns empty domains
-    mock_vms_response = {"vms": {"domains": []}}
+    mock_vms_response = {"vms": {"domain": []}}
     # UPS query returns empty list
     mock_ups_response = {"upsDevices": []}
 
@@ -255,7 +255,7 @@ async def test_coordinator_data_refresh_cycle(hass, mock_api_client):
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -272,7 +272,7 @@ async def test_coordinator_data_refresh_cycle(hass, mock_api_client):
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 35.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -405,7 +405,7 @@ async def test_system_coordinator_connection_recovery(hass, mock_api_client, cap
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -469,7 +469,7 @@ async def test_system_coordinator_parses_docker_containers(hass, mock_api_client
                 }
             ]
         },
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -490,7 +490,7 @@ async def test_system_coordinator_parses_vms(hass, mock_api_client):
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
         "vms": {
-            "domains": [
+            "domain": [
                 {"id": "vm:1", "name": "Ubuntu", "state": "RUNNING"},
                 {"id": "vm:2", "name": "Windows", "state": "SHUTOFF"},
             ]
@@ -514,7 +514,7 @@ async def test_system_coordinator_parses_ups_devices(hass, mock_api_client):
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [
             {
                 "id": "ups:1",
@@ -558,7 +558,7 @@ async def test_system_coordinator_handles_ups_query_failure(
     docker_response = {"docker": {"containers": []}}
 
     # VMs query succeeds
-    vms_response = {"vms": {"domains": []}}
+    vms_response = {"vms": {"domain": []}}
 
     # UPS query fails (no UPS configured)
     ups_error = UnraidAPIError(
@@ -660,7 +660,7 @@ async def test_system_coordinator_handles_docker_query_failure(
     docker_error = UnraidAPIError("GraphQL query failed: Docker is not available")
 
     # VMs query succeeds
-    vms_response = {"vms": {"domains": []}}
+    vms_response = {"vms": {"domain": []}}
 
     # UPS query succeeds
     ups_response = {"upsDevices": []}
@@ -694,7 +694,7 @@ async def test_system_coordinator_parses_notifications(hass, mock_api_client):
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 5}}},
     }
@@ -719,7 +719,7 @@ async def test_system_coordinator_handles_invalid_container(
                 {"invalid": "data"},  # Missing required fields
             ]
         },
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -739,7 +739,7 @@ async def test_system_coordinator_handles_invalid_vm(hass, mock_api_client, capl
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
         "vms": {
-            "domains": [
+            "domain": [
                 {"id": "vm:1", "name": "Good", "state": "RUNNING"},
                 {"invalid": "vm_data"},  # Missing required fields
             ]
@@ -762,7 +762,7 @@ async def test_system_coordinator_handles_invalid_ups(hass, mock_api_client, cap
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [
             {"id": "ups:1", "name": "Good UPS", "status": "Online"},
             {"invalid": "ups_data"},  # Missing required fields
@@ -968,7 +968,7 @@ async def test_system_coordinator_handles_none_ups_list(hass, mock_api_client):
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": None,  # Can be None instead of empty list
         "notifications": {"overview": {"unread": {"total": 0}}},
     }
@@ -986,7 +986,7 @@ async def test_system_coordinator_handles_none_notifications(hass, mock_api_clie
         "info": {"system": {"uuid": "abc-123"}},
         "metrics": {"cpu": {"percentTotal": 25.5}},
         "docker": {"containers": []},
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": None}}},
     }
@@ -1010,7 +1010,7 @@ async def test_system_coordinator_handles_container_without_names(
                 {"id": "ct:1", "names": [], "state": "RUNNING"},  # Empty names list
             ]
         },
-        "vms": {"domains": []},
+        "vms": {"domain": []},
         "upsDevices": [],
         "notifications": {"overview": {"unread": {"total": 0}}},
     }

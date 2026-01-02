@@ -7,10 +7,14 @@
         "description": "Connect to your Unraid server using the GraphQL API. Requires Unraid {min_version} or newer.",
         "data": {
           "host": "Server IP or Hostname",
+          "http_port": "HTTP Port",
+          "https_port": "HTTPS Port",
           "api_key": "API Key"
         },
         "data_description": {
           "host": "IP address (e.g., 192.168.1.100) or hostname/domain of your Unraid server",
+          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
+          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
           "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
         }
       },
@@ -29,22 +33,27 @@
         "description": "Update the connection settings for your Unraid server.",
         "data": {
           "host": "Server IP or Hostname",
+          "http_port": "HTTP Port",
+          "https_port": "HTTPS Port",
           "api_key": "API Key"
         },
         "data_description": {
           "host": "IP address or hostname of your Unraid server",
+          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
+          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
           "api_key": "API key with ADMIN role permissions"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the server. Check network connection and firewall settings.",
-      "invalid_auth": "Invalid API key or insufficient permissions. Ensure the API key has ADMIN role.",
+      "cannot_connect": "Cannot connect. Verify the IP address or hostname is correct and reachable.",
+      "check_port": "Verify the port number matches your Unraid server configuration.",
+      "invalid_auth": "Invalid API key or insufficient permissions. Ensure the key has ADMIN role.",
       "unsupported_version": "Unraid version not supported. Minimum required: Unraid 7.2.0 (API v4.21.0).",
-      "unknown": "Unexpected error occurred.",
+      "unknown": "Unexpected error occurred. Check Home Assistant logs for details.",
       "already_configured": "This Unraid server is already configured.",
       "required": "This field is required.",
-      "invalid_hostname": "Hostname too long (max 253 characters)."
+      "invalid_hostname": "Invalid hostname or IP address format."
     },
     "abort": {
       "already_configured": "This Unraid server is already configured.",
