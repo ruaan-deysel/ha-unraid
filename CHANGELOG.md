@@ -7,6 +7,11 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+- **Further Log Spam Reduction**: Changed Docker/VM service not available messages from INFO to DEBUG level during setup ([#134](https://github.com/ruaan-deysel/ha-unraid/issues/134))
+  - Users without Docker or VMs enabled no longer see these messages in normal logs
+  - Messages still available at DEBUG level for troubleshooting
+
 ## [2025.12.3] - 2026-01-02
 
 ### Added

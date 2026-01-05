@@ -318,7 +318,7 @@ async def async_setup_entry(
                 )
             )
     else:
-        _LOGGER.info(
+        _LOGGER.debug(
             "Docker service not running or no containers on %s",
             server_name,
         )
@@ -336,7 +336,7 @@ async def async_setup_entry(
                 )
             )
     else:
-        _LOGGER.info(
+        _LOGGER.debug(
             "VM service not available or no VMs on %s, skipping VM switches",
             server_name,
         )
