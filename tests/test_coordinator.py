@@ -88,7 +88,8 @@ async def test_system_coordinator_fetch_success(hass, mock_api_client):
 @pytest.mark.asyncio
 async def test_storage_coordinator_fetch_success(hass, mock_api_client):
     """Test storage coordinator successfully fetches data."""
-    mock_api_client.query.return_value = {
+    # Storage coordinator now makes two queries: array data + shares data
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {
@@ -98,9 +99,9 @@ async def test_storage_coordinator_fetch_success(hass, mock_api_client):
             "parities": [],
             "caches": [],
         },
-        "disks": [],
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -110,7 +111,7 @@ async def test_storage_coordinator_fetch_success(hass, mock_api_client):
     assert data.array_state == "STARTED"
     assert data.capacity is not None
     assert data.capacity.kilobytes.total == 1000000
-    assert mock_api_client.query.call_count >= 1
+    assert mock_api_client.query.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -215,7 +216,10 @@ async def test_system_coordinator_queries_all_endpoints(hass, mock_api_client):
 @pytest.mark.asyncio
 async def test_storage_coordinator_queries_all_endpoints(hass, mock_api_client):
     """Test storage coordinator queries all required endpoints."""
-    mock_response = {
+    # Now storage coordinator makes two queries:
+    # 1. Array/disk data
+    # 2. Shares data (optional, queried separately for resilience)
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {
@@ -223,19 +227,25 @@ async def test_storage_coordinator_queries_all_endpoints(hass, mock_api_client):
             },
             "disks": [],
         },
-        "disks": [],
     }
-    mock_api_client.query.return_value = mock_response
+    shares_response = {
+        "shares": [],
+    }
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     await coordinator._async_update_data()
 
-    # Verify query was called
-    assert mock_api_client.query.called
-    call_args = mock_api_client.query.call_args[0][0]
+    # Verify both queries were called
+    assert mock_api_client.query.call_count == 2
 
-    # Check that query includes array/disks fields
-    assert "array" in call_args.lower() or "disks" in call_args.lower()
+    # First call should be array/disk data
+    first_call_args = mock_api_client.query.call_args_list[0][0][0]
+    assert "array" in first_call_args.lower()
+
+    # Second call should be shares data
+    second_call_args = mock_api_client.query.call_args_list[1][0][0]
+    assert "shares" in second_call_args.lower()
 
 
 @pytest.mark.asyncio
@@ -427,9 +437,8 @@ async def test_storage_coordinator_connection_recovery(hass, mock_api_client, ca
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
 
-    # Now simulate recovery
-    mock_api_client.query.side_effect = None
-    mock_api_client.query.return_value = {
+    # Now simulate recovery - two queries: array data + shares data
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -437,8 +446,9 @@ async def test_storage_coordinator_connection_recovery(hass, mock_api_client, ca
             "parities": [],
             "caches": [],
         },
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     data = await coordinator._async_update_data()
     assert data is not None
@@ -808,7 +818,7 @@ async def test_storage_coordinator_parses_disks_with_type(hass, mock_api_client)
 @pytest.mark.asyncio
 async def test_storage_coordinator_parses_boot_device(hass, mock_api_client):
     """Test storage coordinator parses boot device."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -824,8 +834,9 @@ async def test_storage_coordinator_parses_boot_device(hass, mock_api_client):
             "parities": [],
             "caches": [],
         },
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -838,7 +849,7 @@ async def test_storage_coordinator_parses_boot_device(hass, mock_api_client):
 @pytest.mark.asyncio
 async def test_storage_coordinator_parses_shares(hass, mock_api_client):
     """Test storage coordinator parses shares."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -846,6 +857,8 @@ async def test_storage_coordinator_parses_shares(hass, mock_api_client):
             "parities": [],
             "caches": [],
         },
+    }
+    shares_response = {
         "shares": [
             {
                 "id": "share:1",
@@ -863,6 +876,7 @@ async def test_storage_coordinator_parses_shares(hass, mock_api_client):
             },
         ],
     }
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -875,7 +889,7 @@ async def test_storage_coordinator_parses_shares(hass, mock_api_client):
 @pytest.mark.asyncio
 async def test_storage_coordinator_handles_invalid_disk(hass, mock_api_client, caplog):
     """Test storage coordinator skips invalid disks."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -886,8 +900,9 @@ async def test_storage_coordinator_handles_invalid_disk(hass, mock_api_client, c
             "parities": [],
             "caches": [],
         },
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -899,7 +914,7 @@ async def test_storage_coordinator_handles_invalid_disk(hass, mock_api_client, c
 @pytest.mark.asyncio
 async def test_storage_coordinator_handles_invalid_share(hass, mock_api_client, caplog):
     """Test storage coordinator skips invalid shares."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -907,11 +922,14 @@ async def test_storage_coordinator_handles_invalid_share(hass, mock_api_client, 
             "parities": [],
             "caches": [],
         },
+    }
+    shares_response = {
         "shares": [
             {"id": "share:1", "name": "good"},
             {"invalid": "share_data"},  # Missing required fields
         ],
     }
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -921,9 +939,56 @@ async def test_storage_coordinator_handles_invalid_share(hass, mock_api_client, 
 
 
 @pytest.mark.asyncio
+async def test_storage_coordinator_handles_shares_query_failure(
+    hass, mock_api_client, caplog
+):
+    """
+    Test storage coordinator gracefully handles shares query failure.
+
+    This tests the fix for GitHub issue #132 where a share with null ID
+    causes the GraphQL query to fail with 'Cannot return null for
+    non-nullable field Share.id'.
+
+    The fix queries shares separately so array/disk data is still available
+    even when shares fail.
+    """
+    from custom_components.unraid.api import UnraidAPIError
+
+    array_response = {
+        "array": {
+            "state": "STARTED",
+            "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
+            "disks": [{"id": "disk:1", "idx": 1, "name": "Disk 1"}],
+            "parities": [],
+            "caches": [],
+        },
+    }
+
+    # Simulate shares query failure (like null ID error)
+    def side_effect_func(query: str) -> dict:
+        if "shares" in query.lower():
+            raise UnraidAPIError("Cannot return null for non-nullable field Share.id")
+        return array_response
+
+    mock_api_client.query.side_effect = side_effect_func
+
+    coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
+    data = await coordinator._async_update_data()
+
+    # Array data should still be available
+    assert data is not None
+    assert data.array_state == "STARTED"
+    assert len(data.disks) == 1
+    # Shares should be empty due to query failure
+    assert data.shares == []
+    # Debug log should indicate shares query failed
+    assert "Shares query failed" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_storage_coordinator_handles_none_boot(hass, mock_api_client):
     """Test storage coordinator handles missing boot device."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": {"kilobytes": {"total": 1000, "used": 500, "free": 500}},
@@ -932,8 +997,9 @@ async def test_storage_coordinator_handles_none_boot(hass, mock_api_client):
             "parities": [],
             "caches": [],
         },
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()
@@ -944,7 +1010,7 @@ async def test_storage_coordinator_handles_none_boot(hass, mock_api_client):
 @pytest.mark.asyncio
 async def test_storage_coordinator_handles_none_capacity(hass, mock_api_client):
     """Test storage coordinator handles missing capacity."""
-    mock_api_client.query.return_value = {
+    array_response = {
         "array": {
             "state": "STARTED",
             "capacity": None,
@@ -952,8 +1018,9 @@ async def test_storage_coordinator_handles_none_capacity(hass, mock_api_client):
             "parities": [],
             "caches": [],
         },
-        "shares": [],
     }
+    shares_response = {"shares": []}
+    mock_api_client.query.side_effect = [array_response, shares_response]
 
     coordinator = UnraidStorageCoordinator(hass, mock_api_client, "tower")
     data = await coordinator._async_update_data()

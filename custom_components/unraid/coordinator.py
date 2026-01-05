@@ -321,6 +321,35 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
         self._server_name = server_name
         self._previously_unavailable = False
 
+    async def _query_optional_shares(self) -> list[dict]:
+        """
+        Query shares separately to handle servers with problematic shares.
+
+        Some Unraid servers have shares where the GraphQL API returns null for
+        the 'id' field, causing the entire shares query to fail. By querying
+        shares separately, we can gracefully handle this and still return
+        array/disk data even if shares fail.
+        """
+        try:
+            shares_query = """
+                query {
+                    shares { id name size used free }
+                }
+            """
+            result = await self.api_client.query(shares_query)
+            return result.get("shares", []) or []
+        except (
+            UnraidAPIError,
+            aiohttp.ClientError,
+            RuntimeError,
+            ValueError,
+        ) as err:
+            # Log at debug level - shares are optional/nice-to-have
+            _LOGGER.debug(
+                "Shares query failed (will continue without share data): %s", err
+            )
+            return []
+
     async def _async_update_data(self) -> UnraidStorageData:
         """
         Fetch storage data from Unraid server.
@@ -333,7 +362,7 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
 
         """
         try:
-            # Build combined query for storage data
+            # Build query for array/disk data (shares queried separately)
             # Note: isSpinning is included to track disk standby state
             # This field is returned by the API without waking the disk
             #
@@ -342,6 +371,11 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             # sleeping disks. The array.disks already provides temp data
             # for spinning disks (returns null/0 for standby disks).
             # SMART status is a "nice to have" but not worth waking disks.
+            #
+            # NOTE: Shares are queried separately via _query_optional_shares()
+            # because some Unraid servers have shares with null IDs that cause
+            # the GraphQL query to fail entirely. By separating them, we can
+            # still get array/disk data even if shares fail.
             query = """
                 query {
                     array {
@@ -362,11 +396,13 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
                             fsSize fsUsed fsFree fsType isSpinning
                         }
                     }
-                    shares { id name size used free }
                 }
             """
 
             raw_data = await self.api_client.query(query)
+
+            # Query shares separately (gracefully handles failure)
+            shares_data = await self._query_optional_shares()
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:
@@ -376,7 +412,7 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
                 )
                 self._previously_unavailable = False
 
-            return self._parse_storage_data(raw_data)
+            return self._parse_storage_data(raw_data, shares_data)
 
         except aiohttp.ClientResponseError as err:
             self._previously_unavailable = True
@@ -434,8 +470,20 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
                 _LOGGER.warning("Failed to parse %s: %s - %s", name, item, e)
         return results
 
-    def _parse_storage_data(self, raw_data: dict[str, Any]) -> UnraidStorageData:
-        """Parse raw API data into typed UnraidStorageData."""
+    def _parse_storage_data(
+        self, raw_data: dict[str, Any], shares_data: list[dict[str, Any]]
+    ) -> UnraidStorageData:
+        """
+        Parse raw API data into typed UnraidStorageData.
+
+        Args:
+            raw_data: Raw array/disk data from GraphQL query
+            shares_data: Shares data from separate optional query
+
+        Returns:
+            Parsed storage data
+
+        """
         array_data = raw_data.get("array", {})
 
         # Parse disks with default type set BEFORE validation (not after)
@@ -466,5 +514,5 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             disks=disks,
             parities=parities,
             caches=caches,
-            shares=self._parse_model_list(raw_data.get("shares", []), Share, "share"),
+            shares=self._parse_model_list(shares_data, Share, "share"),
         )
