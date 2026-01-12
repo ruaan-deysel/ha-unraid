@@ -32,6 +32,9 @@ patterns. This is NON-NEGOTIABLE and serves as the foundation for all developmen
 - All integrations MUST pass Home Assistant's integration quality checklist
 - Code MUST follow Home Assistant's coding style and conventions
 - MUST use Home Assistant's recommended libraries and patterns
+- MUST NOT use deprecated Home Assistant APIs
+- MUST handle errors and exceptions according to Home Assistant guidelines
+- MUST use UNRAID-API python library for Unraid communication
 - MUST NOT introduce dependencies that conflict with HA core requirements
 - All changes MUST be tested against current stable HA releases before merge
 
