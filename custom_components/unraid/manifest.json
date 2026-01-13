@@ -10,6 +10,6 @@
   "issue_tracker": "https://github.com/ruaan-deysel/ha-unraid/issues",
   "requirements": ["unraid-api>=1.4.0"],
   "ssdp": [],
-  "version": "2026.01.1",
+  "version": "2026.02.0",
   "zeroconf": []
 }
