@@ -7,7 +7,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2026.1.0] - 2026-01-13
+## [2026.02.0] - 2026-01-13
 
 ### Added
 - **Custom Port Configuration**: Support for custom HTTP and HTTPS ports for users with reverse proxies or non-standard Unraid configurations ([#130](https://github.com/ruaan-deysel/ha-unraid/issues/130), [#131](https://github.com/ruaan-deysel/ha-unraid/issues/131))
