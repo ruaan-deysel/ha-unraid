@@ -19,12 +19,12 @@ from .const import (
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
-    DOMAIN,
-    PARALLEL_UPDATES,
 )
+from .entity import UnraidBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from unraid_api.models import ArrayDisk, Share, UPSDevice
 
     from . import UnraidConfigEntry
     from .coordinator import (
@@ -33,9 +33,11 @@ if TYPE_CHECKING:
         UnraidSystemCoordinator,
         UnraidSystemData,
     )
-    from .models import ArrayDisk, Share, UPSDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Coordinator handles all data updates, no parallel entity updates needed
+PARALLEL_UPDATES = 0
 
 # Export PARALLEL_UPDATES for Home Assistant
 __all__ = ["PARALLEL_UPDATES", "async_setup_entry"]
@@ -100,10 +102,9 @@ def format_uptime(uptime_dt: datetime | None) -> str | None:
     return ", ".join(parts)
 
 
-class UnraidSensorEntity(SensorEntity):
+class UnraidSensorEntity(UnraidBaseEntity, SensorEntity):
     """Base class for Unraid sensor entities."""
 
-    _attr_has_entity_name = True
     _attr_should_poll = False
 
     def __init__(
@@ -127,35 +128,13 @@ class UnraidSensorEntity(SensorEntity):
             server_info: Optional dict with manufacturer, model, sw_version, etc.
 
         """
-        self.coordinator = coordinator
-        self._server_uuid = server_uuid
-        self._server_name = server_name
-        self._attr_unique_id = f"{server_uuid}_{resource_id}"
-        self._attr_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, server_uuid)},
-            "name": server_name,
-            "manufacturer": server_info.get("manufacturer") if server_info else None,
-            "model": server_info.get("model") if server_info else None,
-            "serial_number": (
-                server_info.get("serial_number") if server_info else None
-            ),
-            "sw_version": server_info.get("sw_version") if server_info else None,
-            "hw_version": server_info.get("hw_version") if server_info else None,
-            "configuration_url": (
-                server_info.get("configuration_url") if server_info else None
-            ),
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return whether entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher when added to Home Assistant."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._async_write_ha_state)
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=resource_id,
+            name=name,
+            server_info=server_info,
         )
 
 
@@ -190,7 +169,7 @@ class CpuSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.metrics.cpu.percentTotal
+        return data.metrics.cpu_percent
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -198,11 +177,10 @@ class CpuSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return {}
-        cpu = data.info.cpu
         return {
-            "cpu_model": cpu.brand,
-            "cpu_cores": cpu.cores,
-            "cpu_threads": cpu.threads,
+            "cpu_model": data.info.cpu_brand,
+            "cpu_cores": data.info.cpu_cores,
+            "cpu_threads": data.info.cpu_threads,
         }
 
 
@@ -235,7 +213,7 @@ class RAMUsageSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.metrics.memory.percentTotal
+        return data.metrics.memory_percent
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -243,12 +221,11 @@ class RAMUsageSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return {}
-        mem = data.metrics.memory
         return {
-            "total": format_bytes(mem.total),
-            "used": format_bytes(mem.used),
-            "free": format_bytes(mem.free),
-            "available": format_bytes(mem.available),
+            "total": format_bytes(data.metrics.memory_total),
+            "used": format_bytes(data.metrics.memory_used),
+            "free": format_bytes(data.metrics.memory_free),
+            "available": format_bytes(data.metrics.memory_available),
         }
 
 
@@ -280,7 +257,7 @@ class TemperatureSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        temps = data.info.cpu.packages.temp
+        temps = data.metrics.cpu_temperatures
 
         if not temps:
             return None
@@ -317,7 +294,7 @@ class CpuPowerSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.info.cpu.packages.totalPower
+        return data.metrics.cpu_power
 
 
 class UptimeSensor(UnraidSensorEntity):
@@ -347,7 +324,7 @@ class UptimeSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return format_uptime(data.info.os.uptime)
+        return format_uptime(data.metrics.uptime)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -355,7 +332,7 @@ class UptimeSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return {}
-        uptime = data.info.os.uptime
+        uptime = data.metrics.uptime
         return {
             "boot_time": uptime.isoformat() if uptime else None,
         }

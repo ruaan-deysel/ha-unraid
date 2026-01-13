@@ -9,25 +9,21 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from custom_components.unraid.coordinator import UnraidStorageData, UnraidSystemData
-from custom_components.unraid.models import (
+from unraid_api.models import (
     ArrayCapacity,
     ArrayDisk,
     CapacityKilobytes,
-    CpuPackages,
-    CpuUtilization,
     DockerContainer,
-    InfoCpu,
-    InfoOs,
-    MemoryUtilization,
-    Metrics,
     ParityCheck,
+    ServerInfo,
     Share,
-    SystemInfo,
+    SystemMetrics,
+    UnraidArray,
     UPSDevice,
     VmDomain,
 )
+
+from custom_components.unraid.coordinator import UnraidStorageData, UnraidSystemData
 
 # Import pytest_homeassistant_custom_component's autouse fixtures
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -46,29 +42,43 @@ def make_system_data(
     memory_used: int | None = None,
     memory_total: int | None = None,
     memory_percent: float | None = None,
+    memory_free: int | None = None,
+    memory_available: int | None = None,
     cpu_temps: list[float] | None = None,
     cpu_power: float | None = None,
-    uptime: datetime | None = None,
+    uptime: str | datetime | None = None,  # ISO format string or datetime
     ups_devices: list[UPSDevice] | None = None,
     containers: list[DockerContainer] | None = None,
     vms: list[VmDomain] | None = None,
     notifications_unread: int = 0,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
+    from datetime import datetime
+
+    uptime_dt = None
+    if uptime:
+        if isinstance(uptime, str):
+            uptime_dt = datetime.fromisoformat(uptime)
+        else:
+            uptime_dt = uptime
+
     return UnraidSystemData(
-        info=SystemInfo(
-            cpu=InfoCpu(
-                packages=CpuPackages(temp=cpu_temps or [], totalPower=cpu_power)
-            ),
-            os=InfoOs(uptime=uptime),
+        info=ServerInfo(
+            uuid="test-uuid",
+            hostname="tower",
+            manufacturer="Lime Technology",
         ),
-        metrics=Metrics(
-            cpu=CpuUtilization(percentTotal=cpu_percent),
-            memory=MemoryUtilization(
-                total=memory_total,
-                used=memory_used,
-                percentTotal=memory_percent,
-            ),
+        metrics=SystemMetrics(
+            cpu_percent=cpu_percent,
+            cpu_temperature=cpu_temps[0] if cpu_temps else None,
+            cpu_temperatures=cpu_temps or [],
+            cpu_power=cpu_power,
+            memory_percent=memory_percent,
+            memory_total=memory_total,
+            memory_used=memory_used,
+            memory_free=memory_free,
+            memory_available=memory_available,
+            uptime=uptime_dt,
         ),
         ups_devices=ups_devices or [],
         containers=containers or [],
@@ -77,9 +87,13 @@ def make_system_data(
     )
 
 
+# Sentinel value for explicitly unset optional params
+_UNSET = object()
+
+
 def make_storage_data(
     array_state: str | None = None,
-    capacity: ArrayCapacity | None = None,
+    capacity: ArrayCapacity | None | object = _UNSET,
     parity_status: ParityCheck | None = None,
     disks: list[ArrayDisk] | None = None,
     parities: list[ArrayDisk] | None = None,
@@ -88,20 +102,27 @@ def make_storage_data(
     boot: ArrayDisk | None = None,
 ) -> UnraidStorageData:
     """Create a UnraidStorageData instance for testing."""
-    # Provide default capacity if not specified and array_state is set
-    if capacity is None and array_state is not None:
+    # Provide default capacity only if not explicitly set
+    if capacity is _UNSET:
         capacity = ArrayCapacity(
             kilobytes=CapacityKilobytes(total=1000, used=500, free=500)
         )
-    return UnraidStorageData(
-        array_state=array_state,
+    if parity_status is None:
+        parity_status = ParityCheck()
+
+    # Create UnraidArray and wrap in UnraidStorageData
+    array = UnraidArray(
+        state=array_state,
         capacity=capacity,
-        parity_status=parity_status,
+        parityCheckStatus=parity_status,
         disks=disks or [],
         parities=parities or [],
         caches=caches or [],
-        shares=shares or [],
         boot=boot,
+    )
+    return UnraidStorageData(
+        array=array,
+        shares=shares or [],
     )
 
 

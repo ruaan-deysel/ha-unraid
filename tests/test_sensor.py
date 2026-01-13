@@ -8,13 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.entity import EntityCategory
-
-from custom_components.unraid.const import DOMAIN
-from custom_components.unraid.coordinator import (
-    UnraidStorageCoordinator,
-    UnraidSystemCoordinator,
-)
-from custom_components.unraid.models import (
+from unraid_api.models import (
     ArrayCapacity,
     ArrayDisk,
     CapacityKilobytes,
@@ -23,6 +17,12 @@ from custom_components.unraid.models import (
     UPSBattery,
     UPSDevice,
     UPSPower,
+)
+
+from custom_components.unraid.const import DOMAIN
+from custom_components.unraid.coordinator import (
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
 )
 from custom_components.unraid.sensor import (
     ActiveNotificationsSensor,
@@ -302,10 +302,9 @@ class TestRAMSensor:
             memory_total=17179869184,  # 16 GB
             memory_used=8589934592,  # 8 GB
             memory_percent=50.0,
+            memory_free=8589934592,  # 8 GB
+            memory_available=10000000000,  # ~9.3 GB
         )
-        # Add free and available values
-        coordinator.data.metrics.memory.free = 8589934592
-        coordinator.data.metrics.memory.available = 10000000000
 
         sensor = RAMUsageSensor(
             coordinator=coordinator,
@@ -1727,10 +1726,14 @@ class TestArraySensorNoneData:
 
         assert sensor.native_value is None
 
-    def test_array_usage_sensor_none_capacity(self) -> None:
-        """Test array usage sensor returns None when capacity is None."""
+    def test_array_usage_sensor_zero_capacity(self) -> None:
+        """Test array usage sensor returns 0 when capacity is zero."""
+        from unraid_api.models import ArrayCapacity, CapacityKilobytes
+
         coordinator = MagicMock(spec=UnraidStorageCoordinator)
-        coordinator.data = make_storage_data(capacity=None)
+        coordinator.data = make_storage_data(
+            capacity=ArrayCapacity(kilobytes=CapacityKilobytes(total=0, used=0, free=0))
+        )
 
         sensor = ArrayUsageSensor(
             coordinator=coordinator,
@@ -1738,8 +1741,10 @@ class TestArraySensorNoneData:
             server_name="test-server",
         )
 
-        assert sensor.native_value is None
-        assert sensor.extra_state_attributes == {}
+        # Zero capacity returns 0.0 percent (not None)
+        assert sensor.native_value == 0.0
+        # Attributes still available with zero values
+        assert "total" in sensor.extra_state_attributes
 
 
 class TestParityProgressSensorNoneData:

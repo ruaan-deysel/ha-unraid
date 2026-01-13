@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -10,6 +10,7 @@ from homeassistant.const import CONF_API_KEY, CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from unraid_api.models import ServerInfo
 
 from custom_components.unraid.config_flow import (
     CONF_HTTP_PORT,
@@ -40,20 +41,21 @@ def _mock_api_client(
     hostname: str = "tower",
     unraid_version: str = "7.2.0",
     api_version: str = "4.29.2",
-) -> AsyncMock:
+) -> MagicMock:
     """Create a mock API client with standard responses."""
-    mock_api = AsyncMock()
+    mock_api = MagicMock()
     mock_api.test_connection = AsyncMock(return_value=True)
     mock_api.get_version = AsyncMock(
         return_value={"unraid": unraid_version, "api": api_version}
     )
-    mock_api.query = AsyncMock(
-        return_value={
-            "info": {
-                "system": {"uuid": uuid},
-                "os": {"hostname": hostname},
-            }
-        }
+    # Library's get_server_info returns ServerInfo model
+    mock_api.get_server_info = AsyncMock(
+        return_value=ServerInfo(
+            uuid=uuid,
+            hostname=hostname,
+            sw_version=unraid_version,
+            api_version=api_version,
+        )
     )
     mock_api.close = AsyncMock()
     return mock_api
@@ -78,7 +80,7 @@ class TestConfigFlow:
     ) -> None:
         """Test successful server connection creates config entry."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 
@@ -99,7 +101,7 @@ class TestConfigFlow:
     async def test_invalid_credentials_error(self, hass: HomeAssistant) -> None:
         """Test invalid API key shows authentication error."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
@@ -123,7 +125,7 @@ class TestConfigFlow:
     async def test_unreachable_server_error(self, hass: HomeAssistant) -> None:
         """Test unreachable server shows connection error."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -151,7 +153,7 @@ class TestConfigFlow:
     async def test_unsupported_version_error(self, hass: HomeAssistant) -> None:
         """Test old Unraid version shows version error."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(return_value=True)
@@ -179,7 +181,7 @@ class TestConfigFlow:
         """Test duplicate server UUID is rejected."""
         # First entry
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client(uuid="same-server-uuid")
 
@@ -196,7 +198,7 @@ class TestConfigFlow:
 
         # Second entry with same UUID (different host but same server)
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client(uuid="same-server-uuid")
 
@@ -249,7 +251,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(side_effect=RuntimeError("Unexpected"))
@@ -291,7 +293,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -325,7 +327,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             conn_key = MagicMock()
@@ -355,17 +357,17 @@ class TestConfigFlow:
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-        # Track the number of UnraidAPIClient instantiations and their verify_ssl values
+        # Track the number of UnraidClient instantiations and their verify_ssl values
         call_count = 0
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
 
-            def create_client(**kwargs: object) -> AsyncMock:
+            def create_client(**kwargs: object) -> MagicMock:
                 nonlocal call_count
                 call_count += 1
-                mock_api = AsyncMock()
+                mock_api = MagicMock()
                 mock_api.close = AsyncMock()
 
                 # First call (verify_ssl=True) fails with SSL error
@@ -379,13 +381,14 @@ class TestConfigFlow:
                     mock_api.get_version = AsyncMock(
                         return_value={"unraid": "7.2.0", "api": "4.29.2"}
                     )
-                    mock_api.query = AsyncMock(
-                        return_value={
-                            "info": {
-                                "system": {"uuid": "test-uuid"},
-                                "os": {"hostname": "tower"},
-                            }
-                        }
+                    # Library's get_server_info returns ServerInfo model
+                    mock_api.get_server_info = AsyncMock(
+                        return_value=ServerInfo(
+                            uuid="test-uuid",
+                            hostname="tower",
+                            sw_version="7.2.0",
+                            api_version="4.29.2",
+                        )
                     )
 
                 return mock_api
@@ -411,7 +414,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
@@ -437,7 +440,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
@@ -463,7 +466,7 @@ class TestConfigFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -505,7 +508,7 @@ class TestConfigFlow:
     ) -> None:
         """Test successful connection with custom ports creates config entry."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 
@@ -540,7 +543,7 @@ class TestConfigFlow:
     ) -> None:
         """Test that default ports 80/443 are used when not specified."""
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 
@@ -618,7 +621,7 @@ class TestReauthFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 
@@ -654,7 +657,7 @@ class TestReauthFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
@@ -712,7 +715,7 @@ class TestReauthFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -754,7 +757,7 @@ class TestReauthFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock()
@@ -795,7 +798,7 @@ class TestReauthFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(side_effect=RuntimeError("Unexpected"))
@@ -849,7 +852,7 @@ class TestOptionsFlow:
         from dataclasses import dataclass
         from unittest.mock import MagicMock
 
-        from custom_components.unraid.models import UPSDevice
+        from unraid_api.models import UPSDevice
 
         entry = MockConfigEntry(
             domain=DOMAIN,
@@ -927,7 +930,7 @@ class TestOptionsFlow:
         from dataclasses import dataclass
         from unittest.mock import MagicMock
 
-        from custom_components.unraid.models import UPSDevice
+        from unraid_api.models import UPSDevice
 
         entry = MockConfigEntry(
             domain=DOMAIN,
@@ -1026,7 +1029,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 
@@ -1062,7 +1065,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -1148,7 +1151,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             import aiohttp
 
@@ -1191,7 +1194,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock()
@@ -1231,7 +1234,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(side_effect=RuntimeError("Unexpected"))
@@ -1305,7 +1308,7 @@ class TestReconfigureFlow:
         )
 
         with patch(
-            "custom_components.unraid.config_flow.UnraidAPIClient"
+            "custom_components.unraid.config_flow.UnraidClient"
         ) as MockAPIClient:
             MockAPIClient.return_value = _mock_api_client()
 

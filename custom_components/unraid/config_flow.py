@@ -7,12 +7,20 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import voluptuous as vol
+from awesomeversion import AwesomeVersion
 from homeassistant import config_entries
+from homeassistant.config_entries import OptionsFlowWithReload
 from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_VERIFY_SSL
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
+from unraid_api import UnraidClient
+from unraid_api.exceptions import (
+    UnraidAuthenticationError,
+    UnraidConnectionError,
+    UnraidSSLError,
+    UnraidTimeoutError,
+)
 
-from .api import UnraidAPIClient
 from .const import (
     CONF_STORAGE_INTERVAL,
     CONF_SYSTEM_INTERVAL,
@@ -193,7 +201,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # First attempt: try with SSL verification enabled
         # This works for: HTTP-only mode (No SSL) and Strict mode (myunraid.net)
-        api_client = UnraidAPIClient(
+        api_client = UnraidClient(
             host=host,
             api_key=api_key,
             http_port=http_port,
@@ -212,7 +220,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "SSL verification failed, retrying with verify_ssl=False: %s", err
                 )
                 await api_client.close()
-                api_client = UnraidAPIClient(
+                api_client = UnraidClient(
                     host=host,
                     api_key=api_key,
                     http_port=http_port,
@@ -234,18 +242,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         finally:
             await api_client.close()
 
-    async def _validate_connection(
-        self, api_client: UnraidAPIClient, host: str
-    ) -> None:
+    async def _validate_connection(self, api_client: UnraidClient, host: str) -> None:
         """Validate connection, version, and fetch server info."""
         try:
             # Test connection
             await api_client.test_connection()
 
-            # Get version and server info
+            # Get version - library returns dict with "api" and "unraid" keys
             version_info = await api_client.get_version()
 
-            # Check version - api.py returns "api" not "api_version"
+            # Check version
             api_version = version_info.get("api", "0.0.0")
             unraid_version = version_info.get("unraid", "0.0.0")
 
@@ -262,6 +268,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         except (InvalidAuthError, CannotConnectError, UnsupportedVersionError):
             raise
+        except UnraidAuthenticationError as err:
+            msg = "Invalid API key or insufficient permissions"
+            raise InvalidAuthError(msg) from err
+        except UnraidSSLError as err:
+            msg = f"SSL certificate error for {host}: {err}"
+            raise CannotConnectError(msg) from err
+        except (UnraidConnectionError, UnraidTimeoutError) as err:
+            msg = f"Cannot connect to {host} - {err}"
+            raise CannotConnectError(msg) from err
         except aiohttp.ClientResponseError as err:
             self._handle_http_error(err, host)
         except aiohttp.ClientConnectorError as err:
@@ -273,23 +288,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as err:  # noqa: BLE001
             self._handle_generic_error(err)
 
-    async def _fetch_server_info(self, api_client: UnraidAPIClient, host: str) -> None:
+    async def _fetch_server_info(self, api_client: UnraidClient, host: str) -> None:
         """Fetch server UUID and hostname for unique identification."""
-        info_query = """
-            query {
-                info {
-                    system { uuid }
-                    os { hostname }
-                }
-            }
-        """
-        info_data = await api_client.query(info_query)
-        info = info_data.get("info", {})
-        system = info.get("system", {})
-        os_info = info.get("os", {})
+        # Use library's typed get_server_info() method
+        server_info = await api_client.get_server_info()
 
-        self._server_uuid = system.get("uuid")
-        self._server_hostname = os_info.get("hostname") or host
+        self._server_uuid = server_info.uuid
+        self._server_hostname = server_info.hostname or host
 
     def _handle_http_error(self, err: aiohttp.ClientResponseError, host: str) -> None:
         """Handle HTTP errors from API client."""
@@ -312,16 +317,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         raise CannotConnectError(f"Unexpected error: {err}") from err
 
     def _is_supported_version(self, api_version: str) -> bool:
-        """Check if API version is supported using proper version parsing."""
+        """Check if API version is supported using AwesomeVersion."""
         try:
-            from packaging.version import InvalidVersion, Version
-
-            # Parse versions properly handling suffixes like "-beta", "a", etc.
-            current = Version(api_version)
-            minimum = Version(MIN_API_VERSION)
+            current = AwesomeVersion(api_version)
+            minimum = AwesomeVersion(MIN_API_VERSION)
             return current >= minimum
-        except InvalidVersion:
-            # Fallback to basic comparison if packaging fails
+        except Exception:  # noqa: BLE001
+            # Fallback to assuming supported if parsing fails
             _LOGGER.warning(
                 "Could not parse API version '%s', assuming supported", api_version
             )
@@ -456,8 +458,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
-class UnraidOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle Unraid options flow."""
+class UnraidOptionsFlowHandler(OptionsFlowWithReload):
+    """Handle Unraid options flow with automatic reload on changes."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

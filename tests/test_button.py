@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from unraid_api.models import ArrayDisk
 
 from custom_components.unraid.button import (
     ArrayStartButton,
@@ -15,7 +16,6 @@ from custom_components.unraid.button import (
     ParityCheckStartCorrectionButton,
     ParityCheckStopButton,
 )
-from custom_components.unraid.models import ArrayDisk
 
 
 @pytest.fixture
@@ -328,8 +328,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to start array"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "array_start_failed"
 
     @pytest.mark.asyncio
     async def test_array_stop_button_error(self, mock_api_client):
@@ -342,8 +343,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to stop array"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "array_stop_failed"
 
     @pytest.mark.asyncio
     async def test_parity_check_start_button_error(self, mock_api_client):
@@ -358,8 +360,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to start parity check"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "parity_check_start_failed"
 
     @pytest.mark.asyncio
     async def test_parity_check_correction_button_error(self, mock_api_client):
@@ -374,10 +377,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(
-            HomeAssistantError, match="Failed to start correcting parity check"
-        ):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "parity_check_start_failed"
 
     @pytest.mark.asyncio
     async def test_parity_check_pause_button_error(self, mock_api_client):
@@ -392,8 +394,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to pause parity check"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "parity_check_pause_failed"
 
     @pytest.mark.asyncio
     async def test_parity_check_resume_button_error(self, mock_api_client):
@@ -408,8 +411,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to resume parity check"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "parity_check_resume_failed"
 
     @pytest.mark.asyncio
     async def test_parity_check_stop_button_error(self, mock_api_client):
@@ -424,8 +428,9 @@ class TestButtonErrorHandling:
             server_uuid="test-uuid",
             server_name="Test Server",
         )
-        with pytest.raises(HomeAssistantError, match="Failed to stop parity check"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "parity_check_stop_failed"
 
     @pytest.mark.asyncio
     async def test_disk_spin_up_button_error(
@@ -442,8 +447,9 @@ class TestButtonErrorHandling:
             server_name="Test Server",
             disk=mock_disk,
         )
-        with pytest.raises(HomeAssistantError, match="Failed to spin up disk"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "disk_spin_up_failed"
 
     @pytest.mark.asyncio
     async def test_disk_spin_down_button_error(
@@ -460,8 +466,9 @@ class TestButtonErrorHandling:
             server_name="Test Server",
             disk=mock_disk,
         )
-        with pytest.raises(HomeAssistantError, match="Failed to spin down disk"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await button.async_press()
+        assert exc_info.value.translation_key == "disk_spin_down_failed"
 
 
 # =============================================================================
@@ -513,25 +520,24 @@ class TestButtonSetupEntry:
     @pytest.mark.asyncio
     async def test_setup_entry_creates_disk_buttons(self, hass):
         """Test that setup creates disk spin buttons when storage data exists."""
+        from unraid_api.models import ArrayDisk, UnraidArray
+
         from custom_components.unraid.button import async_setup_entry
         from custom_components.unraid.coordinator import UnraidStorageData
-        from custom_components.unraid.models import ArrayDisk
 
         mock_api = MagicMock()
 
-        # Create mock storage data with disks
-        storage_data = UnraidStorageData(
+        # Create mock storage data with disks using new structure
+        array = UnraidArray(
+            state="STARTED",
             disks=[
                 ArrayDisk(id="disk:1", idx=1, name="Disk 1"),
                 ArrayDisk(id="disk:2", idx=2, name="Disk 2"),
             ],
             parities=[ArrayDisk(id="parity:1", idx=0, name="Parity")],
             caches=[ArrayDisk(id="cache:1", idx=0, name="Cache")],
-            shares=[],
-            array_state="STARTED",
-            capacity=None,
-            parity_status=None,
         )
+        storage_data = UnraidStorageData(array=array)
 
         mock_storage_coordinator = MagicMock()
         mock_storage_coordinator.data = storage_data

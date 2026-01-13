@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
+from unraid_api.models import DockerContainer, VmDomain
 
 from custom_components.unraid import UnraidRuntimeData
 from custom_components.unraid.coordinator import UnraidSystemCoordinator
-from custom_components.unraid.models import DockerContainer, VmDomain
 from custom_components.unraid.switch import (
     DockerContainerSwitch,
     VirtualMachineSwitch,
@@ -440,8 +440,9 @@ class TestVirtualMachineSwitch:
             vm=vm,
         )
 
-        with pytest.raises(HomeAssistantError, match="Failed to start VM"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await switch.async_turn_on()
+        assert exc_info.value.translation_key == "vm_start_failed"
 
     @pytest.mark.asyncio
     async def test_vm_turn_off_success(self) -> None:
@@ -488,8 +489,9 @@ class TestVirtualMachineSwitch:
             vm=vm,
         )
 
-        with pytest.raises(HomeAssistantError, match="Failed to stop VM"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await switch.async_turn_off()
+        assert exc_info.value.translation_key == "vm_stop_failed"
 
 
 class TestDockerContainerSwitchAsync:
@@ -542,8 +544,9 @@ class TestDockerContainerSwitchAsync:
             container=container,
         )
 
-        with pytest.raises(HomeAssistantError, match="Failed to start container"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await switch.async_turn_on()
+        assert exc_info.value.translation_key == "container_start_failed"
 
     @pytest.mark.asyncio
     async def test_container_turn_off_success(self) -> None:
@@ -590,8 +593,9 @@ class TestDockerContainerSwitchAsync:
             container=container,
         )
 
-        with pytest.raises(HomeAssistantError, match="Failed to stop container"):
+        with pytest.raises(HomeAssistantError) as exc_info:
             await switch.async_turn_off()
+        assert exc_info.value.translation_key == "container_stop_failed"
 
     def test_container_no_data(self) -> None:
         """Test container switch when coordinator has no data."""

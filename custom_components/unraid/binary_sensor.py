@@ -11,14 +11,12 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import (
-    DOMAIN,
-    PARALLEL_UPDATES,
-    STATE_ARRAY_STARTED,
-)
+from .const import STATE_ARRAY_STARTED
+from .entity import UnraidBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from unraid_api.models import ArrayDisk, UPSDevice
 
     from . import UnraidConfigEntry
     from .coordinator import (
@@ -27,23 +25,24 @@ if TYPE_CHECKING:
         UnraidSystemCoordinator,
         UnraidSystemData,
     )
-    from .models import ArrayDisk, UPSDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Coordinator handles all data updates, no parallel entity updates needed
+PARALLEL_UPDATES = 0
 
 # Export PARALLEL_UPDATES for Home Assistant
 __all__ = ["PARALLEL_UPDATES", "async_setup_entry"]
 
 
-class UnraidBinarySensorEntity(BinarySensorEntity):
+class UnraidBinarySensorEntity(UnraidBaseEntity, BinarySensorEntity):
     """Base class for Unraid binary sensor entities."""
 
-    _attr_has_entity_name = True
     _attr_should_poll = False
 
     def __init__(
         self,
-        coordinator: UnraidStorageCoordinator,
+        coordinator: UnraidStorageCoordinator | UnraidSystemCoordinator,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -62,35 +61,13 @@ class UnraidBinarySensorEntity(BinarySensorEntity):
             server_info: Optional dict with manufacturer, model, sw_version, etc.
 
         """
-        self.coordinator = coordinator
-        self._server_uuid = server_uuid
-        self._server_name = server_name
-        self._attr_unique_id = f"{server_uuid}_{resource_id}"
-        self._attr_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, server_uuid)},
-            "name": server_name,
-            "manufacturer": server_info.get("manufacturer") if server_info else None,
-            "model": server_info.get("model") if server_info else None,
-            "serial_number": (
-                server_info.get("serial_number") if server_info else None
-            ),
-            "sw_version": server_info.get("sw_version") if server_info else None,
-            "hw_version": server_info.get("hw_version") if server_info else None,
-            "configuration_url": (
-                server_info.get("configuration_url") if server_info else None
-            ),
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return whether entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher when added to Home Assistant."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._async_write_ha_state)
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=resource_id,
+            name=name,
+            server_info=server_info,
         )
 
 
@@ -372,11 +349,8 @@ class ParityValidBinarySensor(UnraidBinarySensorEntity):
 # =============================================================================
 
 
-class UnraidSystemBinarySensor(BinarySensorEntity):
+class UnraidSystemBinarySensor(UnraidBinarySensorEntity):
     """Base class for Unraid system binary sensor entities."""
-
-    _attr_has_entity_name = True
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -388,35 +362,13 @@ class UnraidSystemBinarySensor(BinarySensorEntity):
         server_info: dict | None = None,
     ) -> None:
         """Initialize system binary sensor entity."""
-        self.coordinator = coordinator
-        self._server_uuid = server_uuid
-        self._server_name = server_name
-        self._attr_unique_id = f"{server_uuid}_{resource_id}"
-        self._attr_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, server_uuid)},
-            "name": server_name,
-            "manufacturer": server_info.get("manufacturer") if server_info else None,
-            "model": server_info.get("model") if server_info else None,
-            "serial_number": (
-                server_info.get("serial_number") if server_info else None
-            ),
-            "sw_version": server_info.get("sw_version") if server_info else None,
-            "hw_version": server_info.get("hw_version") if server_info else None,
-            "configuration_url": (
-                server_info.get("configuration_url") if server_info else None
-            ),
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return whether entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher when added to Home Assistant."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._async_write_ha_state)
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=resource_id,
+            name=name,
+            server_info=server_info,
         )
 
 

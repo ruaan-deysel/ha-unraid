@@ -10,6 +10,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-yaml
+        exclude: ^config/blueprints/
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-added-large-files

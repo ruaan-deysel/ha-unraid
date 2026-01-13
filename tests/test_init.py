@@ -9,6 +9,7 @@ from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_VERIFY_
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from unraid_api.models import ServerInfo
 
 from custom_components.unraid import (
     PLATFORMS,
@@ -23,30 +24,26 @@ from custom_components.unraid.const import (
 )
 
 
-def _create_mock_api_client() -> AsyncMock:
+def _create_mock_api_client() -> MagicMock:
     """Create a mock API client with standard responses."""
-    mock_api = AsyncMock()
+    mock_api = MagicMock()
     mock_api.test_connection = AsyncMock(return_value=True)
-    mock_api.query = AsyncMock(
-        return_value={
-            "info": {
-                "system": {
-                    "uuid": "test-uuid-123",
-                    "manufacturer": "Test",
-                    "model": "Server",
-                },
-                "baseboard": {"manufacturer": "ASUS", "model": "Pro WS"},
-                "os": {
-                    "hostname": "tower",
-                    "distro": "Unraid",
-                    "release": "7.2.0",
-                    "kernel": "6.1.0",
-                    "arch": "x86_64",
-                },
-                "versions": {"core": {"unraid": "7.2.0", "api": "4.29.2"}},
-            },
-            "registration": {"type": "Pro", "state": "valid"},
-        }
+    # Library's get_server_info returns ServerInfo model
+    mock_api.get_server_info = AsyncMock(
+        return_value=ServerInfo(
+            uuid="test-uuid-123",
+            hostname="tower",
+            sw_version="7.2.0",
+            api_version="4.29.2",
+            manufacturer="Test",
+            serial_number="12345",
+            hw_manufacturer="ASUS",
+            hw_model="Pro WS",
+            os_distro="Unraid",
+            os_release="7.2.0",
+            os_arch="x86_64",
+            license_type="Pro",
+        )
     )
     mock_api.close = AsyncMock()
     return mock_api
@@ -83,7 +80,7 @@ class TestAsyncSetupEntry:
         entry.add_to_hass(hass)
 
         with (
-            patch("custom_components.unraid.UnraidAPIClient") as MockAPIClient,
+            patch("custom_components.unraid.UnraidClient") as MockAPIClient,
             patch(
                 "custom_components.unraid.UnraidSystemCoordinator"
             ) as MockSystemCoord,
@@ -111,6 +108,8 @@ class TestAsyncSetupEntry:
 
     async def test_setup_with_auth_error(self, hass: HomeAssistant) -> None:
         """Test setup fails with authentication error."""
+        from unraid_api.exceptions import UnraidAuthenticationError
+
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -123,12 +122,12 @@ class TestAsyncSetupEntry:
         entry.add_to_hass(hass)
 
         with (
-            patch("custom_components.unraid.UnraidAPIClient") as MockAPIClient,
+            patch("custom_components.unraid.UnraidClient") as MockAPIClient,
             patch("custom_components.unraid.async_get_clientsession") as mock_session,
         ):
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
-                side_effect=Exception("401 Unauthorized")
+                side_effect=UnraidAuthenticationError("Invalid API key")
             )
             mock_api.close = AsyncMock()
             MockAPIClient.return_value = mock_api
@@ -142,6 +141,8 @@ class TestAsyncSetupEntry:
 
     async def test_setup_with_connection_error(self, hass: HomeAssistant) -> None:
         """Test setup fails with connection error."""
+        from unraid_api.exceptions import UnraidConnectionError
+
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -154,12 +155,12 @@ class TestAsyncSetupEntry:
         entry.add_to_hass(hass)
 
         with (
-            patch("custom_components.unraid.UnraidAPIClient") as MockAPIClient,
+            patch("custom_components.unraid.UnraidClient") as MockAPIClient,
             patch("custom_components.unraid.async_get_clientsession") as mock_session,
         ):
             mock_api = AsyncMock()
             mock_api.test_connection = AsyncMock(
-                side_effect=Exception("Connection refused")
+                side_effect=UnraidConnectionError("Connection refused")
             )
             mock_api.close = AsyncMock()
             MockAPIClient.return_value = mock_api
@@ -168,8 +169,8 @@ class TestAsyncSetupEntry:
             with pytest.raises(ConfigEntryNotReady):
                 await async_setup_entry(hass, entry)
 
-    async def test_setup_uses_baseboard_fallback(self, hass: HomeAssistant) -> None:
-        """Test setup captures baseboard info for hw_manufacturer/hw_model."""
+    async def test_setup_uses_hardware_info(self, hass: HomeAssistant) -> None:
+        """Test setup captures hardware info from library's ServerInfo model."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             title="tower",
@@ -181,26 +182,24 @@ class TestAsyncSetupEntry:
         )
         entry.add_to_hass(hass)
 
-        mock_api = _create_mock_api_client()
-        # Override query to return empty system info but valid baseboard
-        mock_api.query = AsyncMock(
-            return_value={
-                "info": {
-                    "system": {
-                        "uuid": "test-uuid",
-                        "manufacturer": None,
-                        "model": None,
-                    },
-                    "baseboard": {"manufacturer": "Supermicro", "model": "X11SSH-F"},
-                    "os": {"hostname": "tower"},
-                    "versions": {"core": {"unraid": "7.2.0", "api": "4.29.2"}},
-                },
-                "registration": {},
-            }
+        mock_api = MagicMock()
+        mock_api.test_connection = AsyncMock(return_value=True)
+        # Library's get_server_info returns ServerInfo with hardware info
+        mock_api.get_server_info = AsyncMock(
+            return_value=ServerInfo(
+                uuid="test-uuid",
+                hostname="tower",
+                sw_version="7.2.0",
+                api_version="4.29.2",
+                manufacturer="Supermicro",  # Now comes directly from library
+                hw_manufacturer="Supermicro",
+                hw_model="X11SSH-F",
+            )
         )
+        mock_api.close = AsyncMock()
 
         with (
-            patch("custom_components.unraid.UnraidAPIClient") as MockAPIClient,
+            patch("custom_components.unraid.UnraidClient") as MockAPIClient,
             patch(
                 "custom_components.unraid.UnraidSystemCoordinator"
             ) as MockSystemCoord,
@@ -219,10 +218,10 @@ class TestAsyncSetupEntry:
             ):
                 await async_setup_entry(hass, entry)
 
-        # DeviceInfo should show Lime Technology and Unraid version
-        assert entry.runtime_data.server_info["manufacturer"] == "Lime Technology"
+        # DeviceInfo should show manufacturer and Unraid version model
+        assert entry.runtime_data.server_info["manufacturer"] == "Supermicro"
         assert entry.runtime_data.server_info["model"] == "Unraid 7.2.0"
-        # Hardware info should be captured from baseboard fallback
+        # Hardware info should be captured from library model
         assert entry.runtime_data.server_info["hw_manufacturer"] == "Supermicro"
         assert entry.runtime_data.server_info["hw_model"] == "X11SSH-F"
 
@@ -241,7 +240,7 @@ class TestAsyncSetupEntry:
         entry.add_to_hass(hass)
 
         with (
-            patch("custom_components.unraid.UnraidAPIClient") as MockAPIClient,
+            patch("custom_components.unraid.UnraidClient") as MockAPIClient,
             patch(
                 "custom_components.unraid.UnraidSystemCoordinator"
             ) as MockSystemCoord,

@@ -7,35 +7,41 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import (
-    DOMAIN,
-    PARALLEL_UPDATES,
-)
+from .const import DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from unraid_api import UnraidClient
+    from unraid_api.models import ArrayDisk
 
     from . import UnraidConfigEntry
-    from .api import UnraidAPIClient
     from .coordinator import UnraidStorageCoordinator, UnraidStorageData
-    from .models import ArrayDisk
 
 _LOGGER = logging.getLogger(__name__)
+
+# Buttons make API calls, limit to one at a time to avoid overloading server
+PARALLEL_UPDATES = 1
 
 # Export PARALLEL_UPDATES for Home Assistant
 __all__ = ["PARALLEL_UPDATES", "async_setup_entry"]
 
 
 class UnraidButtonEntity(ButtonEntity):
-    """Base class for Unraid button entities."""
+    """
+    Base class for Unraid button entities.
+
+    Buttons are action-only entities that don't track state from a coordinator.
+    They use the API client directly for mutations (start/stop array, etc).
+    """
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -48,20 +54,19 @@ class UnraidButtonEntity(ButtonEntity):
         self._server_name = server_name
         self._attr_unique_id = f"{server_uuid}_{resource_id}"
         self._attr_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, server_uuid)},
-            "name": server_name,
-            "manufacturer": server_info.get("manufacturer") if server_info else None,
-            "model": server_info.get("model") if server_info else None,
-            "serial_number": (
-                server_info.get("serial_number") if server_info else None
-            ),
-            "sw_version": server_info.get("sw_version") if server_info else None,
-            "hw_version": server_info.get("hw_version") if server_info else None,
-            "configuration_url": (
+        # Use DeviceInfo for consistent device registration
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, server_uuid)},
+            name=server_name,
+            manufacturer=server_info.get("manufacturer") if server_info else None,
+            model=server_info.get("model") if server_info else None,
+            serial_number=server_info.get("serial_number") if server_info else None,
+            sw_version=server_info.get("sw_version") if server_info else None,
+            hw_version=server_info.get("hw_version") if server_info else None,
+            configuration_url=(
                 server_info.get("configuration_url") if server_info else None
             ),
-        }
+        )
 
 
 # =============================================================================
@@ -77,7 +82,7 @@ class ArrayStartButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -98,7 +103,11 @@ class ArrayStartButton(UnraidButtonEntity):
             _LOGGER.debug("Array start command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to start array: %s", err)
-            raise HomeAssistantError(f"Failed to start array: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="array_start_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 class ArrayStopButton(UnraidButtonEntity):
@@ -110,7 +119,7 @@ class ArrayStopButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -131,7 +140,11 @@ class ArrayStopButton(UnraidButtonEntity):
             _LOGGER.debug("Array stop command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to stop array: %s", err)
-            raise HomeAssistantError(f"Failed to stop array: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="array_stop_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 # =============================================================================
@@ -147,7 +160,7 @@ class ParityCheckStartButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -169,7 +182,11 @@ class ParityCheckStartButton(UnraidButtonEntity):
             _LOGGER.debug("Parity check start command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to start parity check: %s", err)
-            raise HomeAssistantError(f"Failed to start parity check: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="parity_check_start_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 class ParityCheckStartCorrectionButton(UnraidButtonEntity):
@@ -180,7 +197,7 @@ class ParityCheckStartCorrectionButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -203,7 +220,9 @@ class ParityCheckStartCorrectionButton(UnraidButtonEntity):
         except Exception as err:
             _LOGGER.error("Failed to start correcting parity check: %s", err)
             raise HomeAssistantError(
-                f"Failed to start correcting parity check: {err}"
+                translation_domain=DOMAIN,
+                translation_key="parity_check_start_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
 
 
@@ -215,7 +234,7 @@ class ParityCheckPauseButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -236,7 +255,11 @@ class ParityCheckPauseButton(UnraidButtonEntity):
             _LOGGER.debug("Parity check pause command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to pause parity check: %s", err)
-            raise HomeAssistantError(f"Failed to pause parity check: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="parity_check_pause_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 class ParityCheckResumeButton(UnraidButtonEntity):
@@ -247,7 +270,7 @@ class ParityCheckResumeButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -268,7 +291,11 @@ class ParityCheckResumeButton(UnraidButtonEntity):
             _LOGGER.debug("Parity check resume command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to resume parity check: %s", err)
-            raise HomeAssistantError(f"Failed to resume parity check: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="parity_check_resume_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 class ParityCheckStopButton(UnraidButtonEntity):
@@ -279,7 +306,7 @@ class ParityCheckStopButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -300,7 +327,11 @@ class ParityCheckStopButton(UnraidButtonEntity):
             _LOGGER.debug("Parity check stop command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to stop parity check: %s", err)
-            raise HomeAssistantError(f"Failed to stop parity check: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="parity_check_stop_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 # =============================================================================
@@ -317,7 +348,7 @@ class DiskSpinUpButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         coordinator: UnraidStorageCoordinator,
         server_uuid: str,
         server_name: str,
@@ -346,7 +377,9 @@ class DiskSpinUpButton(UnraidButtonEntity):
         except Exception as err:
             _LOGGER.error("Failed to spin up disk %s: %s", self._disk_name, err)
             raise HomeAssistantError(
-                f"Failed to spin up disk {self._disk_name}: {err}"
+                translation_domain=DOMAIN,
+                translation_key="disk_spin_up_failed",
+                translation_placeholders={"name": self._disk_name, "error": str(err)},
             ) from err
 
 
@@ -359,7 +392,7 @@ class DiskSpinDownButton(UnraidButtonEntity):
 
     def __init__(
         self,
-        api_client: UnraidAPIClient,
+        api_client: UnraidClient,
         coordinator: UnraidStorageCoordinator,
         server_uuid: str,
         server_name: str,
@@ -388,7 +421,9 @@ class DiskSpinDownButton(UnraidButtonEntity):
         except Exception as err:
             _LOGGER.error("Failed to spin down disk %s: %s", self._disk_name, err)
             raise HomeAssistantError(
-                f"Failed to spin down disk {self._disk_name}: {err}"
+                translation_domain=DOMAIN,
+                translation_key="disk_spin_down_failed",
+                translation_placeholders={"name": self._disk_name, "error": str(err)},
             ) from err
 
 

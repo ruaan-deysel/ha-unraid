@@ -1,9 +1,19 @@
 """Tests for Unraid binary sensor platform."""
 
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from unraid_api.models import (
+    ArrayDisk,
+    ParityCheck,
+    UnraidArray,
+    UPSBattery,
+    UPSDevice,
+)
 
 from custom_components.unraid import UnraidRuntimeData
 from custom_components.unraid.binary_sensor import (
@@ -16,12 +26,84 @@ from custom_components.unraid.binary_sensor import (
     async_setup_entry,
 )
 from custom_components.unraid.coordinator import UnraidStorageData
-from custom_components.unraid.models import (
-    ArrayDisk,
-    ParityCheck,
-    UPSBattery,
-    UPSDevice,
-)
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def make_array(**kwargs: Any) -> UnraidArray:
+    """Create an UnraidArray model for testing."""
+    defaults = {
+        "state": "STARTED",
+        "disks": [],
+        "parities": [],
+        "caches": [],
+    }
+    defaults.update(kwargs)
+    return UnraidArray(**defaults)
+
+
+def make_storage_data(
+    array_state: str | None = "STARTED",
+    disks: list[ArrayDisk] | None = None,
+    parities: list[ArrayDisk] | None = None,
+    caches: list[ArrayDisk] | None = None,
+    parity_status: ParityCheck | None = None,
+    **kwargs: Any,
+) -> UnraidStorageData:
+    """
+    Create UnraidStorageData with convenience parameters.
+
+    This helper accepts the old-style parameters and creates the new structure.
+    """
+    array_kwargs = {
+        "state": array_state,
+        "disks": disks or [],
+        "parities": parities or [],
+        "caches": caches or [],
+        **kwargs,
+    }
+    # Only set parityCheckStatus if explicitly provided (model has its own default)
+    if parity_status is not None:
+        array_kwargs["parityCheckStatus"] = parity_status
+    array = make_array(**array_kwargs)
+    return UnraidStorageData(array=array)
+
+
+def make_disk(**kwargs: Any) -> ArrayDisk:
+    """Create an ArrayDisk model for testing."""
+    defaults = {
+        "id": "disk:1",
+        "idx": 1,
+        "device": "sda",
+        "name": "Disk 1",
+        "type": "DATA",
+        "status": "DISK_OK",
+        "temp": 35,
+        "isSpinning": True,
+        "smartStatus": "PASSED",
+        "fsType": "XFS",
+    }
+    defaults.update(kwargs)
+    return ArrayDisk(**defaults)
+
+
+def make_ups(**kwargs: Any) -> UPSDevice:
+    """Create a UPSDevice model for testing."""
+    defaults = {
+        "id": "ups:1",
+        "name": "APC Smart-UPS",
+        "status": "Online",
+        "battery": UPSBattery(chargeLevel=95, estimatedRuntime=1200),
+    }
+    defaults.update(kwargs)
+    return UPSDevice(**defaults)
+
+
+# =============================================================================
+# Fixtures
+# =============================================================================
 
 
 @pytest.fixture
@@ -45,29 +127,18 @@ def mock_system_coordinator():
 @pytest.fixture
 def mock_disk():
     """Create a mock disk."""
-    return ArrayDisk(
-        id="disk:1",
-        idx=1,
-        device="sda",
-        name="Disk 1",
-        type="DATA",
-        status="DISK_OK",
-        temp=35,
-        isSpinning=True,
-        smartStatus="PASSED",
-        fsType="XFS",
-    )
+    return make_disk()
 
 
 @pytest.fixture
 def mock_ups():
     """Create a mock UPS device."""
-    return UPSDevice(
-        id="ups:1",
-        name="APC Smart-UPS",
-        status="Online",
-        battery=UPSBattery(chargeLevel=95, estimatedRuntime=1200),
-    )
+    return make_ups()
+
+
+# =============================================================================
+# Test Classes
+# =============================================================================
 
 
 class TestDiskHealthBinarySensor:
@@ -87,11 +158,9 @@ class TestDiskHealthBinarySensor:
 
     def test_is_on_disk_ok(self, mock_storage_coordinator, mock_disk):
         """Test is_on returns False when disk is healthy."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[mock_disk],
-            parities=[],
-            caches=[],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
@@ -101,20 +170,18 @@ class TestDiskHealthBinarySensor:
         )
         assert sensor.is_on is False  # No problem
 
-    def test_is_on_disk_error(self, mock_storage_coordinator, mock_disk):
+    def test_is_on_disk_error(self, mock_storage_coordinator):
         """Test is_on returns True when disk has problem."""
-        mock_disk.status = "DISK_DISABLED"
-        mock_storage_coordinator.data = UnraidStorageData(
+        disk = make_disk(status="DISK_DISABLED")
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[mock_disk],
-            parities=[],
-            caches=[],
+            disks=[disk],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
             server_uuid="test-uuid",
             server_name="tower",
-            disk=mock_disk,
+            disk=disk,
         )
         assert sensor.is_on is True  # Problem detected
 
@@ -131,11 +198,9 @@ class TestDiskHealthBinarySensor:
 
     def test_is_on_disk_not_found(self, mock_storage_coordinator, mock_disk):
         """Test is_on returns None when disk not found in data."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[],  # Empty disks list
-            parities=[],
-            caches=[],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
@@ -145,30 +210,26 @@ class TestDiskHealthBinarySensor:
         )
         assert sensor.is_on is None
 
-    def test_is_on_status_none(self, mock_storage_coordinator, mock_disk):
+    def test_is_on_status_none(self, mock_storage_coordinator):
         """Test is_on returns None when disk status is None."""
-        mock_disk.status = None
-        mock_storage_coordinator.data = UnraidStorageData(
+        disk = make_disk(status=None)
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[mock_disk],
-            parities=[],
-            caches=[],
+            disks=[disk],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
             server_uuid="test-uuid",
             server_name="tower",
-            disk=mock_disk,
+            disk=disk,
         )
         assert sensor.is_on is None
 
     def test_extra_state_attributes(self, mock_storage_coordinator, mock_disk):
         """Test extra state attributes."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[mock_disk],
-            parities=[],
-            caches=[],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
@@ -198,12 +259,11 @@ class TestDiskHealthBinarySensor:
 
     def test_get_disk_from_parities(self, mock_storage_coordinator):
         """Test _get_disk finds disk in parities list."""
-        parity_disk = ArrayDisk(id="parity:1", name="Parity", status="DISK_OK")
-        mock_storage_coordinator.data = UnraidStorageData(
+        parity_disk = make_disk(id="parity:1", name="Parity", status="DISK_OK")
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[],
             parities=[parity_disk],
-            caches=[],
         )
         sensor = DiskHealthBinarySensor(
             coordinator=mock_storage_coordinator,
@@ -215,11 +275,10 @@ class TestDiskHealthBinarySensor:
 
     def test_get_disk_from_caches(self, mock_storage_coordinator):
         """Test _get_disk finds disk in caches list."""
-        cache_disk = ArrayDisk(id="cache:1", name="Cache", status="DISK_OK")
-        mock_storage_coordinator.data = UnraidStorageData(
+        cache_disk = make_disk(id="cache:1", name="Cache", status="DISK_OK")
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[],
-            parities=[],
             caches=[cache_disk],
         )
         sensor = DiskHealthBinarySensor(
@@ -247,11 +306,8 @@ class TestParityStatusBinarySensor:
 
     def test_is_on_running(self, mock_storage_coordinator):
         """Test is_on returns True when parity check running."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="RUNNING", progress=50, errors=0),
         )
         sensor = ParityStatusBinarySensor(
@@ -263,11 +319,8 @@ class TestParityStatusBinarySensor:
 
     def test_is_on_paused(self, mock_storage_coordinator):
         """Test is_on returns True when parity check paused."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="PAUSED", progress=50, errors=0),
         )
         sensor = ParityStatusBinarySensor(
@@ -279,11 +332,8 @@ class TestParityStatusBinarySensor:
 
     def test_is_on_completed(self, mock_storage_coordinator):
         """Test is_on returns False when parity check completed."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", progress=100, errors=0),
         )
         sensor = ParityStatusBinarySensor(
@@ -305,11 +355,8 @@ class TestParityStatusBinarySensor:
 
     def test_is_on_no_parity_status(self, mock_storage_coordinator):
         """Test is_on returns None when no parity status."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=None,
         )
         sensor = ParityStatusBinarySensor(
@@ -321,11 +368,8 @@ class TestParityStatusBinarySensor:
 
     def test_is_on_status_none(self, mock_storage_coordinator):
         """Test is_on returns None when status is None."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status=None),
         )
         sensor = ParityStatusBinarySensor(
@@ -337,11 +381,8 @@ class TestParityStatusBinarySensor:
 
     def test_extra_state_attributes(self, mock_storage_coordinator):
         """Test extra state attributes."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", progress=100, errors=0),
         )
         sensor = ParityStatusBinarySensor(
@@ -381,12 +422,7 @@ class TestArrayStartedBinarySensor:
 
     def test_is_on_started(self, mock_storage_coordinator):
         """Test is_on returns True when array started."""
-        mock_storage_coordinator.data = UnraidStorageData(
-            array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
-        )
+        mock_storage_coordinator.data = make_storage_data(array_state="STARTED")
         sensor = ArrayStartedBinarySensor(
             coordinator=mock_storage_coordinator,
             server_uuid="test-uuid",
@@ -396,12 +432,7 @@ class TestArrayStartedBinarySensor:
 
     def test_is_on_stopped(self, mock_storage_coordinator):
         """Test is_on returns False when array stopped."""
-        mock_storage_coordinator.data = UnraidStorageData(
-            array_state="STOPPED",
-            disks=[],
-            parities=[],
-            caches=[],
-        )
+        mock_storage_coordinator.data = make_storage_data(array_state="STOPPED")
         sensor = ArrayStartedBinarySensor(
             coordinator=mock_storage_coordinator,
             server_uuid="test-uuid",
@@ -421,12 +452,7 @@ class TestArrayStartedBinarySensor:
 
     def test_is_on_array_state_none(self, mock_storage_coordinator):
         """Test is_on returns None when array_state is None."""
-        mock_storage_coordinator.data = UnraidStorageData(
-            array_state=None,
-            disks=[],
-            parities=[],
-            caches=[],
-        )
+        mock_storage_coordinator.data = make_storage_data(array_state=None)
         sensor = ArrayStartedBinarySensor(
             coordinator=mock_storage_coordinator,
             server_uuid="test-uuid",
@@ -451,11 +477,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_is_on_running(self, mock_storage_coordinator):
         """Test is_on returns True when parity check running."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="RUNNING", progress=50),
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -467,11 +490,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_is_on_paused(self, mock_storage_coordinator):
         """Test is_on returns True when parity check paused."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="PAUSED", progress=50),
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -483,11 +503,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_is_on_completed(self, mock_storage_coordinator):
         """Test is_on returns False when parity check completed."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", progress=100),
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -509,11 +526,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_is_on_no_parity_status(self, mock_storage_coordinator):
         """Test is_on returns None when no parity status."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=None,
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -525,11 +539,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_is_on_status_none(self, mock_storage_coordinator):
         """Test is_on returns None when status is None."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status=None),
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -541,11 +552,8 @@ class TestParityCheckRunningBinarySensor:
 
     def test_extra_state_attributes(self, mock_storage_coordinator):
         """Test extra state attributes."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="RUNNING", progress=50),
         )
         sensor = ParityCheckRunningBinarySensor(
@@ -584,11 +592,8 @@ class TestParityValidBinarySensor:
 
     def test_is_on_failed(self, mock_storage_coordinator):
         """Test is_on returns True when parity failed."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="FAILED", errors=0),
         )
         sensor = ParityValidBinarySensor(
@@ -600,11 +605,8 @@ class TestParityValidBinarySensor:
 
     def test_is_on_with_errors(self, mock_storage_coordinator):
         """Test is_on returns True when parity has errors."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", errors=5),
         )
         sensor = ParityValidBinarySensor(
@@ -616,11 +618,8 @@ class TestParityValidBinarySensor:
 
     def test_is_on_valid(self, mock_storage_coordinator):
         """Test is_on returns False when parity is valid."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", errors=0),
         )
         sensor = ParityValidBinarySensor(
@@ -642,11 +641,8 @@ class TestParityValidBinarySensor:
 
     def test_extra_state_attributes(self, mock_storage_coordinator):
         """Test extra state attributes."""
-        mock_storage_coordinator.data = UnraidStorageData(
+        mock_storage_coordinator.data = make_storage_data(
             array_state="STARTED",
-            disks=[],
-            parities=[],
-            caches=[],
             parity_status=ParityCheck(status="COMPLETED", errors=0),
         )
         sensor = ParityValidBinarySensor(
@@ -696,29 +692,29 @@ class TestUPSConnectedBinarySensor:
         )
         assert sensor.is_on is True
 
-    def test_is_on_offline(self, mock_system_coordinator, mock_ups):
+    def test_is_on_offline(self, mock_system_coordinator):
         """Test is_on returns False when UPS offline."""
-        mock_ups.status = "Offline"
+        ups = make_ups(status="Offline")
         mock_system_coordinator.data = MagicMock()
-        mock_system_coordinator.data.ups_devices = [mock_ups]
+        mock_system_coordinator.data.ups_devices = [ups]
         sensor = UPSConnectedBinarySensor(
             coordinator=mock_system_coordinator,
             server_uuid="test-uuid",
             server_name="tower",
-            ups=mock_ups,
+            ups=ups,
         )
         assert sensor.is_on is False
 
-    def test_is_on_status_none(self, mock_system_coordinator, mock_ups):
+    def test_is_on_status_none(self, mock_system_coordinator):
         """Test is_on returns False when UPS status is None."""
-        mock_ups.status = None
+        ups = make_ups(status=None)
         mock_system_coordinator.data = MagicMock()
-        mock_system_coordinator.data.ups_devices = [mock_ups]
+        mock_system_coordinator.data.ups_devices = [ups]
         sensor = UPSConnectedBinarySensor(
             coordinator=mock_system_coordinator,
             server_uuid="test-uuid",
             server_name="tower",
-            ups=mock_ups,
+            ups=ups,
         )
         assert sensor.is_on is False
 
@@ -802,21 +798,19 @@ class TestAsyncSetupEntry:
     @pytest.mark.asyncio
     async def test_setup_entry_creates_entities(self, hass):
         """Test async_setup_entry creates expected entities."""
-        mock_disk = ArrayDisk(id="disk:1", name="Disk 1", status="DISK_OK")
-        mock_ups = UPSDevice(id="ups:1", name="APC", status="Online")
+        mock_disk = make_disk()
+        mock_ups_device = make_ups()
 
         # Setup mock coordinators
         storage_coordinator = MagicMock()
-        storage_coordinator.data = UnraidStorageData(
+        storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[mock_disk],
-            parities=[],
-            caches=[],
         )
 
         system_coordinator = MagicMock()
         system_data = MagicMock()
-        system_data.ups_devices = [mock_ups]
+        system_data.ups_devices = [mock_ups_device]
         system_coordinator.data = system_data
 
         # Create mock config entry
@@ -857,14 +851,12 @@ class TestAsyncSetupEntry:
     @pytest.mark.asyncio
     async def test_setup_entry_no_ups(self, hass):
         """Test async_setup_entry works without UPS."""
-        mock_disk = ArrayDisk(id="disk:1", name="Disk 1", status="DISK_OK")
+        mock_disk = make_disk()
 
         storage_coordinator = MagicMock()
-        storage_coordinator.data = UnraidStorageData(
+        storage_coordinator.data = make_storage_data(
             array_state="STARTED",
             disks=[mock_disk],
-            parities=[],
-            caches=[],
         )
 
         system_coordinator = MagicMock()
