@@ -26,7 +26,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     # Linting and formatting
-    "ruff==0.14.11",
+    "ruff==0.14.13",
     "pre-commit>=4.0.0",
 
     # Testing
