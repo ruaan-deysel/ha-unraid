@@ -4,7 +4,7 @@ version = "2025.12.0"
 description = "Home Assistant custom integration for Unraid servers"
 readme = "README.md"
 requires-python = ">=3.13.2"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [
     {name = "Ruaan Deysel"}
 ]
@@ -12,7 +12,7 @@ keywords = ["homeassistant", "unraid", "custom-integration"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.13",
 ]

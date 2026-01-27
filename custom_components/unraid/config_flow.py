@@ -22,12 +22,8 @@ from unraid_api.exceptions import (
 )
 
 from .const import (
-    CONF_STORAGE_INTERVAL,
-    CONF_SYSTEM_INTERVAL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
-    DEFAULT_STORAGE_POLL_INTERVAL,
-    DEFAULT_SYSTEM_POLL_INTERVAL,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
@@ -141,8 +137,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=title,
                     data=entry_data,
                     options={
-                        CONF_SYSTEM_INTERVAL: DEFAULT_SYSTEM_POLL_INTERVAL,
-                        CONF_STORAGE_INTERVAL: DEFAULT_STORAGE_POLL_INTERVAL,
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
                         CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
                     },
@@ -323,11 +317,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             minimum = AwesomeVersion(MIN_API_VERSION)
             return current >= minimum
         except Exception:  # noqa: BLE001
-            # Fallback to assuming supported if parsing fails
-            _LOGGER.warning(
-                "Could not parse API version '%s', assuming supported", api_version
+            # Reject connection when version parsing fails - cannot verify compatibility
+            _LOGGER.error(
+                "Failed to parse API version '%s', rejecting connection", api_version
             )
-            return True
+            return False
 
     async def async_step_reauth(
         self,
@@ -464,7 +458,7 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the init step to configure polling intervals and UPS settings."""
+        """Handle the init step to configure UPS settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -480,21 +474,9 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
             if system_coordinator.data and system_coordinator.data.ups_devices:
                 has_ups = True
 
-        # Build schema - base options always shown
-        schema_dict: dict[vol.Marker, Any] = {
-            vol.Optional(
-                CONF_SYSTEM_INTERVAL,
-                default=options.get(CONF_SYSTEM_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL),
-            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
-            vol.Optional(
-                CONF_STORAGE_INTERVAL,
-                default=options.get(
-                    CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
-                ),
-            ): vol.All(vol.Coerce(int), vol.Range(min=60, max=3600)),
-        }
+        # Build schema - UPS options only shown if UPS is detected
+        schema_dict: dict[vol.Marker, Any] = {}
 
-        # Add UPS options only if UPS is detected
         if has_ups:
             schema_dict[
                 vol.Optional(

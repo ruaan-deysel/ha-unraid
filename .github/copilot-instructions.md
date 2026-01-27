@@ -17,35 +17,35 @@
 
 ### Enforcement Rules
 
-1. **Linting**: 
+1. **Linting**:
    - Run `./scripts/lint` after EVERY code change - no exceptions
    - Exit code MUST be 0 (zero warnings, zero errors)
    - If lint shows ANY output beyond "All checks passed!", you MUST fix it
    - Never proceed to testing or committing with linting issues
    - Never add `# noqa` comments or ignore linting warnings
 
-2. **Security**: 
+2. **Security**:
    - All security issues must be addressed immediately
    - Use latest security best practices
    - No hardcoded credentials or secrets
    - Validate all user inputs
 
-3. **HA Standards**: 
+3. **HA Standards**:
    - Follow latest Home Assistant development standards
    - Meet quality scale requirements for HACS
    - Use proper entity patterns and device classes
 
-4. **Testing**: 
+4. **Testing**:
    - All new code must have corresponding tests
    - Run `pytest` before committing
    - All tests must pass (100%)
 
-5. **Type Safety**: 
+5. **Type Safety**:
    - Use type hints for all functions
    - Pydantic models enforce runtime validation
    - No `Any` types without justification
 
-6. **Dev Environment**: 
+6. **Dev Environment**:
    - Code must work in Home Assistant devcontainer
    - Test in devcontainer before committing
    - Use `./scripts/develop` for integration testing

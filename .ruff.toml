@@ -45,7 +45,7 @@ ignore = [
 [lint.per-file-ignores]
 "tests/*" = [
     "S101",    # Use of assert in tests is expected
-    "PLR2004", # Magic values in tests are acceptable  
+    "PLR2004", # Magic values in tests are acceptable
     "DTZ001",  # Datetime without tzinfo in tests is acceptable
     "PLC0415", # Import outside top-level in tests for local imports
     "D103",    # Missing docstring in public function (tests are self-documenting)

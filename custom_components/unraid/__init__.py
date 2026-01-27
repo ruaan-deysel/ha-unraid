@@ -35,10 +35,6 @@ from .config_flow import (
     DEFAULT_HTTPS_PORT,
 )
 from .const import (
-    CONF_STORAGE_INTERVAL,
-    CONF_SYSTEM_INTERVAL,
-    DEFAULT_STORAGE_POLL_INTERVAL,
-    DEFAULT_SYSTEM_POLL_INTERVAL,
     DOMAIN,
     REPAIR_AUTH_FAILED,
 )
@@ -119,14 +115,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     api_key = entry.data[CONF_API_KEY]
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
 
-    # Get polling intervals from options (or use defaults)
-    system_interval = entry.options.get(
-        CONF_SYSTEM_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL
-    )
-    storage_interval = entry.options.get(
-        CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
-    )
-
     # Get HA's aiohttp session for proper connection pooling
     # Use verify_ssl=False session if user disabled SSL verification
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
@@ -179,19 +167,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     server_info = _build_server_info(info, host, verify_ssl)
     server_name = server_info["name"]
 
-    # Create coordinators
+    # Create coordinators (use fixed internal intervals per HA Core requirements)
     system_coordinator = UnraidSystemCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
-        update_interval=system_interval,
+        config_entry=entry,
     )
 
     storage_coordinator = UnraidStorageCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
-        update_interval=storage_interval,
+        config_entry=entry,
     )
 
     # Fetch initial data
@@ -210,10 +198,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _LOGGER.info(
-        "Unraid integration setup complete for %s (system: %ds, storage: %ds)",
+        "Unraid integration setup complete for %s",
         server_name,
-        system_interval,
-        storage_interval,
     )
 
     return True

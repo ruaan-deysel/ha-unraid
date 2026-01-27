@@ -6,7 +6,9 @@ import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from unraid_api import (
     ServerInfo,
@@ -30,9 +32,12 @@ from unraid_api.models import (
     VmDomain,
 )
 
-from .const import DEFAULT_STORAGE_POLL_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL
-
 _LOGGER = logging.getLogger(__name__)
+
+# Fixed polling intervals per HA Core requirements - not user configurable
+# These are defined here (not in const.py) as they are internal implementation details
+DEFAULT_SYSTEM_POLL_INTERVAL = 30  # seconds
+DEFAULT_STORAGE_POLL_INTERVAL = 300  # seconds (5 minutes)
 
 
 @dataclass
@@ -94,12 +99,15 @@ class UnraidStorageData:
 class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
     """Coordinator for Unraid system data (30s polling)."""
 
+    # Fixed polling interval per HA Core requirements - not user configurable
+    _UPDATE_INTERVAL = timedelta(seconds=DEFAULT_SYSTEM_POLL_INTERVAL)
+
     def __init__(
         self,
         hass: HomeAssistant,
         api_client: UnraidClient,
         server_name: str,
-        update_interval: int = DEFAULT_SYSTEM_POLL_INTERVAL,
+        config_entry: ConfigEntry,
     ) -> None:
         """
         Initialize the system coordinator.
@@ -108,14 +116,15 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             hass: Home Assistant instance
             api_client: Unraid API client (from unraid_api library)
             server_name: Server name for logging
-            update_interval: Polling interval in seconds (default 30s)
+            config_entry: The config entry for this coordinator
 
         """
         super().__init__(
             hass,
             logger=_LOGGER,
             name=f"{server_name} System",
-            update_interval=timedelta(seconds=update_interval),
+            update_interval=self._UPDATE_INTERVAL,
+            config_entry=config_entry,
         )
         self.api_client = api_client
         self._server_name = server_name
@@ -191,8 +200,8 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         except UnraidAuthenticationError as err:
             self._previously_unavailable = True
             msg = f"Authentication failed: {err}"
-            _LOGGER.exception("System data update failed: %s", msg)
-            raise UpdateFailed(msg) from err
+            _LOGGER.error("System data update failed: %s", msg)
+            raise ConfigEntryAuthFailed(msg) from err
         except (UnraidConnectionError, UnraidTimeoutError) as err:
             self._previously_unavailable = True
             msg = f"Connection error: {err}"
@@ -213,12 +222,15 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
 class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
     """Coordinator for Unraid storage data (5min polling)."""
 
+    # Fixed polling interval per HA Core requirements - not user configurable
+    _UPDATE_INTERVAL = timedelta(seconds=DEFAULT_STORAGE_POLL_INTERVAL)
+
     def __init__(
         self,
         hass: HomeAssistant,
         api_client: UnraidClient,
         server_name: str,
-        update_interval: int = DEFAULT_STORAGE_POLL_INTERVAL,
+        config_entry: ConfigEntry,
     ) -> None:
         """
         Initialize the storage coordinator.
@@ -227,14 +239,15 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             hass: Home Assistant instance
             api_client: Unraid API client (from unraid_api library)
             server_name: Server name for logging
-            update_interval: Polling interval in seconds (default 300s)
+            config_entry: The config entry for this coordinator
 
         """
         super().__init__(
             hass,
             logger=_LOGGER,
             name=f"{server_name} Storage",
-            update_interval=timedelta(seconds=update_interval),
+            update_interval=self._UPDATE_INTERVAL,
+            config_entry=config_entry,
         )
         self.api_client = api_client
         self._server_name = server_name
@@ -289,7 +302,8 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
 
         except UnraidAuthenticationError as err:
             self._previously_unavailable = True
-            raise UpdateFailed(f"Authentication failed: {err}") from err
+            _LOGGER.error("Storage data update failed: Authentication failed: %s", err)
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except (UnraidConnectionError, UnraidTimeoutError) as err:
             self._previously_unavailable = True
             raise UpdateFailed(f"Connection error: {err}") from err
