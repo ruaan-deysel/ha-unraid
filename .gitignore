@@ -160,7 +160,19 @@ __pycache__
 coverage.xml
 .ruff_cache
 
+# AI Assistant directories
+.claude/
+.serena/
+.specify/
+
+# UV package manager (optional - uncomment if you want to track uv.lock)
+# uv.lock
+
+# Artifact files from terminal mistakes
+=*
+*.model_fields)"
 
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+!config/blueprints/

@@ -8,8 +8,8 @@
   "homekit": {},
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/ruaan-deysel/ha-unraid/issues",
-  "requirements": [],
+  "requirements": ["unraid-api>=1.3.1"],
   "ssdp": [],
-  "version": "2026.01.0",
+  "version": "2026.2.0",
   "zeroconf": []
 }

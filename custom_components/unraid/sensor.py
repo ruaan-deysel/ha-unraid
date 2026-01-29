@@ -11,20 +11,21 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfPower, UnitOfTemperature
+from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
-    DOMAIN,
-    PARALLEL_UPDATES,
 )
+from .entity import UnraidBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from unraid_api.models import ArrayDisk, Share, UPSDevice
 
     from . import UnraidConfigEntry
     from .coordinator import (
@@ -33,9 +34,11 @@ if TYPE_CHECKING:
         UnraidSystemCoordinator,
         UnraidSystemData,
     )
-    from .models import ArrayDisk, Share, UPSDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Coordinator handles all data updates, no parallel entity updates needed
+PARALLEL_UPDATES = 0
 
 # Export PARALLEL_UPDATES for Home Assistant
 __all__ = ["PARALLEL_UPDATES", "async_setup_entry"]
@@ -65,45 +68,9 @@ def format_bytes(bytes_value: int | None) -> str | None:
     return f"{value:.2f} {units[unit_index]}"
 
 
-def format_uptime(uptime_dt: datetime | None) -> str | None:
-    """Format uptime datetime to human-readable duration string."""
-    if uptime_dt is None:
-        return None
-
-    now = datetime.now(UTC)
-    delta = now - uptime_dt
-
-    total_seconds = int(delta.total_seconds())
-    if total_seconds < 0:
-        return "0 seconds"
-
-    years, remainder = divmod(total_seconds, 365 * 24 * 3600)
-    months, remainder = divmod(remainder, 30 * 24 * 3600)
-    days, remainder = divmod(remainder, 24 * 3600)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    parts = []
-    if years > 0:
-        parts.append(f"{years} year{'s' if years != 1 else ''}")
-    if months > 0:
-        parts.append(f"{months} month{'s' if months != 1 else ''}")
-    if days > 0:
-        parts.append(f"{days} day{'s' if days != 1 else ''}")
-    if hours > 0:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-    if minutes > 0:
-        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-    if seconds > 0 or not parts:
-        parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
-
-    return ", ".join(parts)
-
-
-class UnraidSensorEntity(SensorEntity):
+class UnraidSensorEntity(UnraidBaseEntity, SensorEntity):
     """Base class for Unraid sensor entities."""
 
-    _attr_has_entity_name = True
     _attr_should_poll = False
 
     def __init__(
@@ -127,35 +94,13 @@ class UnraidSensorEntity(SensorEntity):
             server_info: Optional dict with manufacturer, model, sw_version, etc.
 
         """
-        self.coordinator = coordinator
-        self._server_uuid = server_uuid
-        self._server_name = server_name
-        self._attr_unique_id = f"{server_uuid}_{resource_id}"
-        self._attr_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, server_uuid)},
-            "name": server_name,
-            "manufacturer": server_info.get("manufacturer") if server_info else None,
-            "model": server_info.get("model") if server_info else None,
-            "serial_number": (
-                server_info.get("serial_number") if server_info else None
-            ),
-            "sw_version": server_info.get("sw_version") if server_info else None,
-            "hw_version": server_info.get("hw_version") if server_info else None,
-            "configuration_url": (
-                server_info.get("configuration_url") if server_info else None
-            ),
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return whether entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher when added to Home Assistant."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._async_write_ha_state)
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=resource_id,
+            name=name,
+            server_info=server_info,
         )
 
 
@@ -190,7 +135,7 @@ class CpuSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.metrics.cpu.percentTotal
+        return data.metrics.cpu_percent
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -198,11 +143,10 @@ class CpuSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return {}
-        cpu = data.info.cpu
         return {
-            "cpu_model": cpu.brand,
-            "cpu_cores": cpu.cores,
-            "cpu_threads": cpu.threads,
+            "cpu_model": data.info.cpu_brand,
+            "cpu_cores": data.info.cpu_cores,
+            "cpu_threads": data.info.cpu_threads,
         }
 
 
@@ -235,7 +179,7 @@ class RAMUsageSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.metrics.memory.percentTotal
+        return data.metrics.memory_percent
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -243,13 +187,63 @@ class RAMUsageSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return {}
-        mem = data.metrics.memory
         return {
-            "total": format_bytes(mem.total),
-            "used": format_bytes(mem.used),
-            "free": format_bytes(mem.free),
-            "available": format_bytes(mem.available),
+            "total": format_bytes(data.metrics.memory_total),
+            "used": format_bytes(data.metrics.memory_used),
+            "free": format_bytes(data.metrics.memory_free),
+            "available": format_bytes(data.metrics.memory_available),
         }
+
+
+class RAMUsedSensor(UnraidSensorEntity):
+    """
+    RAM used sensor showing active memory consumption.
+
+    This calculates memory actively used by processes (System + Docker in Unraid terms)
+    by using: total - available.
+
+    The 'available' memory includes free memory plus reclaimable cache/buffers,
+    so total - available gives us the memory actually consumed by running processes.
+    This matches what Unraid displays as "System + Docker" usage.
+    """
+
+    _attr_translation_key = "ram_used"
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = "B"
+    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+    ) -> None:
+        """Initialize RAM used sensor."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id="ram_used",
+            name="RAM Used",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """
+        Return memory actively used by processes in bytes.
+
+        Uses total - available to match Unraid's display of actual memory consumption,
+        excluding cached/buffered memory that can be reclaimed.
+        """
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        total = data.metrics.memory_total
+        available = data.metrics.memory_available
+        if total is None or available is None:
+            return None
+        return total - available
 
 
 class TemperatureSensor(UnraidSensorEntity):
@@ -280,7 +274,7 @@ class TemperatureSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        temps = data.info.cpu.packages.temp
+        temps = data.metrics.cpu_temperatures
 
         if not temps:
             return None
@@ -317,14 +311,20 @@ class CpuPowerSensor(UnraidSensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return data.info.cpu.packages.totalPower
+        return data.metrics.cpu_power
 
 
 class UptimeSensor(UnraidSensorEntity):
-    """System uptime sensor with human-readable format."""
+    """
+    System uptime sensor using timestamp device class.
+
+    Uses device_class=TIMESTAMP which expects a datetime representing
+    when the system booted. Home Assistant will automatically display
+    this as a relative time (e.g., "5 days ago").
+    """
 
     _attr_translation_key = "uptime"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
         self,
@@ -338,27 +338,21 @@ class UptimeSensor(UnraidSensorEntity):
             server_uuid=server_uuid,
             server_name=server_name,
             resource_id="uptime",
-            name="Uptime",
+            name="Up since",
         )
 
     @property
-    def native_value(self) -> str | None:
-        """Return system uptime as human-readable string."""
+    def native_value(self) -> datetime | None:
+        """
+        Return system boot time as datetime.
+
+        The TIMESTAMP device class expects a datetime representing the boot time.
+        Home Assistant automatically displays this as relative time.
+        """
         data: UnraidSystemData | None = self.coordinator.data
         if data is None:
             return None
-        return format_uptime(data.info.os.uptime)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return boot timestamp as attribute."""
-        data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
-            return {}
-        uptime = data.info.os.uptime
-        return {
-            "boot_time": uptime.isoformat() if uptime else None,
-        }
+        return data.metrics.uptime
 
 
 class ActiveNotificationsSensor(UnraidSensorEntity):
@@ -505,6 +499,7 @@ class DiskTemperatureSensor(UnraidSensorEntity):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False  # User enables per-disk as needed
 
     def __init__(
         self,
@@ -934,6 +929,160 @@ class UPSPowerSensor(UnraidSensorEntity):
         return attrs
 
 
+class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
+    """
+    UPS energy consumption sensor for Energy Dashboard.
+
+    Calculates cumulative energy (kWh) from UPS power using Riemann sum
+    (trapezoidal integration). The value persists across restarts.
+
+    This sensor is compatible with the Energy Dashboard's
+    "Device energy consumption" dropdown.
+
+    Requirements:
+    - device_class: energy
+    - state_class: total_increasing
+    - unit: kWh
+    """
+
+    _attr_translation_key = "ups_energy"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_suggested_display_precision = 3
+    _attr_entity_category = None  # Primary entity, not diagnostic
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        ups: UPSDevice,
+        ups_nominal_power: int,
+    ) -> None:
+        """
+        Initialize UPS energy sensor.
+
+        Args:
+            coordinator: System coordinator
+            server_uuid: Server unique identifier
+            server_name: Server friendly name
+            ups: UPS device data
+            ups_nominal_power: UPS nominal power in watts (used for calculation)
+
+        """
+        self._ups_id = ups.id
+        self._ups_name = ups.name
+        self._ups_nominal_power = ups_nominal_power
+        self._total_energy_kwh: float = 0.0
+        self._last_power_watts: float | None = None
+        self._last_update_time: datetime | None = None
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"ups_{self._ups_id}_energy",
+            name="UPS Energy",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous energy value when entity is added."""
+        await super().async_added_to_hass()
+
+        # Restore previous state if available
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (
+            "unknown",
+            "unavailable",
+        ):
+            try:
+                self._total_energy_kwh = float(last_state.state)
+                _LOGGER.debug(
+                    "Restored UPS energy value: %.3f kWh",
+                    self._total_energy_kwh,
+                )
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Could not restore UPS energy value from state: %s",
+                    last_state.state,
+                )
+
+    def _get_ups(self) -> UPSDevice | None:
+        """Get current UPS from coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        for ups in data.ups_devices:
+            if ups.id == self._ups_id:
+                return ups
+        return None
+
+    def _calculate_current_power(self) -> float | None:
+        """Calculate current power consumption in watts."""
+        if self._ups_nominal_power <= 0:
+            return None
+        ups = self._get_ups()
+        if ups is None:
+            return None
+        load_percent = ups.power.loadPercentage
+        if load_percent is None:
+            return None
+        return (load_percent / 100) * self._ups_nominal_power
+
+    def _update_energy(self) -> None:
+        """Update cumulative energy using trapezoidal integration."""
+        current_power = self._calculate_current_power()
+        current_time = datetime.now(UTC)
+
+        if (
+            current_power is not None
+            and self._last_power_watts is not None
+            and self._last_update_time is not None
+        ):
+            # Calculate time elapsed in hours
+            time_delta = current_time - self._last_update_time
+            hours_elapsed = time_delta.total_seconds() / 3600
+
+            # Trapezoidal integration: average of old and new power
+            avg_power_watts = (self._last_power_watts + current_power) / 2
+            energy_kwh = (avg_power_watts * hours_elapsed) / 1000
+
+            self._total_energy_kwh += energy_kwh
+
+        # Update tracking values
+        self._last_power_watts = current_power
+        self._last_update_time = current_time
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if self._ups_nominal_power <= 0:
+            return False
+        return super().available
+
+    @property
+    def native_value(self) -> float | None:
+        """Return cumulative energy consumption in kWh."""
+        if self._ups_nominal_power <= 0:
+            return None
+        # Update energy calculation on each read
+        self._update_energy()
+        return round(self._total_energy_kwh, 3)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return energy tracking details as attributes."""
+        attrs: dict[str, Any] = {
+            "model": self._ups_name,
+            "nominal_power_watts": self._ups_nominal_power,
+        }
+        if self._last_power_watts is not None:
+            attrs["current_power_watts"] = round(self._last_power_watts, 1)
+        if self._last_update_time is not None:
+            attrs["last_updated"] = self._last_update_time.isoformat()
+        return attrs
+
+
 # Share Sensors
 
 
@@ -1062,7 +1211,7 @@ async def async_setup_entry(
     server_uuid = server_info.get("uuid", "unknown")
     server_name = server_info.get("name", entry.data.get("host", "Unraid"))
 
-    entities: list[UnraidSensorEntity] = []
+    entities: list[SensorEntity] = []
 
     # System sensors - pass server_info to first entity to set device info
     entities.extend(
@@ -1070,6 +1219,7 @@ async def async_setup_entry(
             CpuSensor(system_coordinator, server_uuid, server_name, server_info),
             CpuPowerSensor(system_coordinator, server_uuid, server_name),
             RAMUsageSensor(system_coordinator, server_uuid, server_name),
+            RAMUsedSensor(system_coordinator, server_uuid, server_name),
             TemperatureSensor(system_coordinator, server_uuid, server_name),
             UptimeSensor(system_coordinator, server_uuid, server_name),
             ActiveNotificationsSensor(system_coordinator, server_uuid, server_name),
@@ -1107,6 +1257,22 @@ async def async_setup_entry(
                     ),
                 ]
             )
+            # Add UPS Energy sensor (kWh) - only if nominal power is configured
+            # This tracks cumulative energy using trapezoidal integration
+            if ups_nominal_power > 0:
+                energy_sensor = UPSEnergySensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    ups,
+                    ups_nominal_power,
+                )
+                entities.append(energy_sensor)
+                _LOGGER.debug(
+                    "Created UPS Energy sensor for UPS %s (nominal power: %dW)",
+                    ups.name,
+                    ups_nominal_power,
+                )
     else:
         _LOGGER.debug("No UPS devices connected, skipping UPS sensors")
 
@@ -1121,18 +1287,34 @@ async def async_setup_entry(
 
     # Add disk sensors dynamically from parsed data (all disk types)
     if storage_coordinator.data:
-        # Data disks - usage sensors only (health handled by binary_sensor)
+        # Data disks - usage and temperature sensors (health handled by binary_sensor)
         for disk in storage_coordinator.data.disks:
             entities.append(
                 DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
             )
+            entities.append(
+                DiskTemperatureSensor(
+                    storage_coordinator, server_uuid, server_name, disk
+                )
+            )
 
-        # Parity disks - no sensors (health via binary_sensor, no usage shown)
+        # Parity disks - temperature sensors only (health via binary_sensor, no usage)
+        for disk in storage_coordinator.data.parities:
+            entities.append(
+                DiskTemperatureSensor(
+                    storage_coordinator, server_uuid, server_name, disk
+                )
+            )
 
-        # Cache disks - usage sensors only (health handled by binary_sensor)
+        # Cache disks - usage and temperature sensors (health handled by binary_sensor)
         for disk in storage_coordinator.data.caches:
             entities.append(
                 DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
+            )
+            entities.append(
+                DiskTemperatureSensor(
+                    storage_coordinator, server_uuid, server_name, disk
+                )
             )
 
     # Add share sensors dynamically

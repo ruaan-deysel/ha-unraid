@@ -1,7 +1,7 @@
 """
 The Unraid integration.
 
-This integration connects Home Assistant to Unraid servers via GraphQL API.
+This integration connects Home Assistant to Unraid servers via the unraid-api library.
 Provides monitoring and control for system metrics, storage, Docker, and VMs.
 """
 
@@ -14,25 +14,23 @@ from typing import TYPE_CHECKING
 from homeassistant.const import (
     CONF_API_KEY,
     CONF_HOST,
-    CONF_VERIFY_SSL,
+    CONF_PORT,
+    CONF_SSL,
     Platform,
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-from .api import UnraidAPIClient
-from .config_flow import (
-    CONF_HTTP_PORT,
-    CONF_HTTPS_PORT,
-    DEFAULT_HTTP_PORT,
-    DEFAULT_HTTPS_PORT,
+from unraid_api import ServerInfo, UnraidClient
+from unraid_api.exceptions import (
+    UnraidAuthenticationError,
+    UnraidConnectionError,
+    UnraidSSLError,
+    UnraidTimeoutError,
 )
+
 from .const import (
-    CONF_STORAGE_INTERVAL,
-    CONF_SYSTEM_INTERVAL,
-    DEFAULT_STORAGE_POLL_INTERVAL,
-    DEFAULT_SYSTEM_POLL_INTERVAL,
+    DEFAULT_PORT,
     DOMAIN,
     REPAIR_AUTH_FAILED,
 )
@@ -56,7 +54,7 @@ PLATFORMS: list[Platform] = [
 class UnraidRuntimeData:
     """Runtime data for Unraid integration (stored in entry.runtime_data)."""
 
-    api_client: UnraidAPIClient
+    api_client: UnraidClient
     system_coordinator: UnraidSystemCoordinator
     storage_coordinator: UnraidStorageCoordinator
     server_info: dict
@@ -66,154 +64,118 @@ class UnraidRuntimeData:
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 
 
-def _build_server_info(info: dict, host: str, verify_ssl: bool) -> dict:
-    """Build server info dictionary from API response."""
-    info_data = info.get("info", {})
-    system_data = info_data.get("system", {})
-    baseboard_data = info_data.get("baseboard", {})
-    os_data = info_data.get("os", {})
-    cpu_data = info_data.get("cpu", {})
-    versions_data = info_data.get("versions", {}).get("core", {})
-    server_data = info.get("server", {})
-    registration_data = info.get("registration", {})
-
-    # Use Lime Technology as manufacturer (Unraid vendor)
-    manufacturer = "Lime Technology"
-
+def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dict:
+    """Build server info dictionary from library's ServerInfo model."""
+    # Use library's ServerInfo model directly
     # Model shows "Unraid {version}" for prominent display in Device Info
-    unraid_version = versions_data.get("unraid", "Unknown")
+    unraid_version = server_info.sw_version or "Unknown"
     model = f"Unraid {unraid_version}"
 
-    # Store hardware info separately for diagnostics/attributes
-    hw_manufacturer = system_data.get("manufacturer") or baseboard_data.get(
-        "manufacturer"
-    )
-    hw_model = system_data.get("model") or baseboard_data.get("model")
-    serial_number = system_data.get("serial") or baseboard_data.get("serial") or None
-
-    server_name = os_data.get("hostname") or host
-    server_uuid = system_data.get("uuid")
+    server_name = server_info.hostname or host
 
     # Determine configuration URL for device info
-    configuration_url = server_data.get("localurl")
-    if not configuration_url:
-        lan_ip = server_data.get("lanip")
-        if lan_ip:
-            protocol = "https" if verify_ssl else "http"
-            configuration_url = f"{protocol}://{lan_ip}"
+    configuration_url = server_info.local_url
+    if not configuration_url and server_info.lan_ip:
+        protocol = "https" if use_ssl else "http"
+        configuration_url = f"{protocol}://{server_info.lan_ip}"
 
     return {
-        "uuid": server_uuid,
+        "uuid": server_info.uuid,
         "name": server_name,
-        "manufacturer": manufacturer,
+        "manufacturer": server_info.manufacturer,
         "model": model,
-        "serial_number": serial_number,
+        "serial_number": server_info.serial_number,
         "sw_version": unraid_version,
-        "hw_version": os_data.get("kernel"),
-        "os_distro": os_data.get("distro"),
-        "os_release": os_data.get("release"),
-        "os_arch": os_data.get("arch"),
-        "api_version": versions_data.get("api"),
-        "license_type": registration_data.get("type"),
-        "lan_ip": server_data.get("lanip"),
+        "hw_version": server_info.hw_version,
+        "os_distro": server_info.os_distro,
+        "os_release": server_info.os_release,
+        "os_arch": server_info.os_arch,
+        "api_version": server_info.api_version,
+        "license_type": server_info.license_type,
+        "lan_ip": server_info.lan_ip,
         "configuration_url": configuration_url,
-        "cpu_brand": cpu_data.get("brand"),
-        "cpu_cores": cpu_data.get("cores"),
-        "cpu_threads": cpu_data.get("threads"),
+        "cpu_brand": server_info.cpu_brand,
+        "cpu_cores": server_info.cpu_cores,
+        "cpu_threads": server_info.cpu_threads,
         # Hardware info for diagnostics
-        "hw_manufacturer": hw_manufacturer,
-        "hw_model": hw_model,
+        "hw_manufacturer": server_info.hw_manufacturer,
+        "hw_model": server_info.hw_model,
     }
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
     """Set up Unraid from a config entry."""
     host = entry.data[CONF_HOST]
-    http_port = entry.data.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT)
-    https_port = entry.data.get(CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT)
+    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     api_key = entry.data[CONF_API_KEY]
-    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
-
-    # Get polling intervals from options (or use defaults)
-    system_interval = entry.options.get(
-        CONF_SYSTEM_INTERVAL, DEFAULT_SYSTEM_POLL_INTERVAL
-    )
-    storage_interval = entry.options.get(
-        CONF_STORAGE_INTERVAL, DEFAULT_STORAGE_POLL_INTERVAL
-    )
+    use_ssl = entry.data.get(CONF_SSL, True)
 
     # Get HA's aiohttp session for proper connection pooling
-    # Use verify_ssl=False session if user disabled SSL verification
-    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    # Use verify_ssl based on whether SSL connection was established
+    session = async_get_clientsession(hass, verify_ssl=use_ssl)
 
-    # Create API client with injected session
-    api_client = UnraidAPIClient(
+    # Create API client with injected session (using unraid_api library)
+    # The library handles SSL detection automatically
+    api_client = UnraidClient(
         host=host,
-        http_port=http_port,
-        https_port=https_port,
+        http_port=port,
+        https_port=port,
         api_key=api_key,
-        verify_ssl=verify_ssl,
+        verify_ssl=use_ssl,
         session=session,
     )
 
-    # Test connection and get server info
+    # Test connection and get server info using library typed methods
     try:
         await api_client.test_connection()
-        info = await api_client.query(
-            """
-            query SystemInfo {
-                info {
-                    system { uuid manufacturer model serial }
-                    baseboard { manufacturer model serial }
-                    os { hostname distro release kernel arch }
-                    cpu { manufacturer brand cores threads }
-                    versions { core { unraid api } }
-                }
-                server { lanip localurl remoteurl }
-                registration { type state }
-            }
-            """
-        )
+        info = await api_client.get_server_info()
         # Clear any previous auth repair issues on successful connection
         ir.async_delete_issue(hass, DOMAIN, REPAIR_AUTH_FAILED)
+    except UnraidAuthenticationError as err:
+        await api_client.close()
+        # Create repair issue for auth failure
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            REPAIR_AUTH_FAILED,
+            is_fixable=True,
+            is_persistent=True,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="auth_failed",
+            translation_placeholders={"host": host},
+        )
+        msg = f"Authentication failed for Unraid server {host}"
+        raise ConfigEntryAuthFailed(msg) from err
+    except UnraidSSLError as err:
+        await api_client.close()
+        msg = f"SSL certificate error connecting to Unraid server {host}: {err}"
+        raise ConfigEntryNotReady(msg) from err
+    except (UnraidConnectionError, UnraidTimeoutError) as err:
+        await api_client.close()
+        msg = f"Failed to connect to Unraid server: {err}"
+        raise ConfigEntryNotReady(msg) from err
     except Exception as err:
         await api_client.close()
-        error_str = str(err).lower()
-        # Check for authentication errors
-        if "401" in error_str or "403" in error_str or "unauthorized" in error_str:
-            # Create repair issue for auth failure
-            ir.async_create_issue(
-                hass,
-                DOMAIN,
-                REPAIR_AUTH_FAILED,
-                is_fixable=True,
-                is_persistent=True,
-                severity=ir.IssueSeverity.ERROR,
-                translation_key="auth_failed",
-                translation_placeholders={"host": host},
-            )
-            msg = f"Authentication failed for Unraid server {host}"
-            raise ConfigEntryAuthFailed(msg) from err
-        msg = f"Failed to connect to Unraid server: {err}"
+        msg = f"Unexpected error connecting to Unraid server: {err}"
         raise ConfigEntryNotReady(msg) from err
 
     # Build server info using helper function
-    server_info = _build_server_info(info, host, verify_ssl)
+    server_info = _build_server_info(info, host, use_ssl)
     server_name = server_info["name"]
 
-    # Create coordinators
+    # Create coordinators (use fixed internal intervals per HA Core requirements)
     system_coordinator = UnraidSystemCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
-        update_interval=system_interval,
+        config_entry=entry,
     )
 
     storage_coordinator = UnraidStorageCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
-        update_interval=storage_interval,
+        config_entry=entry,
     )
 
     # Fetch initial data
@@ -231,14 +193,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     # Forward setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register update listener for options changes
-    entry.async_on_unload(entry.add_update_listener(_async_options_update_listener))
-
     _LOGGER.info(
-        "Unraid integration setup complete for %s (system: %ds, storage: %ds)",
+        "Unraid integration setup complete for %s",
         server_name,
-        system_interval,
-        storage_interval,
     )
 
     return True
@@ -255,15 +212,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> b
         _LOGGER.info("Unraid integration unloaded for entry %s", entry.title)
 
     return unload_ok
-
-
-async def _async_options_update_listener(
-    hass: HomeAssistant, entry: UnraidConfigEntry
-) -> None:
-    """Handle options update - triggers full entry reload."""
-    _LOGGER.info(
-        "Options changed for %s, reloading integration",
-        entry.title,
-    )
-    # Reload the entry to apply new options
-    await hass.config_entries.async_reload(entry.entry_id)
