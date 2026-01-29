@@ -19,6 +19,41 @@ Pull requests are the best way to propose changes to the codebase.
 4. Test you contribution.
 5. Issue that pull request!
 
+## Keep Pull Requests Small and Focused
+
+**Important**: Please submit small, focused pull requests that address a single issue or feature.
+
+### Why Small PRs Matter
+
+- **Easier to review**: Reviewers can quickly understand the changes and provide meaningful feedback
+- **Faster to merge**: Small PRs are approved and merged more quickly
+- **Easier to test**: Focused changes are simpler to test thoroughly
+- **Easier to debug**: If something breaks, it's easier to identify the cause
+- **Less risk**: Smaller changes have less chance of introducing unintended side effects
+
+### What Makes a Good PR
+
+✅ **Good Examples**:
+- Fix a specific bug (one issue, one PR)
+- Add a single new sensor type
+- Update documentation for a particular feature
+- Refactor one specific module or function
+
+❌ **Avoid**:
+- Combining multiple bug fixes in one PR
+- Mixing bug fixes with new features
+- Refactoring code while also adding features
+- Making unrelated changes across multiple files
+
+### If You Have Multiple Changes
+
+If you have multiple improvements or fixes:
+1. Create separate branches for each change
+2. Submit separate pull requests for each branch
+3. Reference related PRs in the description if they depend on each other
+
+This approach makes it much easier to review, test, and merge your contributions!
+
 ## Any contributions you make will be under the Apache License 2.0
 
 In short, when you submit code changes, your submissions are understood to be under the same [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0) that covers the project. Feel free to contact the maintainers if that's a concern.

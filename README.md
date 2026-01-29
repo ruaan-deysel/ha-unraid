@@ -316,9 +316,10 @@ Contributions are welcome! Please:
 2. Create a feature branch
 3. Make changes and run `./scripts/lint`
 4. Run tests with `pytest`
-5. Submit a pull request
+5. **Keep PRs small and focused** - one issue/feature per PR
+6. Submit a pull request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
