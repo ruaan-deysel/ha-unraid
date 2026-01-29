@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
@@ -221,6 +221,28 @@ def test_cpusensor_none_data_attributes() -> None:
     )
 
     assert sensor.extra_state_attributes == {}
+
+
+def test_cpusensor_extra_attributes_with_data() -> None:
+    """Test CPU sensor returns CPU details when data is available."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    data = make_system_data()
+    # Set CPU info on the ServerInfo
+    data.info.cpu_brand = "AMD Ryzen 7"
+    data.info.cpu_cores = 8
+    data.info.cpu_threads = 16
+    coordinator.data = data
+
+    sensor = CpuSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["cpu_model"] == "AMD Ryzen 7"
+    assert attrs["cpu_cores"] == 8
+    assert attrs["cpu_threads"] == 16
 
 
 # =============================================================================
@@ -1576,6 +1598,29 @@ def test_upsbatterysensor_none_data_attributes() -> None:
     assert sensor.extra_state_attributes == {}
 
 
+def test_upsbatterysensor_extra_attributes_valid_ups() -> None:
+    """Test UPS battery sensor returns model and status when UPS found."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS 1000",
+        status="ONLINE",
+        battery=UPSBattery(chargeLevel=95),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSBatterySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["model"] == "APC UPS 1000"
+    assert attrs["status"] == "ONLINE"
+
+
 # =============================================================================
 # UPS Load Sensor Tests
 # =============================================================================
@@ -1955,6 +2000,31 @@ def test_upspowersensor_unavailable_when_nominal_power_zero() -> None:
 
     assert sensor.available is False
     assert sensor.native_value is None
+
+
+def test_upspowersensor_available_when_nominal_power_set() -> None:
+    """Test UPS power sensor is available when nominal power is configured."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC",
+        status="Online",
+        battery=UPSBattery(chargeLevel=95, estimatedRuntime=1200),
+        power=UPSPower(inputVoltage=120.0, outputVoltage=118.5, loadPercentage=20.5),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.last_update_success = True
+
+    sensor = UPSPowerSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_capacity_va=1000,
+        ups_nominal_power=800,  # Non-zero
+    )
+
+    assert sensor.available is True
 
 
 def test_upspowersensor_attributes() -> None:
@@ -2797,3 +2867,497 @@ async def test_asyncsetupentry_creates_parity_disk_temperature_sensors(hass) -> 
         if isinstance(e, DiskUsageSensor) and "parity:1" in e.unique_id
     ]
     assert len(parity_usage_sensors) == 0
+
+
+# =============================================================================
+# Additional Coverage Tests - Extra State Attributes with None Data
+# =============================================================================
+
+
+def test_cpuusagesensor_extra_attributes_none_data() -> None:
+    """Test CPU extra_state_attributes returns empty dict when data is None."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
+
+    sensor = CpuSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.extra_state_attributes == {}
+
+
+def test_arrayusagesensor_extra_attributes_none_data() -> None:
+    """Test array usage extra_state_attributes returns empty when data is None."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+
+    sensor = ArrayUsageSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.extra_state_attributes == {}
+
+
+def test_disktemperaturesensor_extra_attributes_none_disk() -> None:
+    """Test disk temp extra_state_attributes returns empty when disk not found."""
+    disk = ArrayDisk(id="disk:1", name="Disk 1", type="DATA", temp=45, status="DISK_OK")
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+
+    sensor = DiskTemperatureSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    # Now remove the disk from coordinator data
+    coordinator.data = make_storage_data(disks=[])
+
+    # Verify attributes return empty dict when disk not found
+    assert sensor.extra_state_attributes == {}
+
+
+def test_disktemperaturesensor_extra_attributes_valid_disk() -> None:
+    """Test disk temp extra_state_attributes returns disk info when found."""
+    disk = ArrayDisk(
+        id="disk:1",
+        name="Disk 1",
+        type="DATA",
+        temp=45,
+        status="DISK_OK",
+        device="sda",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+
+    sensor = DiskTemperatureSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["spinning"] is True
+    assert attrs["status"] == "DISK_OK"
+    assert attrs["device"] == "sda"
+    assert attrs["type"] == "DATA"
+
+
+def test_diskusagesensor_returns_none_when_disk_missing() -> None:
+    """Test disk usage sensor returns None when disk is missing from data."""
+    disk = ArrayDisk(
+        id="disk:1",
+        name="Disk 1",
+        type="DATA",
+        total_bytes=1000000000,
+        used_bytes=500000000,
+        status="DISK_OK",
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+
+    sensor = DiskUsageSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    # Remove disk from data
+    coordinator.data = make_storage_data(disks=[])
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_upschargesensor_extra_attributes_none_ups() -> None:
+    """Test UPS battery extra_state_attributes returns empty when UPS not found."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        battery=UPSBattery(chargeLevel=75),
+        status="ONLINE",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSBatterySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    # Remove UPS from data
+    coordinator.data = make_system_data(ups_devices=[])
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_upsloadsensor_extra_attributes_none_ups() -> None:
+    """Test UPS load extra_state_attributes returns empty when UPS not found."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0),
+        status="ONLINE",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSLoadSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    # Remove UPS from data
+    coordinator.data = make_system_data(ups_devices=[])
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_upsruntimesensor_returns_none_when_ups_missing() -> None:
+    """Test UPS runtime sensor returns None when UPS is missing from data."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        battery=UPSBattery(estimatedRuntime=3600),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSRuntimeSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    # Remove UPS from data
+    coordinator.data = make_system_data(ups_devices=[])
+
+    assert sensor.native_value is None
+
+
+def test_upspowersensor_extra_attributes_none_ups() -> None:
+    """Test UPS power sensor extra_state_attributes when UPS is not found."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSPowerSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+    )
+
+    # Remove UPS from data
+    coordinator.data = make_system_data(ups_devices=[])
+
+    assert sensor.native_value is None
+
+
+def test_upsenergysensor_extra_attributes_returns_dict() -> None:
+    """Test UPS energy extra_state_attributes returns dict with model and power."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert "model" in attrs
+    assert "nominal_power_watts" in attrs
+    assert attrs["nominal_power_watts"] == 800
+
+
+def test_shareusagesensor_returns_none_when_share_missing() -> None:
+    """Test share usage sensor returns None when share is missing from data."""
+    share = Share(id="share:1", name="appdata", size_bytes=5000000, used_bytes=2500000)
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(shares=[share])
+
+    sensor = ShareUsageSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        share=share,
+    )
+
+    # Remove share from data
+    coordinator.data = make_storage_data(shares=[])
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_upsruntimesensor_formats_hours_and_minutes() -> None:
+    """Test UPS runtime sensor formats hours and minutes correctly."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        battery=UPSBattery(estimatedRuntime=7380),  # 2 hours 3 minutes
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSRuntimeSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    assert sensor.native_value == "2 hours 3 minutes"
+
+
+def test_upsruntimesensor_formats_singular_units() -> None:
+    """Test UPS runtime sensor formats singular hour/minute correctly."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        battery=UPSBattery(estimatedRuntime=3660),  # 1 hour 1 minute
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSRuntimeSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    assert sensor.native_value == "1 hour 1 minute"
+
+
+def test_upsruntimesensor_formats_zero_minutes() -> None:
+    """Test UPS runtime sensor with exactly 1 hour (0 minutes)."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        battery=UPSBattery(estimatedRuntime=3600),  # Exactly 1 hour
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSRuntimeSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    assert sensor.native_value == "1 hour 0 minutes"
+
+
+def test_upsloadsensor_extra_attributes_with_voltage() -> None:
+    """Test UPS load sensor extra_state_attributes includes voltage when available."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0, inputVoltage=120.5, outputVoltage=118.2),
+        status="ONLINE",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSLoadSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["input_voltage"] == 120.5
+    assert attrs["output_voltage"] == 118.2
+
+
+def test_upspowersensor_extra_attributes_with_va_capacity() -> None:
+    """Test UPS power sensor extra_state_attributes includes VA capacity when set."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSPowerSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+        ups_capacity_va=1000,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["ups_capacity_va"] == 1000
+    assert attrs["nominal_power_watts"] == 800
+
+
+@pytest.mark.asyncio
+async def test_upsenergysensor_async_added_to_hass_restores_state(hass) -> None:
+    """Test UPS energy sensor restores state on add to hass."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=50.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test-entry-id"
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=1000,
+    )
+
+    # Set entity_id for hass state tracking
+    sensor._attr_has_entity_name = True
+    sensor.hass = hass
+    sensor.entity_id = "sensor.test_ups_energy"
+
+    # Mock the state restoration with valid last state
+    mock_state = MagicMock()
+    mock_state.state = "12.345"
+
+    with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+        await sensor.async_added_to_hass()
+
+    # Verify state was restored
+    assert sensor._total_energy_kwh == pytest.approx(12.345)
+
+
+@pytest.mark.asyncio
+async def test_upsenergysensor_async_added_to_hass_handles_invalid_state(hass) -> None:
+    """Test UPS energy sensor handles invalid restored state gracefully."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=50.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test-entry-id"
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=1000,
+    )
+
+    sensor.hass = hass
+    sensor.entity_id = "sensor.test_ups_energy"
+
+    # Mock the state restoration with invalid state
+    mock_state = MagicMock()
+    mock_state.state = "not_a_number"
+
+    with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+        await sensor.async_added_to_hass()
+
+    # Verify state remains at default 0.0
+    assert sensor._total_energy_kwh == 0.0
+
+
+@pytest.mark.asyncio
+async def test_upsenergysensor_async_added_to_hass_skips_unknown_state(hass) -> None:
+    """Test UPS energy sensor skips restoration when state is unknown."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=50.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test-entry-id"
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=1000,
+    )
+
+    sensor.hass = hass
+    sensor.entity_id = "sensor.test_ups_energy"
+
+    # Mock the state restoration with "unknown" state
+    mock_state = MagicMock()
+    mock_state.state = "unknown"
+
+    with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+        await sensor.async_added_to_hass()
+
+    # Verify state remains at default 0.0
+    assert sensor._total_energy_kwh == 0.0
+
+
+@pytest.mark.asyncio
+async def test_upsenergysensor_async_added_to_hass_no_previous_state(hass) -> None:
+    """Test UPS energy sensor handles no previous state."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=50.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test-entry-id"
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=1000,
+    )
+
+    sensor.hass = hass
+    sensor.entity_id = "sensor.test_ups_energy"
+
+    with patch.object(sensor, "async_get_last_state", return_value=None):
+        await sensor.async_added_to_hass()
+
+    # Verify state remains at default 0.0
+    assert sensor._total_energy_kwh == 0.0

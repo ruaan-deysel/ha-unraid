@@ -700,6 +700,21 @@ async def test_storage_coordinator_unexpected_error_handling(
 
 
 @pytest.mark.asyncio
+async def test_storage_coordinator_api_error_handling(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator handles API errors on array query."""
+    mock_api_client.typed_get_array.side_effect = UnraidAPIError("Query failed")
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(UpdateFailed, match="API error"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
 async def test_storage_coordinator_handles_shares_query_failure(
     hass, mock_api_client, mock_config_entry
 ):

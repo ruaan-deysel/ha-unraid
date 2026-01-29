@@ -1554,3 +1554,145 @@ async def test_setup_no_coordinator_data(hass) -> None:
     assert len(added_entities) == 2
     assert any(isinstance(e, ArraySwitch) for e in added_entities)
     assert any(isinstance(e, ParityCheckSwitch) for e in added_entities)
+
+
+# =============================================================================
+# Cache Hit Tests
+# =============================================================================
+
+
+def test_containerswitch_cache_hit() -> None:
+    """Test container switch uses cached value when data object is same."""
+    container = DockerContainer(id="abc123", name="/plex", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    data = make_system_data(containers=[container])
+    coordinator.data = data
+
+    switch = DockerContainerSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        container=container,
+        api_client=MagicMock(),
+    )
+
+    # First call populates cache
+    result1 = switch._get_container()
+    assert result1 is not None
+    assert result1.name == "/plex"
+
+    # Second call with SAME data object should hit cache (line 120)
+    result2 = switch._get_container()
+    assert result2 is not None
+    # Verify cache was used (returned same cached object)
+    assert result2 is switch._cached_container
+
+
+def test_vmswitch_cache_hit() -> None:
+    """Test VM switch uses cached value when data object is same."""
+    vm = VmDomain(id="vm:1", name="Windows 11", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    data = make_system_data(vms=[vm])
+    coordinator.data = data
+
+    switch = VirtualMachineSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm,
+        api_client=MagicMock(),
+    )
+
+    # First call populates cache
+    result1 = switch._get_vm()
+    assert result1 is not None
+    assert result1.name == "Windows 11"
+
+    # Second call with SAME data object should hit cache (line 240)
+    result2 = switch._get_vm()
+    assert result2 is not None
+    # Verify cache was used (returned same cached object)
+    assert result2 is switch._cached_vm
+
+
+def test_arrayswitch_extra_attributes_none_data() -> None:
+    """Test array switch extra_state_attributes returns empty when data is None."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        api_client=MagicMock(),
+    )
+
+    assert switch.extra_state_attributes == {}
+
+
+def test_paritycheckswitch_is_on_none_data() -> None:
+    """Test parity check switch is_on returns None when data is None."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        api_client=MagicMock(),
+    )
+
+    assert switch.is_on is None
+
+
+def test_paritycheckswitch_extra_attributes_none_data() -> None:
+    """Test parity check extra_state_attributes returns empty when data is None."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        api_client=MagicMock(),
+    )
+
+    assert switch.extra_state_attributes == {}
+
+
+def test_paritycheckswitch_is_on_returns_false_when_status_none() -> None:
+    """Test parity check is_on returns False when parity status value is None."""
+    parity = ParityCheck(status=None, progress=None, errors=0)
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=parity)
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        api_client=MagicMock(),
+    )
+
+    # Line 440: status is None so returns False (not running)
+    assert switch.is_on is False
+
+
+def test_diskspinswitch_returns_none_when_disk_missing() -> None:
+    """Test disk spin switch returns None when disk is missing from data."""
+    disk = ArrayDisk(id="disk:1", name="Disk 1", type="DATA", status="DISK_OK")
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+        api_client=MagicMock(),
+    )
+
+    # Remove disk from data
+    coordinator.data = make_storage_data(disks=[])
+
+    assert switch.is_on is None
+    assert switch.extra_state_attributes == {}

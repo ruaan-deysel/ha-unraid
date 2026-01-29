@@ -250,6 +250,38 @@ def test_disk_health_extra_state_attributes(mock_storage_coordinator, mock_disk)
     assert attrs["spinning"] is True
 
 
+def test_disk_health_extra_state_attributes_minimal(mock_storage_coordinator):
+    """Test extra_state_attributes with minimal disk data (no optional fields)."""
+    minimal_disk = ArrayDisk(
+        id="disk:1",
+        name="Disk 1",
+        type="DATA",
+        status="DISK_OK",
+        device="sda",
+        # No fsType, temp, smartStatus, isSpinning - all optional fields missing
+    )
+    mock_storage_coordinator.data = make_storage_data(
+        array_state="STARTED",
+        disks=[minimal_disk],
+    )
+    sensor = DiskHealthBinarySensor(
+        coordinator=mock_storage_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        disk=minimal_disk,
+    )
+    attrs = sensor.extra_state_attributes
+    # Only required fields should be present
+    assert attrs["status"] == "DISK_OK"
+    assert attrs["device"] == "sda"
+    # Optional fields should not be present
+    assert "filesystem" not in attrs
+    assert "temperature" not in attrs
+    assert "smart_status" not in attrs
+    assert "standby" not in attrs
+    assert "spinning" not in attrs
+
+
 def test_disk_health_extra_state_attributes_no_data(
     mock_storage_coordinator, mock_disk
 ):

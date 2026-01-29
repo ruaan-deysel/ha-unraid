@@ -13,6 +13,12 @@ from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from unraid_api.exceptions import (
+    UnraidAuthenticationError,
+    UnraidConnectionError,
+    UnraidSSLError,
+    UnraidTimeoutError,
+)
 from unraid_api.models import ServerInfo, UPSDevice
 
 from custom_components.unraid.config_flow import CannotConnectError
@@ -192,6 +198,119 @@ async def test_unreachable_server_error(hass: HomeAssistant) -> None:
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
             data={"host": "unraid.invalid", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_unraid_authentication_error(hass: HomeAssistant) -> None:
+    """Test UnraidAuthenticationError from library shows auth error."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidAuthenticationError("Invalid API key")
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "bad-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_API_KEY] == "invalid_auth"
+
+
+async def test_unraid_ssl_error(hass: HomeAssistant) -> None:
+    """Test UnraidSSLError from library shows connection error."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidSSLError("Certificate verification failed")
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_unraid_connection_error(hass: HomeAssistant) -> None:
+    """Test UnraidConnectionError from library shows connection error."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidConnectionError("Connection refused")
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_unraid_timeout_error(hass: HomeAssistant) -> None:
+    """Test UnraidTimeoutError from library shows connection error."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidTimeoutError("Connection timed out")
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_aiohttp_client_connector_error(hass: HomeAssistant) -> None:
+    """Test aiohttp ClientConnectorError shows connection error."""
+    from socket import gaierror
+
+    from aiohttp import ClientConnectorError
+
+    mock_api = AsyncMock()
+    # ClientConnectorError requires a ConnectionKey and OSError
+    mock_api.test_connection = AsyncMock(
+        side_effect=ClientConnectorError(
+            connection_key=MagicMock(),
+            os_error=gaierror("Name resolution failed"),
+        )
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -1484,3 +1603,105 @@ async def test_version_parsing_failure_rejected(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"]["base"] == "unsupported_version"
+
+
+async def test_user_flow_generic_exception_converted_to_cannot_connect(
+    hass: HomeAssistant,
+) -> None:
+    """Test user flow converts generic exceptions to cannot_connect error."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(side_effect=RuntimeError("Unexpected error"))
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
+        )
+
+    # Generic exceptions are converted to cannot_connect via _handle_generic_error
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_reauth_flow_missing_entry_aborts(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test reauth flow aborts when _reauth_entry is None (edge case)."""
+    # This tests the defensive check at line 338 in config_flow.py
+    # This can happen if reauth is initiated but the entry is somehow removed
+    # before the user submits the form. The safeguard returns an abort.
+    # We can test this by manually calling the step with user_input
+    # after setting _reauth_entry to None on an existing flow.
+
+    # Create a valid entry first
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    # Start the reauth flow
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert result["step_id"] == "reauth_confirm"
+
+    # Get the flow and manually set _reauth_entry to None to simulate edge case
+    flow = hass.config_entries.flow._progress.get(result["flow_id"])
+    flow._reauth_entry = None
+
+    # Now submit - it should abort
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_API_KEY: "new-key"},
+    )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reauth_failed"
+
+
+async def test_reconfigure_flow_generic_exception_converted_to_cannot_connect(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test reconfigure flow converts generic exceptions to cannot_connect error."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_PORT: 80, CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(side_effect=RuntimeError("Unexpected error"))
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "new-host.local", CONF_PORT: 80, CONF_API_KEY: "new-key"},
+        )
+
+    # Generic exceptions are converted to cannot_connect via _handle_generic_error
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"]["base"] == "cannot_connect"
