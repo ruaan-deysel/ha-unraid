@@ -7,7 +7,24 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2026.02.0] - 2026-01-13
+## [2026.2.0] - 2026-01-29
+
+### Added
+- **RAM Used Sensor**: New sensor showing active memory consumption (memory used by running processes), matching Unraid's "System + Docker" display. Uses `total - available` calculation to exclude cached/buffered memory that can be reclaimed
+- **Sensor Entity Translations**: Added proper translation keys for all sensor entities in `strings.json` and `translations/en.json`
+
+### Changed
+- **Uptime Sensor**: Renamed from "Uptime" to "Up since" to better describe the timestamp device class behavior. Removed diagnostic entity category to make it a regular sensor (aligns with core HA integration pattern)
+- **Control Switches**: Converted button pairs to switches for better UX:
+  - **Array Switch**: Toggle array on/off (replaces separate start/stop buttons)
+  - **Parity Check Switch**: Toggle parity check running state (replaces separate start/stop buttons)
+  - **Disk Spin Switch**: Toggle disk spin up/down state per disk (replaces separate spin up/down buttons)
+- **Disk Temperature Sensors**: Now disabled by default to reduce entity clutter. Users can enable per-disk temperature monitoring as needed
+
+### Fixed
+- **RAM Used Calculation**: Fixed RAM Used sensor to show actual memory used by processes instead of raw "used" value which incorrectly included cached/buffered memory
+
+## [2026.01.0] - 2026-01-13
 
 ### Added
 - **Custom Port Configuration**: Support for custom HTTP and HTTPS ports for users with reverse proxies or non-standard Unraid configurations ([#130](https://github.com/ruaan-deysel/ha-unraid/issues/130), [#131](https://github.com/ruaan-deysel/ha-unraid/issues/131))
@@ -119,7 +136,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.2...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.0...HEAD
+[2026.2.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.01.0...v2026.2.0
+[2026.01.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.2...v2026.01.0
 [2025.12.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...v2025.12.2
 [2025.12.1]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.1
 [2025.12.0]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.0

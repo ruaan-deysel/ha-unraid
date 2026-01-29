@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 from homeassistant.const import (
     CONF_API_KEY,
     CONF_HOST,
-    CONF_VERIFY_SSL,
+    CONF_PORT,
+    CONF_SSL,
     Platform,
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -28,13 +29,8 @@ from unraid_api.exceptions import (
     UnraidTimeoutError,
 )
 
-from .config_flow import (
-    CONF_HTTP_PORT,
-    CONF_HTTPS_PORT,
-    DEFAULT_HTTP_PORT,
-    DEFAULT_HTTPS_PORT,
-)
 from .const import (
+    DEFAULT_PORT,
     DOMAIN,
     REPAIR_AUTH_FAILED,
 )
@@ -68,7 +64,7 @@ class UnraidRuntimeData:
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 
 
-def _build_server_info(server_info: ServerInfo, host: str, verify_ssl: bool) -> dict:
+def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dict:
     """Build server info dictionary from library's ServerInfo model."""
     # Use library's ServerInfo model directly
     # Model shows "Unraid {version}" for prominent display in Device Info
@@ -80,7 +76,7 @@ def _build_server_info(server_info: ServerInfo, host: str, verify_ssl: bool) -> 
     # Determine configuration URL for device info
     configuration_url = server_info.local_url
     if not configuration_url and server_info.lan_ip:
-        protocol = "https" if verify_ssl else "http"
+        protocol = "https" if use_ssl else "http"
         configuration_url = f"{protocol}://{server_info.lan_ip}"
 
     return {
@@ -110,22 +106,22 @@ def _build_server_info(server_info: ServerInfo, host: str, verify_ssl: bool) -> 
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
     """Set up Unraid from a config entry."""
     host = entry.data[CONF_HOST]
-    http_port = entry.data.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT)
-    https_port = entry.data.get(CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT)
+    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     api_key = entry.data[CONF_API_KEY]
-    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
+    use_ssl = entry.data.get(CONF_SSL, True)
 
     # Get HA's aiohttp session for proper connection pooling
-    # Use verify_ssl=False session if user disabled SSL verification
-    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+    # Use verify_ssl based on whether SSL connection was established
+    session = async_get_clientsession(hass, verify_ssl=use_ssl)
 
     # Create API client with injected session (using unraid_api library)
+    # The library handles SSL detection automatically
     api_client = UnraidClient(
         host=host,
-        http_port=http_port,
-        https_port=https_port,
+        http_port=port,
+        https_port=port,
         api_key=api_key,
-        verify_ssl=verify_ssl,
+        verify_ssl=use_ssl,
         session=session,
     )
 
@@ -164,7 +160,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         raise ConfigEntryNotReady(msg) from err
 
     # Build server info using helper function
-    server_info = _build_server_info(info, host, verify_ssl)
+    server_info = _build_server_info(info, host, use_ssl)
     server_name = server_info["name"]
 
     # Create coordinators (use fixed internal intervals per HA Core requirements)

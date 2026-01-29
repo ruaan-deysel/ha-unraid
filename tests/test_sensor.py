@@ -35,16 +35,17 @@ from custom_components.unraid.sensor import (
     FlashUsageSensor,
     ParityProgressSensor,
     RAMUsageSensor,
+    RAMUsedSensor,
     ShareUsageSensor,
     TemperatureSensor,
     UnraidSensorEntity,
     UPSBatterySensor,
+    UPSEnergySensor,
     UPSLoadSensor,
     UPSPowerSensor,
     UPSRuntimeSensor,
     UptimeSensor,
     format_bytes,
-    format_uptime,
 )
 from tests.conftest import make_storage_data, make_system_data
 
@@ -99,86 +100,6 @@ def test_formatbytes_large_value() -> None:
     """Test format_bytes doesn't go beyond PB."""
     # 2000 PB should still display as PB
     assert "PB" in format_bytes(2 * 1125899906842624)
-
-
-# =============================================================================
-# Helper Function Tests - format_uptime
-# =============================================================================
-
-
-def test_formatuptime_none() -> None:
-    """Test format_uptime returns None for None input."""
-    assert format_uptime(None) is None
-
-
-def test_formatuptime_future_date() -> None:
-    """Test format_uptime returns '0 seconds' for future dates."""
-    future = datetime.now(UTC) + timedelta(hours=1)
-    assert format_uptime(future) == "0 seconds"
-
-
-def test_formatuptime_seconds() -> None:
-    """Test format_uptime for seconds only."""
-    past = datetime.now(UTC) - timedelta(seconds=30)
-    result = format_uptime(past)
-    assert "30 seconds" in result
-
-
-def test_formatuptime_minutes() -> None:
-    """Test format_uptime for minutes."""
-    past = datetime.now(UTC) - timedelta(minutes=5, seconds=30)
-    result = format_uptime(past)
-    assert "5 minutes" in result
-    assert "30 second" in result
-
-
-def test_formatuptime_hours() -> None:
-    """Test format_uptime for hours."""
-    past = datetime.now(UTC) - timedelta(hours=2, minutes=15)
-    result = format_uptime(past)
-    assert "2 hours" in result
-    assert "15 minute" in result
-
-
-def test_formatuptime_days() -> None:
-    """Test format_uptime for days."""
-    past = datetime.now(UTC) - timedelta(days=3, hours=12)
-    result = format_uptime(past)
-    assert "3 days" in result
-    assert "12 hour" in result
-
-
-def test_formatuptime_months() -> None:
-    """Test format_uptime for months."""
-    past = datetime.now(UTC) - timedelta(days=45)
-    result = format_uptime(past)
-    assert "month" in result
-
-
-def test_formatuptime_years() -> None:
-    """Test format_uptime for years."""
-    past = datetime.now(UTC) - timedelta(days=400)
-    result = format_uptime(past)
-    assert "year" in result
-
-
-def test_formatuptime_singular() -> None:
-    """Test format_uptime uses singular form."""
-    past = datetime.now(UTC) - timedelta(days=1, hours=1, minutes=1, seconds=1)
-    result = format_uptime(past)
-    assert "1 day" in result
-    assert "1 hour" in result
-    assert "1 minute" in result
-    assert "1 second" in result
-
-
-def test_formatuptime_zero_parts() -> None:
-    """Test format_uptime with zero intermediate parts."""
-    # Just a few seconds - should only show seconds
-    past = datetime.now(UTC) - timedelta(seconds=5)
-    result = format_uptime(past)
-    assert "second" in result
-    assert "minute" not in result
 
 
 # =============================================================================
@@ -450,6 +371,89 @@ def test_ramusagesensor_none_data_attributes() -> None:
 
 
 # =============================================================================
+# RAM Used Sensor Tests
+# =============================================================================
+
+
+def test_ramusedsensor_creation() -> None:
+    """Test RAM used sensor is created with correct attributes."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    # 32 GB total, 28 GB available -> 4 GB active (used by processes)
+    coordinator.data = make_system_data(
+        memory_total=34359738368,  # 32 GB
+        memory_available=30064771072,  # 28 GB
+    )
+
+    sensor = RAMUsedSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.unique_id == "test-uuid_ram_used"
+    assert sensor.device_class == SensorDeviceClass.DATA_SIZE
+    assert sensor.native_unit_of_measurement == "B"
+    assert sensor.suggested_unit_of_measurement == "GiB"
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+
+def test_ramusedsensor_state() -> None:
+    """
+    Test RAM used sensor returns active memory (total - available).
+
+    This matches Unraid's display of System + Docker usage, excluding
+    cached/buffered memory that can be reclaimed.
+    """
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    # 32 GB total, 28 GB available -> 4 GB active
+    coordinator.data = make_system_data(
+        memory_total=34359738368,  # 32 GB
+        memory_available=30064771072,  # ~28 GB
+    )
+
+    sensor = RAMUsedSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    # Expected: 32 GB - 28 GB = ~4 GB active memory
+    expected = 34359738368 - 30064771072  # 4294967296 bytes = 4 GB
+    assert sensor.native_value == expected
+
+
+def test_ramusedsensor_none_data_native_value() -> None:
+    """Test RAM used sensor returns None when coordinator data is None."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
+
+    sensor = RAMUsedSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.native_value is None
+
+
+def test_ramusedsensor_none_memory_values() -> None:
+    """Test RAM used sensor returns None when memory values are None."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(
+        memory_total=None,
+        memory_available=None,
+    )
+
+    sensor = RAMUsedSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.native_value is None
+
+
+# =============================================================================
 # Temperature Sensor Tests
 # =============================================================================
 
@@ -550,7 +554,7 @@ def test_temperaturesensor_empty_temps() -> None:
 
 
 def test_uptimesensor_creation() -> None:
-    """Test uptime sensor creation."""
+    """Test uptime sensor creation with TIMESTAMP device class."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(
         uptime=datetime(2025, 12, 20, 12, 0, 0, tzinfo=UTC)
@@ -563,14 +567,15 @@ def test_uptimesensor_creation() -> None:
     )
 
     assert sensor.unique_id == "test-uuid_uptime"
-    assert sensor.device_class is None  # Changed from TIMESTAMP
+    assert sensor.device_class == SensorDeviceClass.TIMESTAMP
     assert sensor.state_class is None
-    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
+    # No entity_category - uptime is a regular sensor (matches core HA integration)
+    assert sensor.entity_category is None
 
 
 def test_uptimesensor_state() -> None:
-    """Test uptime sensor returns human-readable string."""
-    # Boot time 3 days, 2 hours, 30 minutes ago
+    """Test uptime sensor returns datetime (boot time)."""
+    # Boot time as a specific datetime
     uptime_dt = datetime(2025, 12, 20, 9, 30, 0, tzinfo=UTC)
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(uptime=uptime_dt)
@@ -581,9 +586,9 @@ def test_uptimesensor_state() -> None:
         server_name="test-server",
     )
 
-    # Should return human-readable string (actual value depends on "now")
-    assert sensor.native_value is not None
-    assert isinstance(sensor.native_value, str)
+    # Should return the datetime directly (HA formats as relative time)
+    assert sensor.native_value == uptime_dt
+    assert isinstance(sensor.native_value, datetime)
 
 
 def test_uptimesensor_none_data_native_value() -> None:
@@ -598,20 +603,6 @@ def test_uptimesensor_none_data_native_value() -> None:
     )
 
     assert sensor.native_value is None
-
-
-def test_uptimesensor_none_data_attributes() -> None:
-    """Test uptime sensor returns empty attributes when coordinator data is None."""
-    coordinator = MagicMock(spec=UnraidSystemCoordinator)
-    coordinator.data = None
-
-    sensor = UptimeSensor(
-        coordinator=coordinator,
-        server_uuid="test-uuid",
-        server_name="test-server",
-    )
-
-    assert sensor.extra_state_attributes == {}
 
 
 # =============================================================================
@@ -2064,6 +2055,142 @@ def test_upspowersensor_none_load() -> None:
 
 
 # =============================================================================
+# UPS Energy Sensor Tests
+# =============================================================================
+
+
+def test_upsenergysensor_creation() -> None:
+    """Test UPS energy sensor creation."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS",
+        power=UPSPower(loadPercentage=25.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+    )
+
+    assert sensor.unique_id == "test-uuid_ups_ups:1_energy"
+    assert sensor.name == "UPS Energy"
+    assert sensor.device_class == SensorDeviceClass.ENERGY
+    assert sensor.state_class == SensorStateClass.TOTAL_INCREASING
+    assert sensor.native_unit_of_measurement == "kWh"
+
+
+def test_upsenergysensor_unavailable_when_nominal_power_zero() -> None:
+    """Test UPS energy sensor is unavailable when nominal power is 0."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC",
+        power=UPSPower(loadPercentage=20.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.last_update_success = True
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=0,
+    )
+
+    assert sensor.available is False
+
+
+def test_upsenergysensor_tracks_energy_accumulation() -> None:
+    """Test UPS energy sensor accumulates energy over time."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC",
+        power=UPSPower(loadPercentage=50.0),  # 50% of 1000W = 500W
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=1000,  # 1000W nominal
+    )
+
+    # First read - initializes tracking
+    assert sensor.native_value == 0.0
+
+    # Simulate some time passing by updating internal state
+    # After first read, _last_power_watts and _last_update_time are set
+    assert sensor._last_power_watts == 500.0  # 50% of 1000W
+
+    # Manually simulate time passing and another update
+    sensor._last_update_time = datetime.now(UTC) - timedelta(hours=1)
+    # Now read again - should show energy accumulated over 1 hour at 500W
+    energy = sensor.native_value
+    # 500W for 1 hour = 0.5 kWh
+    assert energy is not None
+    assert 0.4 <= energy <= 0.6  # Allow some tolerance for timing
+
+
+def test_upsenergysensor_none_data() -> None:
+    """Test UPS energy sensor returns None when coordinator data is None."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC",
+        power=UPSPower(loadPercentage=20.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+    )
+
+    assert sensor.native_value == 0.0  # Energy starts at 0
+    assert sensor._last_power_watts is None  # Can't calculate power
+
+
+def test_upsenergysensor_attributes() -> None:
+    """Test UPS energy sensor extra state attributes."""
+    ups = UPSDevice(
+        id="ups:1",
+        name="APC UPS Pro",
+        power=UPSPower(loadPercentage=25.0),
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+
+    sensor = UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        ups=ups,
+        ups_nominal_power=800,
+    )
+
+    # Trigger an update to populate _last_power_watts
+    _ = sensor.native_value
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["model"] == "APC UPS Pro"
+    assert attrs["nominal_power_watts"] == 800
+    assert attrs["current_power_watts"] == 200.0  # 25% of 800W
+    assert "last_updated" in attrs
+
+
+# =============================================================================
 # Share Usage Sensor Tests
 # =============================================================================
 
@@ -2297,13 +2424,14 @@ async def test_asyncsetupentry_creates_system_sensors(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    # Should create system sensors (CPU, RAM, Temp, Uptime, etc.)
+    # Should create system sensors (CPU, RAM, RAM used, Temp, Uptime, etc.)
     assert len(added_entities) > 0
 
     # Check some expected sensor types exist
     entity_types = {type(e).__name__ for e in added_entities}
     assert "CpuSensor" in entity_types
     assert "RAMUsageSensor" in entity_types
+    assert "RAMUsedSensor" in entity_types
     assert "ArrayStateSensor" in entity_types
 
 
@@ -2353,11 +2481,11 @@ async def test_asyncsetupentry_creates_ups_sensors(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_asyncsetupentry_creates_disk_sensors(hass) -> None:
-    """Test setup creates disk sensors for disks in storage data."""
+    """Test setup creates disk usage and temperature sensors for data disks."""
     from custom_components.unraid import UnraidRuntimeData
     from custom_components.unraid.sensor import async_setup_entry
 
-    disk = ArrayDisk(id="disk:1", name="Disk 1", status="DISK_OK")
+    disk = ArrayDisk(id="disk:1", name="Disk 1", status="DISK_OK", temp=45)
 
     system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
     system_coordinator.data = make_system_data()
@@ -2384,6 +2512,7 @@ async def test_asyncsetupentry_creates_disk_sensors(hass) -> None:
 
     entity_types = {type(e).__name__ for e in added_entities}
     assert "DiskUsageSensor" in entity_types
+    assert "DiskTemperatureSensor" in entity_types
 
 
 @pytest.mark.asyncio
@@ -2492,11 +2621,11 @@ async def test_asyncsetupentry_creates_flash_sensor(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_asyncsetupentry_creates_cache_disk_sensors(hass) -> None:
-    """Test setup creates disk usage sensors for cache disks."""
+    """Test setup creates disk usage and temperature sensors for cache disks."""
     from custom_components.unraid import UnraidRuntimeData
     from custom_components.unraid.sensor import async_setup_entry
 
-    cache_disk = ArrayDisk(id="cache:1", name="Cache", type="CACHE")
+    cache_disk = ArrayDisk(id="cache:1", name="Cache", type="CACHE", temp=38)
 
     system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
     system_coordinator.data = make_system_data()
@@ -2522,12 +2651,20 @@ async def test_asyncsetupentry_creates_cache_disk_sensors(hass) -> None:
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
     # Find the DiskUsageSensor for the cache disk
-    cache_sensors = [
+    cache_usage_sensors = [
         e
         for e in added_entities
         if isinstance(e, DiskUsageSensor) and "cache:1" in e.unique_id
     ]
-    assert len(cache_sensors) == 1
+    assert len(cache_usage_sensors) == 1
+
+    # Find the DiskTemperatureSensor for the cache disk
+    cache_temp_sensors = [
+        e
+        for e in added_entities
+        if isinstance(e, DiskTemperatureSensor) and "cache:1" in e.unique_id
+    ]
+    assert len(cache_temp_sensors) == 1
 
 
 @pytest.mark.asyncio
@@ -2608,3 +2745,55 @@ async def test_asyncsetupentry_uses_ups_capacity_from_options(hass) -> None:
     assert len(power_sensors) == 1
     assert power_sensors[0]._ups_capacity_va == 1500
     assert power_sensors[0]._ups_nominal_power == 1200
+
+
+@pytest.mark.asyncio
+async def test_asyncsetupentry_creates_parity_disk_temperature_sensors(hass) -> None:
+    """Test setup creates temperature sensors for parity disks (issue #136)."""
+    from custom_components.unraid import UnraidRuntimeData
+    from custom_components.unraid.sensor import async_setup_entry
+
+    # Parity disks don't have usage stats, only temperature
+    parity_disk = ArrayDisk(
+        id="parity:1", name="Parity", type="PARITY", temp=42, status="DISK_OK"
+    )
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = make_system_data()
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data(parities=[parity_disk])
+
+    mock_entry = MagicMock()
+    mock_entry.data = {"host": "192.168.1.100"}
+    mock_entry.options = {}
+    mock_entry.runtime_data = UnraidRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        server_info={"uuid": "test-uuid", "name": "tower"},
+    )
+
+    added_entities = []
+
+    def mock_add_entities(entities) -> None:
+        added_entities.extend(entities)
+
+    await async_setup_entry(hass, mock_entry, mock_add_entities)
+
+    # Find the DiskTemperatureSensor for the parity disk
+    parity_temp_sensors = [
+        e
+        for e in added_entities
+        if isinstance(e, DiskTemperatureSensor) and "parity:1" in e.unique_id
+    ]
+    assert len(parity_temp_sensors) == 1
+    assert parity_temp_sensors[0].native_value == 42
+
+    # Parity disks should NOT have usage sensors (no filesystem)
+    parity_usage_sensors = [
+        e
+        for e in added_entities
+        if isinstance(e, DiskUsageSensor) and "parity:1" in e.unique_id
+    ]
+    assert len(parity_usage_sensors) == 0

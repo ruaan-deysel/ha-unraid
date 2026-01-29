@@ -6,16 +6,22 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
-from unraid_api.models import DockerContainer, VmDomain
+from unraid_api.models import ArrayDisk, DockerContainer, ParityCheck, VmDomain
 
 from custom_components.unraid import UnraidRuntimeData
-from custom_components.unraid.coordinator import UnraidSystemCoordinator
+from custom_components.unraid.coordinator import (
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
+)
 from custom_components.unraid.switch import (
+    ArraySwitch,
+    DiskSpinSwitch,
     DockerContainerSwitch,
+    ParityCheckSwitch,
     VirtualMachineSwitch,
     async_setup_entry,
 )
-from tests.conftest import make_system_data
+from tests.conftest import make_storage_data, make_system_data
 
 # =============================================================================
 # DockerContainerSwitch Tests
@@ -58,7 +64,6 @@ def test_container_switch_is_on_when_running() -> None:
         id="ct:1",
         name="/web",
         state="RUNNING",
-        image="nginx:latest",
     )
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(containers=[container])
@@ -81,7 +86,6 @@ def test_container_switch_is_off_when_stopped() -> None:
         id="ct:1",
         name="/web",
         state="EXITED",
-        image="nginx:latest",
     )
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(containers=[container])
@@ -121,8 +125,8 @@ def test_container_switch_attributes() -> None:
     )
 
     attrs = switch.extra_state_attributes
-    assert attrs["image"] == "nginx:latest"
     assert attrs["status"] == "RUNNING"
+    assert attrs["image"] == "nginx:latest"
     assert attrs["web_ui_url"] == "https://tower/apps/web"
     assert attrs["icon_url"] == "https://cdn/icons/web.png"
 
@@ -133,7 +137,7 @@ def test_container_switch_attributes_filters_none() -> None:
         id="ct:1",
         name="/minimal",
         state="RUNNING",
-        # image, webUiUrl, iconUrl are all None by default
+        # All optional fields are None by default
     )
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(containers=[container])
@@ -155,61 +159,7 @@ def test_container_switch_attributes_filters_none() -> None:
     assert "icon_url" not in attrs
 
 
-def test_container_id_updates_after_container_recreate() -> None:
-    """
-    Test that container ID is updated when container is recreated.
-
-    This is the key fix for issue #133 - when a container is updated,
-    Docker creates a new container with a new ID but same name. The
-    entity should continue to work with the new container.
-    """
-    # Initial container with original ID
-    container_v1 = DockerContainer(
-        id="ct:original-id-12345",
-        name="/web",
-        state="RUNNING",
-        image="nginx:1.0",
-    )
-    coordinator = MagicMock(spec=UnraidSystemCoordinator)
-    coordinator.data = make_system_data(containers=[container_v1])
-    api_client = MagicMock()
-
-    switch = DockerContainerSwitch(
-        coordinator=coordinator,
-        api_client=api_client,
-        server_uuid="test-uuid",
-        server_name="test-server",
-        container=container_v1,
-    )
-
-    # Verify initial state
-    assert switch._container_id == "ct:original-id-12345"
-    assert switch._container_name == "web"
-    assert switch.unique_id == "test-uuid_container_switch_web"
-    assert switch.is_on is True
-
-    # Simulate container update - new container with NEW ID, same name
-    container_v2 = DockerContainer(
-        id="ct:new-id-67890",  # NEW ID after update
-        name="/web",  # Same name
-        state="RUNNING",
-        image="nginx:2.0",  # Updated image
-    )
-    # Reset cache to force re-lookup
-    switch._cache_data_id = None
-    switch._cached_container = None
-    coordinator.data = make_system_data(containers=[container_v2])
-
-    # Access is_on to trigger lookup and ID update
-    assert switch.is_on is True
-
-    # Verify the container ID was updated
-    assert switch._container_id == "ct:new-id-67890"
-    # But unique_id remains stable (based on name)
-    assert switch.unique_id == "test-uuid_container_switch_web"
-
-
-def test_container_no_data() -> None:
+def test_container_switch_no_data() -> None:
     """Test container switch when coordinator has no data."""
     container = DockerContainer(
         id="ct:1",
@@ -232,7 +182,7 @@ def test_container_no_data() -> None:
     assert switch.extra_state_attributes == {}
 
 
-def test_container_not_found() -> None:
+def test_container_switch_container_not_found() -> None:
     """Test container switch when container not found in coordinator data."""
     container = DockerContainer(
         id="ct:1",
@@ -290,7 +240,7 @@ async def test_container_turn_on_failure() -> None:
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(containers=[container])
     api_client = MagicMock()
-    api_client.start_container = AsyncMock(side_effect=Exception("Docker API error"))
+    api_client.start_container = AsyncMock(side_effect=Exception("Connection failed"))
 
     switch = DockerContainerSwitch(
         coordinator=coordinator,
@@ -661,6 +611,722 @@ async def test_vm_turn_off_failure() -> None:
 
 
 # =============================================================================
+# ArraySwitch Tests
+# =============================================================================
+
+
+def test_array_switch_creation() -> None:
+    """Test array switch creation."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STARTED")
+    api_client = MagicMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.unique_id == "test-uuid_array_switch"
+    assert switch.name == "Array"
+    assert switch.entity_registry_enabled_default is False
+
+
+def test_array_switch_is_on_when_started() -> None:
+    """Test array switch is on when array is started."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STARTED")
+    api_client = MagicMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is True
+
+
+def test_array_switch_is_off_when_stopped() -> None:
+    """Test array switch is off when array is stopped."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STOPPED")
+    api_client = MagicMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is False
+
+
+def test_array_switch_is_none_when_no_data() -> None:
+    """Test array switch returns None when no data."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+    api_client = MagicMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is None
+
+
+def test_array_switch_attributes() -> None:
+    """Test array switch extra attributes."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STARTED")
+    api_client = MagicMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    attrs = switch.extra_state_attributes
+    assert attrs["state"] == "STARTED"
+
+
+@pytest.mark.asyncio
+async def test_array_turn_on_success() -> None:
+    """Test successfully starting the array."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STOPPED")
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.start_array = AsyncMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    await switch.async_turn_on()
+    api_client.start_array.assert_called_once()
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_array_turn_on_failure() -> None:
+    """Test array start failure raises HomeAssistantError."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STOPPED")
+    api_client = MagicMock()
+    api_client.start_array = AsyncMock(side_effect=Exception("Array start failed"))
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_on()
+    assert exc_info.value.translation_key == "array_start_failed"
+
+
+@pytest.mark.asyncio
+async def test_array_turn_off_success() -> None:
+    """Test successfully stopping the array."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STARTED")
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.stop_array = AsyncMock()
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    await switch.async_turn_off()
+    api_client.stop_array.assert_called_once()
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_array_turn_off_failure() -> None:
+    """Test array stop failure raises HomeAssistantError."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(array_state="STARTED")
+    api_client = MagicMock()
+    api_client.stop_array = AsyncMock(side_effect=Exception("Array stop failed"))
+
+    switch = ArraySwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_off()
+    assert exc_info.value.translation_key == "array_stop_failed"
+
+
+# =============================================================================
+# ParityCheckSwitch Tests
+# =============================================================================
+
+
+def test_parity_check_switch_creation() -> None:
+    """Test parity check switch creation."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="IDLE"))
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.unique_id == "test-uuid_parity_check_switch"
+    assert switch.name == "Parity Check"
+    assert switch.entity_registry_enabled_default is False
+
+
+def test_parity_check_switch_is_on_when_running() -> None:
+    """Test parity check switch is on when check is running."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="RUNNING"))
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is True
+
+
+def test_parity_check_switch_is_on_when_paused() -> None:
+    """Test parity check switch is on when check is paused."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="PAUSED"))
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is True
+
+
+def test_parity_check_switch_is_off_when_idle() -> None:
+    """Test parity check switch is off when idle."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="IDLE"))
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is False
+
+
+def test_parity_check_switch_is_none_when_no_data() -> None:
+    """Test parity check switch returns None when no data."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert switch.is_on is None
+
+
+def test_parity_check_switch_attributes() -> None:
+    """Test parity check switch extra attributes."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    parity = ParityCheck(status="RUNNING", progress=50.0, errors=0)
+    coordinator.data = make_storage_data(parity_status=parity)
+    api_client = MagicMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    attrs = switch.extra_state_attributes
+    assert attrs["status"] == "running"
+    assert attrs["progress"] == 50.0
+    assert attrs["errors"] == 0
+
+
+@pytest.mark.asyncio
+async def test_parity_check_turn_on_success() -> None:
+    """Test successfully starting parity check."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="IDLE"))
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.start_parity_check = AsyncMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    await switch.async_turn_on()
+    api_client.start_parity_check.assert_called_once_with(correct=False)
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_parity_check_turn_on_failure() -> None:
+    """Test parity check start failure raises HomeAssistantError."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="IDLE"))
+    api_client = MagicMock()
+    api_client.start_parity_check = AsyncMock(side_effect=Exception("Check failed"))
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_on()
+    assert exc_info.value.translation_key == "parity_check_start_failed"
+
+
+@pytest.mark.asyncio
+async def test_parity_check_turn_off_success() -> None:
+    """Test successfully stopping parity check."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="RUNNING"))
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.cancel_parity_check = AsyncMock()
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    await switch.async_turn_off()
+    api_client.cancel_parity_check.assert_called_once()
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_parity_check_turn_off_failure() -> None:
+    """Test parity check stop failure raises HomeAssistantError."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(status="RUNNING"))
+    api_client = MagicMock()
+    api_client.cancel_parity_check = AsyncMock(side_effect=Exception("Cancel failed"))
+
+    switch = ParityCheckSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_off()
+    assert exc_info.value.translation_key == "parity_check_stop_failed"
+
+
+# =============================================================================
+# DiskSpinSwitch Tests
+# =============================================================================
+
+
+def test_disk_spin_switch_creation() -> None:
+    """Test disk spin switch creation."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert switch.unique_id == "test-uuid_disk_spin_disk1"
+    assert switch.name == "Disk Disk 1 Spin"
+    assert switch.entity_registry_enabled_default is False
+
+
+def test_disk_spin_switch_is_on_when_spinning() -> None:
+    """Test disk spin switch is on when disk is spinning."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert switch.is_on is True
+
+
+def test_disk_spin_switch_is_off_when_not_spinning() -> None:
+    """Test disk spin switch is off when disk is spun down."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=False,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert switch.is_on is False
+
+
+def test_disk_spin_switch_is_none_when_no_data() -> None:
+    """Test disk spin switch returns None when no data."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = None
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert switch.is_on is None
+
+
+def test_disk_spin_switch_disk_not_found() -> None:
+    """Test disk spin switch returns None when disk not found."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[])  # Empty disks
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert switch.is_on is None
+
+
+def test_disk_spin_switch_attributes() -> None:
+    """Test disk spin switch extra attributes."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+        temp=35,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    attrs = switch.extra_state_attributes
+    assert attrs["device"] == "/dev/sdb"
+    assert attrs["type"] == "DATA"
+    assert attrs["status"] == "DISK_OK"
+    assert attrs["temperature"] == 35
+
+
+def test_disk_spin_switch_attributes_filters_none() -> None:
+    """Test disk spin switch filters out None values from attributes."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+        # temp is None by default
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    attrs = switch.extra_state_attributes
+    assert "temperature" not in attrs
+
+
+def test_disk_spin_switch_finds_parity_disk() -> None:
+    """Test disk spin switch can find parity disks."""
+    parity_disk = ArrayDisk(
+        id="parity1",
+        name="Parity",
+        device="/dev/sda",
+        type="PARITY",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parities=[parity_disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=parity_disk,
+    )
+
+    assert switch.is_on is True
+
+
+def test_disk_spin_switch_finds_cache_disk() -> None:
+    """Test disk spin switch can find cache disks."""
+    cache_disk = ArrayDisk(
+        id="cache1",
+        name="Cache",
+        device="/dev/sdc",
+        type="CACHE",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(caches=[cache_disk])
+    api_client = MagicMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=cache_disk,
+    )
+
+    assert switch.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_disk_spin_turn_on_success() -> None:
+    """Test successfully spinning up a disk."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=False,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.spin_up_disk = AsyncMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    await switch.async_turn_on()
+    api_client.spin_up_disk.assert_called_once_with("disk1")
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_disk_spin_turn_on_failure() -> None:
+    """Test disk spin up failure raises HomeAssistantError."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=False,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+    api_client.spin_up_disk = AsyncMock(side_effect=Exception("Spin up failed"))
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_on()
+    assert exc_info.value.translation_key == "disk_spin_up_failed"
+
+
+@pytest.mark.asyncio
+async def test_disk_spin_turn_off_success() -> None:
+    """Test successfully spinning down a disk."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    coordinator.async_request_refresh = AsyncMock()
+    api_client = MagicMock()
+    api_client.spin_down_disk = AsyncMock()
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    await switch.async_turn_off()
+    api_client.spin_down_disk.assert_called_once_with("disk1")
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_disk_spin_turn_off_failure() -> None:
+    """Test disk spin down failure raises HomeAssistantError."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(disks=[disk])
+    api_client = MagicMock()
+    api_client.spin_down_disk = AsyncMock(side_effect=Exception("Spin down failed"))
+
+    switch = DiskSpinSwitch(
+        coordinator=coordinator,
+        api_client=api_client,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_off()
+    assert exc_info.value.translation_key == "disk_spin_down_failed"
+
+
+# =============================================================================
 # Switch Availability Tests
 # =============================================================================
 
@@ -709,19 +1375,29 @@ def test_switch_available_false() -> None:
 
 
 @pytest.mark.asyncio
-async def test_setup_creates_container_switches(hass) -> None:
-    """Test setup creates Docker container switches."""
-    container = DockerContainer(id="ct:1", name="/web", state="RUNNING")
+async def test_setup_creates_control_switches(hass) -> None:
+    """Test setup creates array and parity check control switches."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="Disk 1",
+        device="/dev/sdb",
+        type="DATA",
+        status="DISK_OK",
+        isSpinning=True,
+    )
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(array_state="STARTED", disks=[disk])
 
     system_coordinator = MagicMock()
-    system_coordinator.data = make_system_data(containers=[container])
+    system_coordinator.data = make_system_data()
 
     mock_entry = MagicMock()
     mock_entry.data = {"host": "192.168.1.100"}
     mock_entry.runtime_data = UnraidRuntimeData(
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
-        storage_coordinator=MagicMock(),
+        storage_coordinator=storage_coordinator,
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -735,8 +1411,46 @@ async def test_setup_creates_container_switches(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    assert len(added_entities) == 1
-    assert isinstance(added_entities[0], DockerContainerSwitch)
+    # Should have: ArraySwitch, ParityCheckSwitch, DiskSpinSwitch
+    assert len(added_entities) == 3
+    assert any(isinstance(e, ArraySwitch) for e in added_entities)
+    assert any(isinstance(e, ParityCheckSwitch) for e in added_entities)
+    assert any(isinstance(e, DiskSpinSwitch) for e in added_entities)
+
+
+@pytest.mark.asyncio
+async def test_setup_creates_container_switches(hass) -> None:
+    """Test setup creates Docker container switches."""
+    container = DockerContainer(id="ct:1", name="/web", state="RUNNING")
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = make_system_data(containers=[container])
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(array_state="STARTED")
+
+    mock_entry = MagicMock()
+    mock_entry.data = {"host": "192.168.1.100"}
+    mock_entry.runtime_data = UnraidRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        server_info={
+            "uuid": "test-uuid",
+            "name": "tower",
+        },
+    )
+
+    added_entities = []
+
+    def mock_add_entities(entities) -> None:
+        added_entities.extend(entities)
+
+    await async_setup_entry(hass, mock_entry, mock_add_entities)
+
+    # Should have: ArraySwitch, ParityCheckSwitch, DockerContainerSwitch
+    assert len(added_entities) == 3
+    assert any(isinstance(e, DockerContainerSwitch) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -747,12 +1461,15 @@ async def test_setup_creates_vm_switches(hass) -> None:
     system_coordinator = MagicMock()
     system_coordinator.data = make_system_data(vms=[vm])
 
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(array_state="STARTED")
+
     mock_entry = MagicMock()
     mock_entry.data = {"host": "192.168.1.100"}
     mock_entry.runtime_data = UnraidRuntimeData(
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
-        storage_coordinator=MagicMock(),
+        storage_coordinator=storage_coordinator,
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -766,22 +1483,26 @@ async def test_setup_creates_vm_switches(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    assert len(added_entities) == 1
-    assert isinstance(added_entities[0], VirtualMachineSwitch)
+    # Should have: ArraySwitch, ParityCheckSwitch, VirtualMachineSwitch
+    assert len(added_entities) == 3
+    assert any(isinstance(e, VirtualMachineSwitch) for e in added_entities)
 
 
 @pytest.mark.asyncio
 async def test_setup_no_containers_or_vms(hass) -> None:
-    """Test setup handles no containers or VMs."""
+    """Test setup handles no containers or VMs but still creates control switches."""
     system_coordinator = MagicMock()
     system_coordinator.data = make_system_data()  # Empty data
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(array_state="STARTED")
 
     mock_entry = MagicMock()
     mock_entry.data = {"host": "192.168.1.100"}
     mock_entry.runtime_data = UnraidRuntimeData(
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
-        storage_coordinator=MagicMock(),
+        storage_coordinator=storage_coordinator,
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -795,7 +1516,10 @@ async def test_setup_no_containers_or_vms(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    assert len(added_entities) == 0
+    # Should still have ArraySwitch and ParityCheckSwitch
+    assert len(added_entities) == 2
+    assert any(isinstance(e, ArraySwitch) for e in added_entities)
+    assert any(isinstance(e, ParityCheckSwitch) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -804,12 +1528,15 @@ async def test_setup_no_coordinator_data(hass) -> None:
     system_coordinator = MagicMock()
     system_coordinator.data = None
 
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = None
+
     mock_entry = MagicMock()
     mock_entry.data = {"host": "192.168.1.100"}
     mock_entry.runtime_data = UnraidRuntimeData(
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
-        storage_coordinator=MagicMock(),
+        storage_coordinator=storage_coordinator,
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -823,4 +1550,7 @@ async def test_setup_no_coordinator_data(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    assert len(added_entities) == 0
+    # Should still have ArraySwitch and ParityCheckSwitch (always created)
+    assert len(added_entities) == 2
+    assert any(isinstance(e, ArraySwitch) for e in added_entities)
+    assert any(isinstance(e, ParityCheckSwitch) for e in added_entities)

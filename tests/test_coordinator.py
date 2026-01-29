@@ -977,3 +977,302 @@ async def test_storage_coordinator_parses_boot_device(
     assert data is not None
     assert data.array.boot is not None
     assert data.array.boot.name == "Flash"
+
+
+# =============================================================================
+# Error Recovery Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_recovers_after_connection_error(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test system coordinator recovers after connection error."""
+    # First call raises error
+    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+        "Connection lost"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Coordinator should be marked as previously unavailable
+    assert coordinator._previously_unavailable is True
+
+    # Restore mock to return valid data
+    mock_api_client.get_server_info.side_effect = None
+    mock_api_client.get_server_info.return_value = make_server_info()
+
+    # Second update should succeed
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_recovers_after_timeout(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test system coordinator recovers after timeout error."""
+    # First call raises timeout
+    mock_api_client.get_server_info.side_effect = UnraidTimeoutError(
+        "Request timed out"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+    # Restore and verify recovery
+    mock_api_client.get_server_info.side_effect = None
+    mock_api_client.get_server_info.return_value = make_server_info()
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_recovers_after_api_error(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test system coordinator recovers after API error."""
+    # First call raises API error
+    mock_api_client.get_server_info.side_effect = UnraidAPIError("API error")
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+    # Restore and verify recovery
+    mock_api_client.get_server_info.side_effect = None
+    mock_api_client.get_server_info.return_value = make_server_info()
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_recovers_after_connection_error(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator recovers after connection error."""
+    # First call raises error
+    mock_api_client.typed_get_array.side_effect = UnraidConnectionError(
+        "Connection lost"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+    # Restore mock to return valid data
+    mock_api_client.typed_get_array.side_effect = None
+    mock_api_client.typed_get_array.return_value = make_array()
+
+    # Second update should succeed
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_recovers_after_timeout(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator recovers after timeout error."""
+    # First call raises timeout
+    mock_api_client.typed_get_array.side_effect = UnraidTimeoutError(
+        "Request timed out"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+    # Restore and verify recovery
+    mock_api_client.typed_get_array.side_effect = None
+    mock_api_client.typed_get_array.return_value = make_array()
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_logs_recovery(
+    hass, mock_api_client, mock_config_entry, caplog
+):
+    """Test system coordinator logs recovery message after reconnection."""
+    import logging
+
+    # First call raises error
+    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+        "Connection lost"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Restore mock to return valid data
+    mock_api_client.get_server_info.side_effect = None
+    mock_api_client.get_server_info.return_value = make_server_info()
+
+    # Second update should succeed and log recovery
+    with caplog.at_level(logging.INFO):
+        data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert (
+        "reconnected" in caplog.text.lower()
+        or coordinator._previously_unavailable is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_logs_recovery(
+    hass, mock_api_client, mock_config_entry, caplog
+):
+    """Test storage coordinator logs recovery message after reconnection."""
+    import logging
+
+    # First call raises error
+    mock_api_client.typed_get_array.side_effect = UnraidConnectionError(
+        "Connection lost"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # First update should fail
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Restore mock to return valid data
+    mock_api_client.typed_get_array.side_effect = None
+    mock_api_client.typed_get_array.return_value = make_array()
+
+    # Second update should succeed and log recovery
+    with caplog.at_level(logging.INFO):
+        data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert (
+        "reconnected" in caplog.text.lower()
+        or coordinator._previously_unavailable is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_auth_error_triggers_reauth(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test system coordinator auth error triggers reauth flow."""
+    mock_api_client.get_server_info.side_effect = UnraidAuthenticationError(
+        "Invalid API key"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # Auth error should raise ConfigEntryAuthFailed
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_auth_error_triggers_reauth(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator auth error triggers reauth flow."""
+    mock_api_client.typed_get_array.side_effect = UnraidAuthenticationError(
+        "Invalid API key"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # Auth error should raise ConfigEntryAuthFailed
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_unexpected_error_handled(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test system coordinator handles unexpected errors gracefully."""
+    mock_api_client.get_server_info.side_effect = RuntimeError("Something unexpected")
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # Unexpected error should be wrapped in UpdateFailed
+    with pytest.raises(UpdateFailed) as exc_info:
+        await coordinator._async_update_data()
+
+    assert "Unexpected error" in str(exc_info.value)
+    assert coordinator._previously_unavailable is True
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_unexpected_error_handled(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator handles unexpected errors gracefully."""
+    mock_api_client.typed_get_array.side_effect = RuntimeError("Something unexpected")
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    # Unexpected error should be wrapped in UpdateFailed
+    with pytest.raises(UpdateFailed) as exc_info:
+        await coordinator._async_update_data()
+
+    assert "Unexpected error" in str(exc_info.value)
+    assert coordinator._previously_unavailable is True

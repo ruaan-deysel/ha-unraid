@@ -10,6 +10,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_homeassistant_custom_component.syrupy import HomeAssistantSnapshotExtension
+from syrupy.assertion import SnapshotAssertion
 from unraid_api.models import (
     ArrayCapacity,
     ArrayDisk,
@@ -30,6 +32,18 @@ from custom_components.unraid.coordinator import UnraidStorageData, UnraidSystem
 
 # Import pytest_homeassistant_custom_component's autouse fixtures
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+# =============================================================================
+# Snapshot Testing Fixture
+# =============================================================================
+
+
+@pytest.fixture
+def snapshot(snapshot: SnapshotAssertion) -> SnapshotAssertion:
+    """Return snapshot assertion fixture with the Home Assistant extension."""
+    return snapshot.use_extension(HomeAssistantSnapshotExtension)
+
 
 # Fixtures directory path
 FIXTURES = Path(__file__).parent / "fixtures"

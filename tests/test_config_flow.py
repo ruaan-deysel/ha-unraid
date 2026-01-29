@@ -9,20 +9,17 @@ import aiohttp
 import pytest
 from aiohttp import ClientConnectorError
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from unraid_api.models import ServerInfo, UPSDevice
 
-from custom_components.unraid.config_flow import (
-    CONF_HTTP_PORT,
-    CONF_HTTPS_PORT,
-    CannotConnectError,
-)
+from custom_components.unraid.config_flow import CannotConnectError
 from custom_components.unraid.const import (
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
+    DEFAULT_PORT,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
@@ -76,15 +73,14 @@ async def test_user_step_form_display(hass: HomeAssistant) -> None:
 
 
 async def test_user_step_form_includes_port_field(hass: HomeAssistant) -> None:
-    """Test user step shows form with HTTP and HTTPS port fields."""
+    """Test user step shows form with Port field."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
-    assert "http_port" in result["data_schema"].schema
-    assert "https_port" in result["data_schema"].schema
+    assert "port" in result["data_schema"].schema
 
 
 async def test_successful_connection(
@@ -110,7 +106,7 @@ async def test_successful_connection(
 async def test_successful_connection_with_custom_port(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test successful connection with custom ports creates config entry."""
+    """Test successful connection with custom port creates config entry."""
     with patch(
         "custom_components.unraid.config_flow.UnraidClient",
         return_value=mock_api_client,
@@ -120,28 +116,27 @@ async def test_successful_connection_with_custom_port(
             context={"source": config_entries.SOURCE_USER},
             data={
                 "host": "unraid.local",
-                "http_port": 8080,
-                "https_port": 8443,
+                "port": 8080,
                 "api_key": "valid-api-key",
             },
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"]["http_port"] == 8080
-    assert result["data"]["https_port"] == 8443
+    assert result["data"]["port"] == 8080
     mock_client_class.assert_called_with(
         host="unraid.local",
         api_key="valid-api-key",
         http_port=8080,
-        https_port=8443,
+        https_port=8080,
         verify_ssl=True,
+        session=mock_client_class.call_args.kwargs["session"],
     )
 
 
 async def test_connection_uses_default_port_when_not_specified(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test that default ports 80/443 are used when not specified."""
+    """Test that default port 80 is used when not specified."""
     with patch(
         "custom_components.unraid.config_flow.UnraidClient",
         return_value=mock_api_client,
@@ -156,9 +151,10 @@ async def test_connection_uses_default_port_when_not_specified(
     mock_client_class.assert_called_with(
         host="unraid.local",
         api_key="valid-api-key",
-        http_port=80,
-        https_port=443,
+        http_port=DEFAULT_PORT,
+        https_port=DEFAULT_PORT,
         verify_ssl=True,
+        session=mock_client_class.call_args.kwargs["session"],
     )
 
 
@@ -200,7 +196,6 @@ async def test_unreachable_server_error(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"][CONF_HOST] == "cannot_connect"
-    assert result["errors"][CONF_HTTPS_PORT] == "check_port"
 
 
 async def test_unsupported_version_error(hass: HomeAssistant) -> None:
@@ -1118,14 +1113,13 @@ async def test_reconfigure_flow_unknown_error(
 async def test_reconfigure_flow_shows_port_field(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test reconfigure flow shows form with HTTP and HTTPS port fields."""
+    """Test reconfigure flow shows form with Port field."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
         data={
             CONF_HOST: "unraid.local",
-            CONF_HTTP_PORT: 8080,
-            CONF_HTTPS_PORT: 8443,
+            CONF_PORT: 8080,
             CONF_API_KEY: "old-key",
         },
         options={},
@@ -1143,21 +1137,19 @@ async def test_reconfigure_flow_shows_port_field(
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reconfigure"
-    assert "http_port" in result["data_schema"].schema
-    assert "https_port" in result["data_schema"].schema
+    assert "port" in result["data_schema"].schema
 
 
 async def test_reconfigure_flow_updates_port(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test reconfigure flow can update the ports."""
+    """Test reconfigure flow can update the port."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
         data={
             CONF_HOST: "unraid.local",
-            CONF_HTTP_PORT: 80,
-            CONF_HTTPS_PORT: 443,
+            CONF_PORT: 80,
             CONF_API_KEY: "old-key",
         },
         options={},
@@ -1181,13 +1173,314 @@ async def test_reconfigure_flow_updates_port(
             result["flow_id"],
             {
                 CONF_HOST: "unraid.local",
-                CONF_HTTP_PORT: 8080,
-                CONF_HTTPS_PORT: 8443,
+                CONF_PORT: 8080,
                 CONF_API_KEY: "new-key",
             },
         )
 
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "reconfigure_successful"
-    assert entry.data[CONF_HTTP_PORT] == 8080
-    assert entry.data[CONF_HTTPS_PORT] == 8443
+    assert entry.data[CONF_PORT] == 8080
+
+
+# =============================================================================
+# Parametrized Error Tests
+# =============================================================================
+
+
+@dataclass
+class ErrorTestCase:
+    """Test case for parametrized error tests."""
+
+    name: str
+    exception: Exception
+    expected_error_field: str
+    expected_error_value: str
+
+
+USER_STEP_ERROR_CASES = [
+    ErrorTestCase(
+        name="auth_401_error",
+        exception=aiohttp.ClientResponseError(
+            request_info=None, history=(), status=401, message="Unauthorized"
+        ),
+        expected_error_field=CONF_API_KEY,
+        expected_error_value="invalid_auth",
+    ),
+    ErrorTestCase(
+        name="auth_403_error",
+        exception=aiohttp.ClientResponseError(
+            request_info=None, history=(), status=403, message="Forbidden"
+        ),
+        expected_error_field=CONF_API_KEY,
+        expected_error_value="invalid_auth",
+    ),
+    ErrorTestCase(
+        name="server_error_500",
+        exception=aiohttp.ClientResponseError(
+            request_info=None, history=(), status=500, message="Internal Server Error"
+        ),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="server_error_502",
+        exception=aiohttp.ClientResponseError(
+            request_info=None, history=(), status=502, message="Bad Gateway"
+        ),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="server_error_503",
+        exception=aiohttp.ClientResponseError(
+            request_info=None, history=(), status=503, message="Service Unavailable"
+        ),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="connection_refused",
+        exception=aiohttp.ClientError("Connection refused"),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="dns_resolution_failed",
+        exception=aiohttp.ClientError("DNS resolution failed"),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="unauthorized_in_message",
+        exception=Exception("401: Unauthorized"),
+        expected_error_field=CONF_API_KEY,
+        expected_error_value="invalid_auth",
+    ),
+    ErrorTestCase(
+        name="timeout_error",
+        exception=aiohttp.ClientError("Connection timeout"),
+        expected_error_field=CONF_HOST,
+        expected_error_value="cannot_connect",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    USER_STEP_ERROR_CASES,
+    ids=[tc.name for tc in USER_STEP_ERROR_CASES],
+)
+async def test_user_step_parametrized_errors(
+    hass: HomeAssistant, mock_setup_entry: None, test_case: ErrorTestCase
+) -> None:
+    """Test various error conditions during user step (parametrized)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(side_effect=test_case.exception)
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "test-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert (
+        result2["errors"][test_case.expected_error_field]
+        == test_case.expected_error_value
+    )
+
+
+REAUTH_ERROR_CASES = [
+    ErrorTestCase(
+        name="reauth_invalid_auth",
+        exception=Exception("401: Unauthorized"),
+        expected_error_field="base",
+        expected_error_value="invalid_auth",
+    ),
+    ErrorTestCase(
+        name="reauth_connection_error",
+        exception=aiohttp.ClientError("Connection refused"),
+        expected_error_field="base",
+        expected_error_value="cannot_connect",
+    ),
+    ErrorTestCase(
+        name="reauth_unexpected_error",
+        exception=RuntimeError("Unexpected failure"),
+        expected_error_field="base",
+        expected_error_value="cannot_connect",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    REAUTH_ERROR_CASES,
+    ids=[tc.name for tc in REAUTH_ERROR_CASES],
+)
+async def test_reauth_parametrized_errors(
+    hass: HomeAssistant, mock_setup_entry: None, test_case: ErrorTestCase
+) -> None:
+    """Test various error conditions during reauth step (parametrized)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": entry.entry_id,
+        },
+        data=entry.data,
+    )
+
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(side_effect=test_case.exception)
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "new-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert (
+        result2["errors"][test_case.expected_error_field]
+        == test_case.expected_error_value
+    )
+
+
+RECONFIGURE_ERROR_CASES = [
+    ErrorTestCase(
+        name="reconfigure_invalid_auth",
+        exception=Exception("401: Unauthorized"),
+        expected_error_field="base",
+        expected_error_value="invalid_auth",
+    ),
+    ErrorTestCase(
+        name="reconfigure_connection_error",
+        exception=aiohttp.ClientError("Connection refused"),
+        expected_error_field="base",
+        expected_error_value="cannot_connect",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    RECONFIGURE_ERROR_CASES,
+    ids=[tc.name for tc in RECONFIGURE_ERROR_CASES],
+)
+async def test_reconfigure_parametrized_errors(
+    hass: HomeAssistant, mock_setup_entry: None, test_case: ErrorTestCase
+) -> None:
+    """Test various error conditions during reconfigure step (parametrized)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(side_effect=test_case.exception)
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "192.168.1.100", CONF_API_KEY: "new-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert (
+        result2["errors"][test_case.expected_error_field]
+        == test_case.expected_error_value
+    )
+
+
+# =============================================================================
+# Edge Case Tests
+# =============================================================================
+
+
+async def test_options_flow_shows_empty_form_without_ups(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test options flow shows empty form when no UPS is detected."""
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-api-key"},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+
+    # Test options flow - should show empty form without UPS
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    # Submit empty form (no UPS options available)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {},
+    )
+    assert result2["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_version_parsing_failure_rejected(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test that malformed version strings result in connection rejection."""
+    mock_api = AsyncMock()
+    mock_api.test_connection = AsyncMock(return_value=True)
+    mock_api.get_version = AsyncMock(
+        return_value={"unraid": "invalid-version", "api": "not.a.version"}
+    )
+    mock_api.close = AsyncMock()
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", return_value=mock_api
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"]["base"] == "unsupported_version"

@@ -10,9 +10,10 @@ import voluptuous as vol
 from awesomeversion import AwesomeVersion
 from homeassistant import config_entries
 from homeassistant.config_entries import OptionsFlowWithReload
-from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_VERIFY_SSL
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_SSL
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from unraid_api import UnraidClient
 from unraid_api.exceptions import (
     UnraidAuthenticationError,
@@ -24,6 +25,7 @@ from unraid_api.exceptions import (
 from .const import (
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
+    DEFAULT_PORT,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
@@ -38,14 +40,8 @@ _LOGGER = logging.getLogger(__name__)
 MIN_API_VERSION = "4.21.0"
 MIN_UNRAID_VERSION = "7.2.0"
 MAX_HOSTNAME_LEN = 253
-DEFAULT_HTTP_PORT = 80
-DEFAULT_HTTPS_PORT = 443
 MIN_PORT = 1
 MAX_PORT = 65535
-
-# Custom config keys for ports (not in homeassistant.const)
-CONF_HTTP_PORT = "http_port"
-CONF_HTTPS_PORT = "https_port"
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -58,7 +54,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
         self._server_uuid: str | None = None
         self._server_hostname: str | None = None
-        self._verify_ssl: bool = True  # Track SSL verification setting
+        self._use_ssl: bool = True  # Track whether SSL connection succeeded
 
     @staticmethod
     def async_get_options_flow(
@@ -95,9 +91,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "Invalid authentication for %s", user_input[CONF_HOST]
                     )
                 except CannotConnectError:
-                    # Show error on host and port fields for connection issues
                     errors[CONF_HOST] = "cannot_connect"
-                    errors[CONF_HTTPS_PORT] = "check_port"
                     _LOGGER.warning("Cannot connect to %s", user_input[CONF_HOST])
                 except UnsupportedVersionError:
                     errors["base"] = "unsupported_version"
@@ -119,37 +113,32 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Use server hostname as title (more readable than IP)
                 title = self._server_hostname or user_input[CONF_HOST]
 
-                # Include SSL verification setting in config entry data
-                entry_data = {
-                    **user_input,
-                    CONF_VERIFY_SSL: self._verify_ssl,
-                }
-
                 _LOGGER.info(
-                    "Creating config entry for %s (UUID: %s) ports=%s/%s verify_ssl=%s",
+                    "Creating config entry for %s (UUID: %s) port=%s ssl=%s",
                     title,
                     unique_id,
-                    user_input.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT),
-                    user_input.get(CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT),
-                    self._verify_ssl,
+                    user_input.get(CONF_PORT, DEFAULT_PORT),
+                    self._use_ssl,
                 )
                 return self.async_create_entry(
                     title=title,
-                    data=entry_data,
+                    data={
+                        CONF_HOST: user_input[CONF_HOST],
+                        CONF_PORT: user_input.get(CONF_PORT, DEFAULT_PORT),
+                        CONF_API_KEY: user_input[CONF_API_KEY],
+                        CONF_SSL: self._use_ssl,
+                    },
                     options={
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
                         CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
                     },
                 )
 
-        # Show form with optional HTTP and HTTPS port fields
+        # Show form with Host, Port, and API Key
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST): str,
-                vol.Optional(CONF_HTTP_PORT, default=DEFAULT_HTTP_PORT): vol.All(
-                    vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)
-                ),
-                vol.Optional(CONF_HTTPS_PORT, default=DEFAULT_HTTPS_PORT): vol.All(
+                vol.Required(CONF_PORT, default=DEFAULT_PORT): vol.All(
                     vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)
                 ),
                 vol.Required(CONF_API_KEY): str,
@@ -160,9 +149,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=schema,
             errors=errors,
-            description_placeholders={
-                "min_version": MIN_UNRAID_VERSION,
-            },
         )
 
     def _validate_inputs(self, user_input: dict[str, Any]) -> dict[str, str]:
@@ -184,23 +170,29 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return errors
 
     async def _test_connection(self, user_input: dict[str, Any]) -> None:
-        """Test connection to Unraid server and validate version."""
+        """
+        Test connection to Unraid server and validate version.
+
+        The unraid-api library handles SSL detection and myunraid.net
+        Strict mode redirects automatically using the single port.
+        """
         host = user_input[CONF_HOST].strip()
         api_key = user_input[CONF_API_KEY].strip()
-        http_port = user_input.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT)
-        https_port = user_input.get(CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT)
+        port = user_input.get(CONF_PORT, DEFAULT_PORT)
 
-        # Reset verify_ssl to default
-        self._verify_ssl = True
+        # Reset SSL state to default (will try HTTPS first)
+        self._use_ssl = True
 
-        # First attempt: try with SSL verification enabled
-        # This works for: HTTP-only mode (No SSL) and Strict mode (myunraid.net)
+        session = async_get_clientsession(self.hass, verify_ssl=True)
+
+        # First attempt: try with SSL verification enabled (HTTPS)
         api_client = UnraidClient(
             host=host,
             api_key=api_key,
-            http_port=http_port,
-            https_port=https_port,
+            http_port=port,
+            https_port=port,
             verify_ssl=True,
+            session=session,
         )
 
         try:
@@ -214,17 +206,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "SSL verification failed, retrying with verify_ssl=False: %s", err
                 )
                 await api_client.close()
+                session = async_get_clientsession(self.hass, verify_ssl=False)
                 api_client = UnraidClient(
                     host=host,
                     api_key=api_key,
-                    http_port=http_port,
-                    https_port=https_port,
+                    http_port=port,
+                    https_port=port,
                     verify_ssl=False,
+                    session=session,
                 )
                 try:
                     await self._validate_connection(api_client, host)
                     # Success with SSL verification disabled - remember this
-                    self._verify_ssl = False
+                    self._use_ssl = False
                     _LOGGER.info(
                         "Connected to %s with self-signed cert (SSL verify disabled)",
                         host,
@@ -343,9 +337,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if self._reauth_entry is None:
                 return self.async_abort(reason="reauth_failed")
 
-            # Test the new API key
+            # Test the new API key with existing connection settings
             test_input = {
                 CONF_HOST: self._reauth_entry.data[CONF_HOST],
+                CONF_PORT: self._reauth_entry.data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_API_KEY: user_input[CONF_API_KEY],
             }
 
@@ -433,17 +428,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_HOST, default=reconfigure_entry.data.get(CONF_HOST, "")
                     ): str,
-                    vol.Optional(
-                        CONF_HTTP_PORT,
-                        default=reconfigure_entry.data.get(
-                            CONF_HTTP_PORT, DEFAULT_HTTP_PORT
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)),
-                    vol.Optional(
-                        CONF_HTTPS_PORT,
-                        default=reconfigure_entry.data.get(
-                            CONF_HTTPS_PORT, DEFAULT_HTTPS_PORT
-                        ),
+                    vol.Required(
+                        CONF_PORT,
+                        default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_PORT, max=MAX_PORT)),
                     vol.Required(CONF_API_KEY): str,
                 }

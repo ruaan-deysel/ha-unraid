@@ -4,17 +4,15 @@
     "step": {
       "user": {
         "title": "Connect to Unraid",
-        "description": "Connect to your Unraid server using the GraphQL API. Requires Unraid {min_version} or newer.",
+        "description": "Connect to your Unraid server using the GraphQL API. Requires Unraid 7.2.0 or newer.",
         "data": {
-          "host": "Server IP or Hostname",
-          "http_port": "HTTP Port",
-          "https_port": "HTTPS Port",
-          "api_key": "API Key"
+          "host": "Host",
+          "port": "Port",
+          "api_key": "API key"
         },
         "data_description": {
-          "host": "IP address (e.g., 192.168.1.100) or hostname/domain of your Unraid server",
-          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
-          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
+          "host": "IP address (for example, 192.168.1.100) or hostname/domain of your Unraid server.",
+          "port": "HTTP port number (default: 80). Secure connections are handled automatically.",
           "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
         }
       },
@@ -22,7 +20,7 @@
         "title": "Reauthenticate Unraid",
         "description": "The API key for {host} is no longer valid. Please enter a new API key.",
         "data": {
-          "api_key": "API Key"
+          "api_key": "API key"
         },
         "data_description": {
           "api_key": "Generate a new API key in Unraid Settings → Management Access → API Keys"
@@ -32,22 +30,19 @@
         "title": "Reconfigure Unraid",
         "description": "Update the connection settings for your Unraid server.",
         "data": {
-          "host": "Server IP or Hostname",
-          "http_port": "HTTP Port",
-          "https_port": "HTTPS Port",
-          "api_key": "API Key"
+          "host": "Host",
+          "port": "Port",
+          "api_key": "API key"
         },
         "data_description": {
-          "host": "IP address or hostname of your Unraid server",
-          "http_port": "HTTP port (default: 80). Change only if modified in Unraid Settings → Management Access.",
-          "https_port": "HTTPS port (default: 443). Change only if modified in Unraid Settings → Management Access.",
-          "api_key": "API key with ADMIN role permissions"
+          "host": "IP address or hostname of your Unraid server.",
+          "port": "HTTP port number (default: 80). Secure connections are handled automatically.",
+          "api_key": "API key with ADMIN role permissions."
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect. Verify the IP address or hostname is correct and reachable.",
-      "check_port": "Verify the port number matches your Unraid server configuration.",
+      "cannot_connect": "Cannot connect. Verify the host and port are correct and reachable.",
       "invalid_auth": "Invalid API key or insufficient permissions. Ensure the key has ADMIN role.",
       "unsupported_version": "Unraid version not supported. Minimum required: Unraid 7.2.0 (API v4.21.0).",
       "unknown": "Unexpected error occurred. Check Home Assistant logs for details.",
@@ -67,7 +62,7 @@
     "step": {
       "init": {
         "title": "Unraid UPS Settings",
-        "description": "Configure UPS power settings. Set UPS Nominal Power to enable power consumption tracking for the Energy Dashboard.",
+        "description": "Configure UPS power settings. Set UPS Nominal Power to enable power consumption tracking and energy accumulation for the Energy Dashboard.",
         "data": {
           "ups_capacity_va": "UPS capacity (VA)",
           "ups_nominal_power": "UPS nominal power (W)"
@@ -131,6 +126,92 @@
     },
     "graphql_query_failed": {
       "message": "GraphQL query failed: {error}"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_usage": {
+        "name": "CPU usage"
+      },
+      "cpu_temperature": {
+        "name": "CPU temperature"
+      },
+      "cpu_power": {
+        "name": "CPU power"
+      },
+      "ram_usage": {
+        "name": "RAM usage"
+      },
+      "ram_used": {
+        "name": "RAM used"
+      },
+      "uptime": {
+        "name": "Up since"
+      },
+      "active_notifications": {
+        "name": "Active notifications"
+      },
+      "array_state": {
+        "name": "Array state"
+      },
+      "array_usage": {
+        "name": "Array usage"
+      },
+      "parity_progress": {
+        "name": "Parity progress"
+      },
+      "disk_temperature": {
+        "name": "Disk {name} temperature"
+      },
+      "disk_usage": {
+        "name": "Disk {name} usage"
+      },
+      "share_usage": {
+        "name": "Share {name} usage"
+      },
+      "flash_usage": {
+        "name": "Flash usage"
+      },
+      "ups_battery": {
+        "name": "UPS {name} battery"
+      },
+      "ups_load": {
+        "name": "UPS {name} load"
+      },
+      "ups_runtime": {
+        "name": "UPS {name} runtime"
+      },
+      "ups_power": {
+        "name": "UPS {name} power"
+      }
+    },
+    "switch": {
+      "array": {
+        "name": "Array"
+      },
+      "parity_check": {
+        "name": "Parity Check"
+      },
+      "disk_spin": {
+        "name": "Disk {name} Spin"
+      },
+      "docker_container": {
+        "name": "Container {name}"
+      },
+      "virtual_machine": {
+        "name": "VM {name}"
+      }
+    },
+    "button": {
+      "parity_check_start_correct": {
+        "name": "Parity Check (Correcting)"
+      },
+      "parity_check_pause": {
+        "name": "Pause Parity Check"
+      },
+      "parity_check_resume": {
+        "name": "Resume Parity Check"
+      }
     }
   }
 }
