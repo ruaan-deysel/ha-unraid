@@ -17,3 +17,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # CVE-2025-67221: No patched version available yet (affects <= 3.11.4)
+      # orjson is a transitive dependency from homeassistant, not used directly.
+      # This DoS vulnerability has moderate severity and will be addressed when
+      # a patched version is released upstream.
+      - dependency-name: "orjson"
+        versions: ["<= 3.11.5"]
