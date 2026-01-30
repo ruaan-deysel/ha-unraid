@@ -1,11 +1,12 @@
 """Tests for button entities."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.unraid.button import (
+    DockerContainerRestartButton,
     ParityCheckPauseButton,
     ParityCheckResumeButton,
     ParityCheckStartCorrectionButton,
@@ -200,6 +201,8 @@ async def test_setup_entry_creates_parity_buttons(hass):
         "manufacturer": "Test",
         "model": "Server",
     }
+    runtime_data.system_coordinator = MagicMock()
+    runtime_data.system_coordinator.data = None  # No containers
 
     mock_entry = MagicMock()
     mock_entry.runtime_data = runtime_data
@@ -228,6 +231,8 @@ async def test_setup_entry_with_missing_server_uuid(hass):
     runtime_data = MagicMock()
     runtime_data.api_client = mock_api
     runtime_data.server_info = {}  # No uuid
+    runtime_data.system_coordinator = MagicMock()
+    runtime_data.system_coordinator.data = None  # No containers
 
     mock_entry = MagicMock()
     mock_entry.runtime_data = runtime_data
@@ -253,6 +258,8 @@ async def test_setup_entry_uses_host_as_fallback_name(hass):
     runtime_data = MagicMock()
     runtime_data.api_client = mock_api
     runtime_data.server_info = {"uuid": "test-uuid"}  # No name
+    runtime_data.system_coordinator = MagicMock()
+    runtime_data.system_coordinator.data = None  # No containers
 
     mock_entry = MagicMock()
     mock_entry.runtime_data = runtime_data
@@ -265,5 +272,183 @@ async def test_setup_entry_uses_host_as_fallback_name(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should still create 3 buttons
+    # Should still create 3 parity buttons
+    assert len(entities) == 3
+
+
+# =============================================================================
+# DockerContainerRestartButton Tests
+# =============================================================================
+
+
+@pytest.fixture
+def mock_container():
+    """Create a mock Docker container."""
+    container = MagicMock()
+    container.name = "/plex"
+    container.id = "abc123"
+    return container
+
+
+def test_docker_restart_button_creation(
+    mock_api_client, mock_server_info, mock_container
+):
+    """Test Docker container restart button is created correctly."""
+    button = DockerContainerRestartButton(
+        api_client=mock_api_client,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        container=mock_container,
+        server_info=mock_server_info,
+    )
+    assert button.unique_id == "test-uuid_container_restart_plex"
+    assert button.translation_key == "docker_container_restart"
+    # Disabled by default - users enable if needed
+    assert button.entity_registry_enabled_default is False
+    # Check translation placeholders
+    assert button.translation_placeholders == {"name": "plex"}
+
+
+@pytest.mark.asyncio
+async def test_docker_restart_button_press(
+    mock_api_client, mock_server_info, mock_container
+):
+    """Test pressing restart button calls stop then start."""
+    mock_api_client.stop_container = AsyncMock()
+    mock_api_client.start_container = AsyncMock()
+
+    button = DockerContainerRestartButton(
+        api_client=mock_api_client,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        container=mock_container,
+        server_info=mock_server_info,
+    )
+
+    with patch("custom_components.unraid.button.asyncio.sleep", new_callable=AsyncMock):
+        await button.async_press()
+
+    mock_api_client.stop_container.assert_called_once_with("abc123")
+    mock_api_client.start_container.assert_called_once_with("abc123")
+
+
+@pytest.mark.asyncio
+async def test_docker_restart_button_error_on_stop(
+    mock_api_client, mock_server_info, mock_container
+):
+    """Test restart button raises HomeAssistantError if stop fails."""
+    mock_api_client.stop_container = AsyncMock(side_effect=Exception("Stop failed"))
+    mock_api_client.start_container = AsyncMock()
+
+    button = DockerContainerRestartButton(
+        api_client=mock_api_client,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        container=mock_container,
+        server_info=mock_server_info,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "container_restart_failed"
+    # Start should not be called if stop fails
+    mock_api_client.start_container.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_docker_restart_button_error_on_start(
+    mock_api_client, mock_server_info, mock_container
+):
+    """Test restart button raises HomeAssistantError if start fails."""
+    mock_api_client.stop_container = AsyncMock()
+    mock_api_client.start_container = AsyncMock(side_effect=Exception("Start failed"))
+
+    button = DockerContainerRestartButton(
+        api_client=mock_api_client,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        container=mock_container,
+        server_info=mock_server_info,
+    )
+
+    with (
+        patch("custom_components.unraid.button.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "container_restart_failed"
+
+
+@pytest.mark.asyncio
+async def test_setup_entry_creates_container_restart_buttons(hass):
+    """Test that setup creates restart buttons for Docker containers."""
+    mock_api = MagicMock()
+
+    # Create mock containers
+    container1 = MagicMock()
+    container1.name = "/plex"
+    container1.id = "abc123"
+    container2 = MagicMock()
+    container2.name = "/sonarr"
+    container2.id = "def456"
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = MagicMock()
+    system_coordinator.data.containers = [container1, container2]
+
+    runtime_data = MagicMock()
+    runtime_data.api_client = mock_api
+    runtime_data.server_info = {
+        "uuid": "test-uuid",
+        "name": "Test Server",
+        "manufacturer": "Test",
+        "model": "Server",
+    }
+    runtime_data.system_coordinator = system_coordinator
+
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = runtime_data
+    mock_entry.data = {"host": "192.168.1.100"}
+
+    entities = []
+
+    def capture_entities(ents) -> None:
+        entities.extend(ents)
+
+    await async_setup_entry(hass, mock_entry, capture_entities)
+
+    # Should have 3 parity buttons + 2 container restart buttons = 5
+    assert len(entities) == 5
+    entity_types = [type(e).__name__ for e in entities]
+    assert entity_types.count("DockerContainerRestartButton") == 2
+
+
+@pytest.mark.asyncio
+async def test_setup_entry_no_containers(hass):
+    """Test that setup handles no containers gracefully."""
+    mock_api = MagicMock()
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = MagicMock()
+    system_coordinator.data.containers = []  # Empty list
+
+    runtime_data = MagicMock()
+    runtime_data.api_client = mock_api
+    runtime_data.server_info = {"uuid": "test-uuid", "name": "Test Server"}
+    runtime_data.system_coordinator = system_coordinator
+
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = runtime_data
+    mock_entry.data = {"host": "192.168.1.100"}
+
+    entities = []
+
+    def capture_entities(ents) -> None:
+        entities.extend(ents)
+
+    await async_setup_entry(hass, mock_entry, capture_entities)
+
+    # Should only have 3 parity buttons, no container buttons
     assert len(entities) == 3

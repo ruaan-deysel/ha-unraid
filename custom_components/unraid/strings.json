@@ -94,6 +94,9 @@
     "container_stop_failed": {
       "message": "Failed to stop container {name}: {error}"
     },
+    "container_restart_failed": {
+      "message": "Failed to restart container {name}: {error}"
+    },
     "vm_start_failed": {
       "message": "Failed to start VM {name}: {error}"
     },
@@ -211,6 +214,9 @@
       },
       "parity_check_resume": {
         "name": "Resume Parity Check"
+      },
+      "docker_container_restart": {
+        "name": "Restart Container {name}"
       }
     }
   }

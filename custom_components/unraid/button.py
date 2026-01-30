@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,7 @@ from .const import DOMAIN
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from unraid_api import UnraidClient
+    from unraid_api.models import DockerContainer
 
     from . import UnraidConfigEntry
 
@@ -210,6 +212,91 @@ class ParityCheckResumeButton(UnraidButtonEntity):
 
 
 # =============================================================================
+# Docker Container Control Buttons
+# =============================================================================
+
+
+class DockerContainerRestartButton(ButtonEntity):
+    """
+    Button to restart a Docker container.
+
+    Performs a stop + start sequence since Unraid's GraphQL API
+    does not have a native restart mutation.
+
+    Disabled by default - users can enable per-container as needed.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "docker_container_restart"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        api_client: UnraidClient,
+        server_uuid: str,
+        server_name: str,
+        container: DockerContainer,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize Docker container restart button."""
+        self.api_client = api_client
+        self._server_uuid = server_uuid
+        self._server_name = server_name
+        # Container IDs are ephemeral - use NAME for stable unique_id
+        self._container_name = container.name.lstrip("/")
+        self._container_id = container.id
+        self._attr_unique_id = f"{server_uuid}_container_restart_{self._container_name}"
+        self._attr_translation_placeholders = {"name": self._container_name}
+        # Use DeviceInfo for consistent device registration
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, server_uuid)},
+            name=server_name,
+            manufacturer=server_info.get("manufacturer") if server_info else None,
+            model=server_info.get("model") if server_info else None,
+            serial_number=server_info.get("serial_number") if server_info else None,
+            sw_version=server_info.get("sw_version") if server_info else None,
+            hw_version=server_info.get("hw_version") if server_info else None,
+            configuration_url=(
+                server_info.get("configuration_url") if server_info else None
+            ),
+        )
+
+    async def async_press(self) -> None:
+        """Handle button press to restart container (stop + start)."""
+        _LOGGER.info(
+            "Restarting Docker container '%s' on %s",
+            self._container_name,
+            self._server_name,
+        )
+        try:
+            # Stop the container first
+            await self.api_client.stop_container(self._container_id)
+            _LOGGER.debug(
+                "Container '%s' stopped, waiting before start", self._container_name
+            )
+            # Brief delay to ensure container is fully stopped
+            await asyncio.sleep(1)
+            # Start the container
+            await self.api_client.start_container(self._container_id)
+            _LOGGER.debug(
+                "Container '%s' restart completed successfully", self._container_name
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to restart Docker container '%s': %s", self._container_name, err
+            )
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="container_restart_failed",
+                translation_placeholders={
+                    "name": self._container_name,
+                    "error": str(err),
+                },
+            ) from err
+
+
+# =============================================================================
 # Platform Setup
 # =============================================================================
 
@@ -222,10 +309,11 @@ async def async_setup_entry(
     """Set up button entities."""
     _LOGGER.debug("Setting up Unraid button platform")
 
-    # Get API client from runtime_data (HA 2024.4+ pattern)
+    # Get API client and coordinators from runtime_data (HA 2024.4+ pattern)
     runtime_data = entry.runtime_data
     api_client = runtime_data.api_client
     server_info = runtime_data.server_info
+    system_coordinator = runtime_data.system_coordinator
 
     # Server info is now a flat dict with uuid, name, manufacturer, etc.
     server_uuid = server_info.get("uuid", "unknown")
@@ -249,6 +337,20 @@ async def async_setup_entry(
     entities.append(
         ParityCheckResumeButton(api_client, server_uuid, server_name, server_info)
     )
+
+    # Docker container restart buttons (disabled by default)
+    # Users can enable per-container as needed for automation workflows
+    if system_coordinator.data and system_coordinator.data.containers:
+        _LOGGER.debug(
+            "Creating restart buttons for %d Docker container(s)",
+            len(system_coordinator.data.containers),
+        )
+        for container in system_coordinator.data.containers:
+            entities.append(
+                DockerContainerRestartButton(
+                    api_client, server_uuid, server_name, container, server_info
+                )
+            )
 
     _LOGGER.debug("Adding %d button entities", len(entities))
     async_add_entities(entities)
