@@ -12,6 +12,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### Added
 - **RAM Used Sensor**: New sensor showing active memory consumption (memory used by running processes), matching Unraid's "System + Docker" display. Uses `total - available` calculation to exclude cached/buffered memory that can be reclaimed
 - **Sensor Entity Translations**: Added proper translation keys for all sensor entities in `strings.json` and `translations/en.json`
+- **Docker Container Restart Button**: New button entity to restart Docker containers directly from Home Assistant UI
 
 ### Changed
 - **Uptime Sensor**: Renamed from "Uptime" to "Up since" to better describe the timestamp device class behavior. Removed diagnostic entity category to make it a regular sensor (aligns with core HA integration pattern)
