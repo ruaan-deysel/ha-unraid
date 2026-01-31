@@ -7,6 +7,13 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.2.1] - 2026-02-01
+
+### Fixed
+- **Config Flow Unique ID**: Fixed issue where the config flow did not set the unique ID for config entries, causing potential duplicates.
+- **Docker Container Restart Button**: Button entity to restart Docker containers directly from Home Assistant UI
+
+
 ## [2026.2.0] - 2026-01-29
 
 ### Added
