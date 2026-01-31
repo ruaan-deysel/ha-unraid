@@ -327,4 +327,4 @@ Licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
-Unraid® is a registered trademark of Lime Technology, Inc. This application is not affiliated with, endorsed, or sponsored by Lime Technology, Inc.
+Unraid® is a registered trademark of Lime Technology, Inc. This integration is not affiliated with, endorsed, or sponsored by Lime Technology, Inc.
