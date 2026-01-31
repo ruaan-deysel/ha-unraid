@@ -1,4 +1,4 @@
-# Unraid Integration for Home Assistant
+# Home Assistant Integration for Unraid®
 
 [![HACS Integration][hacsbadge]][hacs]
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/commits/main)
@@ -327,4 +327,4 @@ Licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
-This integration is independently developed and not affiliated with or endorsed by Lime Technology (Unraid).
+Unraid® is a registered trademark of Lime Technology, Inc. This application is not affiliated with, endorsed, or sponsored by Lime Technology, Inc.
