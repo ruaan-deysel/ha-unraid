@@ -104,9 +104,14 @@ async def test_successful_connection(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "test-server-uuid"
     assert result["title"] == "tower"
-    assert result["data"]["host"] == "unraid.local"
-    assert result["data"]["api_key"] == "valid-api-key"
+    assert result["data"] == {
+        "host": "unraid.local",
+        "port": DEFAULT_PORT,
+        "api_key": "valid-api-key",
+        "ssl": True,
+    }
 
 
 async def test_successful_connection_with_custom_port(
@@ -128,7 +133,13 @@ async def test_successful_connection_with_custom_port(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"]["port"] == 8080
+    assert result["result"].unique_id == "test-server-uuid"
+    assert result["data"] == {
+        "host": "unraid.local",
+        "port": 8080,
+        "api_key": "valid-api-key",
+        "ssl": True,
+    }
     mock_client_class.assert_called_with(
         host="unraid.local",
         api_key="valid-api-key",
@@ -154,6 +165,8 @@ async def test_connection_uses_default_port_when_not_specified(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "test-server-uuid"
+    assert result["data"]["port"] == DEFAULT_PORT
     mock_client_class.assert_called_with(
         host="unraid.local",
         api_key="valid-api-key",
@@ -533,6 +546,8 @@ async def test_ssl_error_retries_with_verify_disabled(
 
     assert call_count == 2
     assert result2["type"] is FlowResultType.CREATE_ENTRY
+    assert result2["result"].unique_id == "test-uuid"
+    assert result2["data"]["ssl"] is False  # SSL verification disabled for self-signed
 
 
 async def test_ssl_error_shows_cannot_connect_with_hint(
