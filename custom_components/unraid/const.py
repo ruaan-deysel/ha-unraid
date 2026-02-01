@@ -23,7 +23,7 @@ __all__ = [
 # Integration Info
 # =============================================================================
 DOMAIN: Final = "unraid"
-INTEGRATION_VERSION: Final = "2026.01.0"
+INTEGRATION_VERSION: Final = "2026.2.1"
 MANUFACTURER: Final = "Lime Technology"
 
 # =============================================================================
