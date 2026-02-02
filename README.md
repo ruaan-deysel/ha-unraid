@@ -1,6 +1,8 @@
 # Home Assistant Integration for Unraid®
 
 [![HACS Integration][hacsbadge]][hacs]
+[![CI](https://github.com/ruaan-deysel/ha-unraid/actions/workflows/ci.yml/badge.svg)](https://github.com/ruaan-deysel/ha-unraid/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ruaan-deysel/ha-unraid/graph/badge.svg)](https://codecov.io/gh/ruaan-deysel/ha-unraid)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/commits/main)
 [![GitHub Release](https://img.shields.io/github/v/release/ruaan-deysel/ha-unraid?sort=semver)](https://github.com/ruaan-deysel/ha-unraid/releases)
 [![GitHub Issues](https://img.shields.io/github/issues/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/issues)
@@ -105,14 +107,19 @@ The integration will validate the connection and create entities for all discove
 
 ### Step 3: Configure Options (Optional)
 
-After setup, you can adjust settings:
+After setup, you can adjust UPS settings (only shown if UPS is detected):
 
 1. Go to **Settings** → **Devices & Services**
 2. Find the Unraid entry and click **Configure**
 3. Adjust:
-   - **System polling interval**: 10-300 seconds (default: 30s)
-   - **Storage polling interval**: 60-3600 seconds (default: 300s)
-   - **UPS capacity (VA)**: Set to enable UPS power sensor for Energy Dashboard
+   - **UPS capacity (VA)**: Your UPS VA rating for reference
+   - **UPS nominal power (W)**: Required for UPS Power sensor in Energy Dashboard
+
+> **Note**: Polling intervals are fixed per Home Assistant Core guidelines:
+> - System data (CPU, RAM, Docker, VMs): **30 seconds**
+> - Storage data (array, disks, SMART): **5 minutes**
+>
+> For custom refresh rates, use the `homeassistant.update_entity` service (see [Custom Polling](#custom-polling-intervals) below).
 
 ## Entity Overview
 
@@ -201,7 +208,8 @@ Entities are automatically created when services become available.
 
 ### Entities Not Updating
 
-- Review polling intervals in options
+- System sensors update every 30 seconds, storage sensors every 5 minutes
+- Use `homeassistant.update_entity` service to force immediate refresh
 - Check Unraid server responsiveness
 - View integration diagnostics for coordinator status
 
@@ -230,6 +238,27 @@ If you installed via HACS, you can also uninstall from HACS after removing the i
 - **Disk SMART Data**: SMART queries can be slow on large arrays; storage polling is less frequent to compensate
 - **Container/VM Actions**: Start/stop operations may take up to 60 seconds to complete
 - **SSL Certificates**: Self-signed certificates require enabling "Allow insecure connections" (or configuring custom CA)
+
+## Custom Polling Intervals
+
+Polling intervals are fixed per Home Assistant Core integration guidelines. If you need more frequent updates for specific sensors (e.g., disk temperatures for fan control), use the `homeassistant.update_entity` service with a time-pattern automation:
+
+```yaml
+automation:
+  - alias: "Update disk temperatures every 60 seconds"
+    trigger:
+      - trigger: time_pattern
+        seconds: "/60"
+    action:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.unraid_tower_disk1_temperature
+            - sensor.unraid_tower_disk2_temperature
+            # Add all disk temperature sensors you need
+```
+
+This allows custom refresh rates while keeping the integration compliant with HA Core standards.
 
 ## Automation Examples
 

@@ -32,12 +32,12 @@ from unraid_api.models import (
     VmDomain,
 )
 
-_LOGGER = logging.getLogger(__name__)
+from .const import (
+    STORAGE_POLL_INTERVAL,
+    SYSTEM_POLL_INTERVAL,
+)
 
-# Fixed polling intervals per HA Core requirements - not user configurable
-# These are defined here (not in const.py) as they are internal implementation details
-DEFAULT_SYSTEM_POLL_INTERVAL = 30  # seconds
-DEFAULT_STORAGE_POLL_INTERVAL = 300  # seconds (5 minutes)
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -97,10 +97,7 @@ class UnraidStorageData:
 
 
 class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
-    """Coordinator for Unraid system data (30s polling)."""
-
-    # Fixed polling interval per HA Core requirements - not user configurable
-    _UPDATE_INTERVAL = timedelta(seconds=DEFAULT_SYSTEM_POLL_INTERVAL)
+    """Coordinator for Unraid system data (polls every 30 seconds)."""
 
     def __init__(
         self,
@@ -123,7 +120,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             hass,
             logger=_LOGGER,
             name=f"{server_name} System",
-            update_interval=self._UPDATE_INTERVAL,
+            update_interval=timedelta(seconds=SYSTEM_POLL_INTERVAL),
             config_entry=config_entry,
         )
         self.api_client = api_client
@@ -220,10 +217,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
 
 
 class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
-    """Coordinator for Unraid storage data (5min polling)."""
-
-    # Fixed polling interval per HA Core requirements - not user configurable
-    _UPDATE_INTERVAL = timedelta(seconds=DEFAULT_STORAGE_POLL_INTERVAL)
+    """Coordinator for Unraid storage data (polls every 5 minutes)."""
 
     def __init__(
         self,
@@ -246,7 +240,7 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             hass,
             logger=_LOGGER,
             name=f"{server_name} Storage",
-            update_interval=self._UPDATE_INTERVAL,
+            update_interval=timedelta(seconds=STORAGE_POLL_INTERVAL),
             config_entry=config_entry,
         )
         self.api_client = api_client

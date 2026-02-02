@@ -62,7 +62,7 @@
     "step": {
       "init": {
         "title": "Unraid UPS Settings",
-        "description": "Configure UPS power settings. Set UPS Nominal Power to enable power consumption tracking and energy accumulation for the Energy Dashboard.",
+        "description": "Configure UPS power settings for accurate power monitoring.",
         "data": {
           "ups_capacity_va": "UPS capacity (VA)",
           "ups_nominal_power": "UPS nominal power (W)"
@@ -72,6 +72,9 @@
           "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA × 0.6."
         }
       }
+    },
+    "abort": {
+      "no_options_available": "No configurable options available. Options are shown when a UPS device is detected."
     }
   },
   "issues": {

@@ -186,7 +186,7 @@ def mock_api_client():
 async def test_system_coordinator_initialization(
     hass, mock_api_client, mock_config_entry
 ):
-    """Test UnraidSystemCoordinator initializes with 30s interval."""
+    """Test UnraidSystemCoordinator initializes with default 30s interval."""
     coordinator = UnraidSystemCoordinator(
         hass=hass,
         api_client=mock_api_client,
@@ -200,10 +200,34 @@ async def test_system_coordinator_initialization(
 
 
 @pytest.mark.asyncio
+async def test_system_coordinator_fixed_interval(
+    hass, mock_api_client, mock_config_entry
+):
+    """
+    Test UnraidSystemCoordinator uses fixed 30s interval per HA Core guidelines.
+
+    Polling intervals are not user-configurable. Users can use the
+    homeassistant.update_entity service for custom refresh rates.
+    """
+    # Options should not affect the polling interval
+    mock_config_entry.options = {"some_option": "value"}
+
+    coordinator = UnraidSystemCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+    )
+
+    # Should always be 30 seconds regardless of options
+    assert coordinator.update_interval == timedelta(seconds=30)
+
+
+@pytest.mark.asyncio
 async def test_storage_coordinator_initialization(
     hass, mock_api_client, mock_config_entry
 ):
-    """Test UnraidStorageCoordinator initializes with 5min interval."""
+    """Test UnraidStorageCoordinator initializes with default 5min interval."""
     coordinator = UnraidStorageCoordinator(
         hass=hass,
         api_client=mock_api_client,
@@ -214,6 +238,30 @@ async def test_storage_coordinator_initialization(
     assert coordinator.name == "tower Storage"
     assert coordinator.update_interval == timedelta(seconds=300)
     assert coordinator.api_client == mock_api_client
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_fixed_interval(
+    hass, mock_api_client, mock_config_entry
+):
+    """
+    Test UnraidStorageCoordinator uses fixed 5min interval per HA Core guidelines.
+
+    Polling intervals are not user-configurable. Users can use the
+    homeassistant.update_entity service for custom refresh rates.
+    """
+    # Options should not affect the polling interval
+    mock_config_entry.options = {"some_option": "value"}
+
+    coordinator = UnraidStorageCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+    )
+
+    # Should always be 300 seconds (5 minutes) regardless of options
+    assert coordinator.update_interval == timedelta(seconds=300)
 
 
 # =============================================================================

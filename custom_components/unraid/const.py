@@ -23,14 +23,11 @@ __all__ = [
 # Integration Info
 # =============================================================================
 DOMAIN: Final = "unraid"
-INTEGRATION_VERSION: Final = "2026.2.1"
 MANUFACTURER: Final = "Lime Technology"
 
 # =============================================================================
 # Configuration Keys
 # =============================================================================
-CONF_SYSTEM_INTERVAL: Final = "system_interval"
-CONF_STORAGE_INTERVAL: Final = "storage_interval"
 CONF_UPS_CAPACITY_VA: Final = "ups_capacity_va"
 CONF_UPS_NOMINAL_POWER: Final = "ups_nominal_power"
 
@@ -38,11 +35,15 @@ CONF_UPS_NOMINAL_POWER: Final = "ups_nominal_power"
 # Default Values
 # =============================================================================
 DEFAULT_PORT: Final = 80  # HTTP port for Unraid GraphQL API
-DEFAULT_SYSTEM_POLL_INTERVAL: Final = 30  # seconds
-DEFAULT_STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes)
 DEFAULT_UPS_CAPACITY_VA: Final = 0  # 0 = informational only
 DEFAULT_UPS_NOMINAL_POWER: Final = 0  # 0 = disabled, user must set for UPS Power sensor
 
+# =============================================================================
+# Polling Intervals (fixed per HA Core guidelines - not user-configurable)
+# Users can use homeassistant.update_entity service for custom refresh rates
+# =============================================================================
+SYSTEM_POLL_INTERVAL: Final = 30  # seconds - system metrics, Docker, VMs
+STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes) - array, disks, SMART
 # =============================================================================
 # Platforms
 # =============================================================================

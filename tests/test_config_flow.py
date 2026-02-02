@@ -854,10 +854,10 @@ async def test_reauth_flow_unknown_error(
 # =============================================================================
 
 
-async def test_options_flow_empty_form_without_ups(
+async def test_options_flow_aborts_without_ups(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test options flow shows empty form when no UPS detected."""
+    """Test options flow aborts when no UPS detected (no configurable options)."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
@@ -869,12 +869,9 @@ async def test_options_flow_empty_form_without_ups(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    schema_keys = list(result["data_schema"].schema.keys())
-    schema_key_names = [str(k) for k in schema_keys]
-    assert CONF_UPS_CAPACITY_VA not in schema_key_names
-    assert CONF_UPS_NOMINAL_POWER not in schema_key_names
+    # Should abort with "no_options_available" when no UPS is detected
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_options_available"
 
 
 async def test_options_flow_shows_ups_options_when_ups_detected(
@@ -915,10 +912,10 @@ async def test_options_flow_shows_ups_options_when_ups_detected(
     assert CONF_UPS_NOMINAL_POWER in schema_key_names
 
 
-async def test_options_flow_completes_without_ups(
+async def test_options_flow_aborts_without_ups_2(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test options flow completes with empty data when no UPS is present."""
+    """Test options flow aborts with no_options_available when no UPS is present."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
@@ -929,12 +926,10 @@ async def test_options_flow_completes_without_ups(
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {},
-    )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    # Should abort since no UPS means no configurable options
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_options_available"
 
 
 async def test_options_flow_saves_ups_values(
@@ -977,6 +972,55 @@ async def test_options_flow_saves_ups_values(
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_UPS_CAPACITY_VA] == 1500
     assert entry.options[CONF_UPS_NOMINAL_POWER] == 1200
+
+
+async def test_options_flow_fixed_polling_intervals_not_configurable(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """
+    Test that polling intervals are not configurable per HA Core guidelines.
+
+    Polling intervals should be fixed per Home Assistant Core integration quality scale.
+    Users can use homeassistant.update_entity service for custom refresh rates.
+    """
+
+    @dataclass
+    class MockSystemData:
+        ups_devices: list
+
+    @dataclass
+    class MockRuntimeData:
+        system_coordinator: MagicMock
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        options={CONF_UPS_CAPACITY_VA: 1000, CONF_UPS_NOMINAL_POWER: 800},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.data = MockSystemData(
+        ups_devices=[UPSDevice(id="ups:1", name="APC")]
+    )
+    entry.runtime_data = MockRuntimeData(system_coordinator=mock_coordinator)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    schema_keys = list(result["data_schema"].schema.keys())
+    schema_key_names = [str(k) for k in schema_keys]
+
+    # Polling intervals should NOT be configurable
+    assert "system_interval" not in schema_key_names
+    assert "storage_interval" not in schema_key_names
+
+    # Only UPS options should be present
+    assert CONF_UPS_CAPACITY_VA in schema_key_names
+    assert CONF_UPS_NOMINAL_POWER in schema_key_names
 
 
 # =============================================================================
@@ -1566,10 +1610,10 @@ async def test_reconfigure_parametrized_errors(
 # =============================================================================
 
 
-async def test_options_flow_shows_empty_form_without_ups(
+async def test_options_flow_aborts_without_ups_from_user_flow(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test options flow shows empty form when no UPS is detected."""
+    """Test options flow aborts when no UPS is detected after initial setup."""
     with patch(
         "custom_components.unraid.config_flow.UnraidClient",
         return_value=mock_api_client,
@@ -1583,17 +1627,10 @@ async def test_options_flow_shows_empty_form_without_ups(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     entry = result["result"]
 
-    # Test options flow - should show empty form without UPS
+    # Test options flow - should abort without UPS (no configurable options)
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-
-    # Submit empty form (no UPS options available)
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {},
-    )
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_options_available"
 
 
 async def test_version_parsing_failure_rejected(

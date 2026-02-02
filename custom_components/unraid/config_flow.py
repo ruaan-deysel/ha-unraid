@@ -445,7 +445,7 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the init step to configure UPS settings."""
+        """Handle the init step to configure polling and UPS settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -461,9 +461,12 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
             if system_coordinator.data and system_coordinator.data.ups_devices:
                 has_ups = True
 
-        # Build schema - UPS options only shown if UPS is detected
+        # Build schema - UPS options only shown if UPS device is detected
+        # Note: Polling intervals are not user-configurable per HA Core guidelines
+        # Users can use homeassistant.update_entity service for custom refresh rates
         schema_dict: dict[vol.Marker, Any] = {}
 
+        # UPS options only shown if UPS is detected
         if has_ups:
             schema_dict[
                 vol.Optional(
@@ -479,6 +482,10 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
                     ),
                 )
             ] = vol.All(vol.Coerce(int), vol.Range(min=0, max=100000))
+
+        # If no options available (no UPS detected), show informational message
+        if not schema_dict:
+            return self.async_abort(reason="no_options_available")
 
         data_schema = vol.Schema(schema_dict)
 

@@ -7,6 +7,18 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.2.2] - 2026-02-02
+
+### Changed
+- **Fixed Polling Intervals**: Polling intervals are now fixed per Home Assistant Core integration quality guidelines ([#156](https://github.com/ruaan-deysel/ha-unraid/issues/156))
+  - System data (CPU, RAM, Docker, VMs): 30 seconds
+  - Storage data (array, disks, SMART): 5 minutes
+  - Users needing custom refresh rates can use `homeassistant.update_entity` service with automations
+- **Removed INTEGRATION_VERSION constant**: Version is sourced from `manifest.json` (standard HA practice)
+
+### Fixed
+- **HA Core Compliance**: Integration now follows appropriate-polling guidelines for HA Core compatibility
+
 ## [2026.2.1] - 2026-02-01
 
 ### Fixed
@@ -143,7 +155,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.0...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.2...HEAD
+[2026.2.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.1...v2026.2.2
+[2026.2.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.0...v2026.2.1
 [2026.2.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.01.0...v2026.2.0
 [2026.01.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.2...v2026.01.0
 [2025.12.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...v2025.12.2
