@@ -66,17 +66,32 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest \
-            --cov \
+            --cov=custom_components/unraid \
             --cov-branch \
             --cov-report=xml \
             --cov-report=term-missing \
+            --junitxml=junit.xml \
+            -o junit_family=legacy \
             -v
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
+          flags: unittests
+          name: ha-unraid-coverage
           fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: ./junit.xml
+          flags: unittests
+          name: ha-unraid-tests
+          fail_ci_if_error: false
+          verbose: true
 
   validate:
     name: Validate
