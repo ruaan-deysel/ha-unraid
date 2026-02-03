@@ -7,7 +7,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2026.2.2] - 2026-02-02
+## [2026.2.2] - 2026-02-03
 
 ### Changed
 - **Fixed Polling Intervals**: Polling intervals are now fixed per Home Assistant Core integration quality guidelines ([#156](https://github.com/ruaan-deysel/ha-unraid/issues/156))
