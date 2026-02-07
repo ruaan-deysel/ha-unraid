@@ -1,6 +1,6 @@
 """Tests for button entities."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
@@ -313,9 +313,8 @@ def test_docker_restart_button_creation(
 async def test_docker_restart_button_press(
     mock_api_client, mock_server_info, mock_container
 ):
-    """Test pressing restart button calls stop then start."""
-    mock_api_client.stop_container = AsyncMock()
-    mock_api_client.start_container = AsyncMock()
+    """Test pressing restart button calls restart_container."""
+    mock_api_client.restart_container = AsyncMock()
 
     button = DockerContainerRestartButton(
         api_client=mock_api_client,
@@ -325,20 +324,19 @@ async def test_docker_restart_button_press(
         server_info=mock_server_info,
     )
 
-    with patch("custom_components.unraid.button.asyncio.sleep", new_callable=AsyncMock):
-        await button.async_press()
+    await button.async_press()
 
-    mock_api_client.stop_container.assert_called_once_with("abc123")
-    mock_api_client.start_container.assert_called_once_with("abc123")
+    mock_api_client.restart_container.assert_called_once_with("abc123")
 
 
 @pytest.mark.asyncio
 async def test_docker_restart_button_error_on_stop(
     mock_api_client, mock_server_info, mock_container
 ):
-    """Test restart button raises HomeAssistantError if stop fails."""
-    mock_api_client.stop_container = AsyncMock(side_effect=Exception("Stop failed"))
-    mock_api_client.start_container = AsyncMock()
+    """Test restart button raises HomeAssistantError if restart fails."""
+    mock_api_client.restart_container = AsyncMock(
+        side_effect=Exception("Restart failed")
+    )
 
     button = DockerContainerRestartButton(
         api_client=mock_api_client,
@@ -352,17 +350,14 @@ async def test_docker_restart_button_error_on_stop(
         await button.async_press()
 
     assert exc_info.value.translation_key == "container_restart_failed"
-    # Start should not be called if stop fails
-    mock_api_client.start_container.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_docker_restart_button_error_on_start(
     mock_api_client, mock_server_info, mock_container
 ):
-    """Test restart button raises HomeAssistantError if start fails."""
-    mock_api_client.stop_container = AsyncMock()
-    mock_api_client.start_container = AsyncMock(side_effect=Exception("Start failed"))
+    """Test restart button raises HomeAssistantError if library restart raises."""
+    mock_api_client.restart_container = AsyncMock(side_effect=Exception("Start failed"))
 
     button = DockerContainerRestartButton(
         api_client=mock_api_client,
@@ -372,10 +367,7 @@ async def test_docker_restart_button_error_on_start(
         server_info=mock_server_info,
     )
 
-    with (
-        patch("custom_components.unraid.button.asyncio.sleep", new_callable=AsyncMock),
-        pytest.raises(HomeAssistantError) as exc_info,
-    ):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await button.async_press()
 
     assert exc_info.value.translation_key == "container_restart_failed"

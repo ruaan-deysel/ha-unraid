@@ -7,6 +7,26 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.2.3] - 2026-02-07
+
+### Changed
+- **Updated unraid-api to v1.5.0**: Improved SSL/TLS detection and port handling with better error messages for unreachable servers ([#159](https://github.com/ruaan-deysel/ha-unraid/issues/159), [#144](https://github.com/ruaan-deysel/ha-unraid/issues/144))
+  - Fixed connection failures when using non-standard ports with HTTP-only servers
+  - Simplified port configuration - now uses single port value; library handles HTTPS fallback automatically
+  - Better error reporting when custom ports are unreachable (no silent fallback to port 443)
+
+### Fixed
+- **SSL Detection for HTTP-Only Servers**: Fixed integration unable to connect to servers with SSL/TLS mode "No" (HTTP-only) when using custom ports ([#159](https://github.com/ruaan-deysel/ha-unraid/issues/159))
+  - Root cause: Port configuration was preventing HTTP probe, causing library to assume HTTPS on non-standard port
+  - Now correctly probes HTTP on configured port and follows redirects to discover SSL/TLS mode
+- **Connection Error Messages**: Improved error reporting for unreachable custom ports - now clearly indicates port unreachable instead of SSL errors
+
+### Technical
+- Removed dummy port workaround from config flow and entry setup
+- Simplified connection testing logic (2 attempts instead of 3: with/without SSL verify)
+- Using library's `restart_container()` convenience method in Docker restart button
+- Test suite fully passing with high code coverage
+
 ## [2026.2.2] - 2026-02-03
 
 ### Changed

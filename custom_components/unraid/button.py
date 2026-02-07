@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -263,22 +262,16 @@ class DockerContainerRestartButton(ButtonEntity):
         )
 
     async def async_press(self) -> None:
-        """Handle button press to restart container (stop + start)."""
+        """Handle button press to restart container."""
         _LOGGER.info(
             "Restarting Docker container '%s' on %s",
             self._container_name,
             self._server_name,
         )
         try:
-            # Stop the container first
-            await self.api_client.stop_container(self._container_id)
-            _LOGGER.debug(
-                "Container '%s' stopped, waiting before start", self._container_name
-            )
-            # Brief delay to ensure container is fully stopped
-            await asyncio.sleep(1)
-            # Start the container
-            await self.api_client.start_container(self._container_id)
+            # Use the library's restart_container() which encapsulates
+            # the stop/wait/start sequence (available since unraid-api 1.5.0)
+            await self.api_client.restart_container(self._container_id)
             _LOGGER.debug(
                 "Container '%s' restart completed successfully", self._container_name
             )
