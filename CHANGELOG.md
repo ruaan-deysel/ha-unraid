@@ -25,7 +25,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - Removed dummy port workaround from config flow and entry setup
 - Simplified connection testing logic (2 attempts instead of 3: with/without SSL verify)
 - Using library's `restart_container()` convenience method in Docker restart button
-- All 457 tests passing with 98% code coverage
+- Test suite fully passing with high code coverage
 
 ## [2026.2.2] - 2026-02-03
 
