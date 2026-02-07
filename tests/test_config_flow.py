@@ -144,7 +144,6 @@ async def test_successful_connection_with_custom_port(
         host="unraid.local",
         api_key="valid-api-key",
         http_port=8080,
-        https_port=8080,
         verify_ssl=True,
         session=mock_client_class.call_args.kwargs["session"],
     )
@@ -171,7 +170,6 @@ async def test_connection_uses_default_port_when_not_specified(
         host="unraid.local",
         api_key="valid-api-key",
         http_port=DEFAULT_PORT,
-        https_port=DEFAULT_PORT,
         verify_ssl=True,
         session=mock_client_class.call_args.kwargs["session"],
     )

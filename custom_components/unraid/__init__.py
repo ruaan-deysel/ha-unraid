@@ -114,12 +114,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     # Use verify_ssl based on whether SSL connection was established
     session = async_get_clientsession(hass, verify_ssl=use_ssl)
 
-    # Create API client with injected session (using unraid_api library)
-    # The library handles SSL detection automatically
+    # Create API client with injected session (using unraid_api library >=1.5.0).
+    # The library handles SSL detection automatically via HTTP probe.
     api_client = UnraidClient(
         host=host,
         http_port=port,
-        https_port=port,
         api_key=api_key,
         verify_ssl=use_ssl,
         session=session,

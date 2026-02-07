@@ -173,24 +173,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         Test connection to Unraid server and validate version.
 
-        The unraid-api library handles SSL detection and myunraid.net
-        Strict mode redirects automatically using the single port.
+        The unraid-api library (>=1.5.0) handles SSL detection automatically:
+        - Probes HTTP on http_port to discover SSL/TLS mode (No/Yes/Strict)
+        - Follows redirects to HTTPS or myunraid.net endpoints
+        - Raises UnraidConnectionError for unreachable non-default ports
+        - Falls back to HTTPS on https_port for default port 80
+
+        Connection strategy:
+        1. Let the library probe and auto-detect via http_port
+        2. If SSL cert error, retry with verify_ssl=False (self-signed certs)
         """
         host = user_input[CONF_HOST].strip()
         api_key = user_input[CONF_API_KEY].strip()
         port = user_input.get(CONF_PORT, DEFAULT_PORT)
 
-        # Reset SSL state to default (will try HTTPS first)
+        # Reset SSL state to default
         self._use_ssl = True
 
         session = async_get_clientsession(self.hass, verify_ssl=True)
 
-        # First attempt: try with SSL verification enabled (HTTPS)
+        # Let the library's HTTP probe discover the SSL/TLS mode.
+        # Pass the user's port as http_port; library defaults https_port=443.
         api_client = UnraidClient(
             host=host,
             api_key=api_key,
             http_port=port,
-            https_port=port,
             verify_ssl=True,
             session=session,
         )
@@ -198,10 +205,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             await self._validate_connection(api_client, host)
         except CannotConnectError as err:
-            # Check if this might be a self-signed certificate error
             error_str = str(err).lower()
             if "ssl" in error_str or "certificate" in error_str:
-                # Retry with SSL verification disabled (for self-signed certs)
+                # SSL cert error - retry with verify_ssl=False
+                # (handles self-signed certificates)
                 _LOGGER.debug(
                     "SSL verification failed, retrying with verify_ssl=False: %s", err
                 )
@@ -211,13 +218,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     host=host,
                     api_key=api_key,
                     http_port=port,
-                    https_port=port,
                     verify_ssl=False,
                     session=session,
                 )
                 try:
                     await self._validate_connection(api_client, host)
-                    # Success with SSL verification disabled - remember this
+                    # Success with SSL verification disabled
                     self._use_ssl = False
                     _LOGGER.info(
                         "Connected to %s with self-signed cert (SSL verify disabled)",
