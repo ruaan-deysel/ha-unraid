@@ -55,14 +55,32 @@ Return string error IDs (not exceptions) to the UI:
 - `already_configured` — Duplicate server
 - `unsupported_version` — Unraid/API too old
 
+## Abort Reasons
+
+- `reauth_successful` — Returned by `async_step_reauth_confirm` on success via `self.async_update_reload_and_abort(...)`
+
 ## Unique Config Entry
 
-Set unique ID from server UUID to prevent duplicates:
+Set unique ID from server UUID. The helper used after `async_set_unique_id` depends on which flow step is executing:
+
+**`async_step_user`** (initial setup) — abort if already configured:
 
 ```python
 info = await client.get_server_info()
 await self.async_set_unique_id(info.uuid)
 self._abort_if_unique_id_configured()
+```
+
+**`async_step_reauth_confirm` / `async_step_reconfigure`** — abort if UUID has changed (different server):
+
+```python
+info = await client.get_server_info()
+await self.async_set_unique_id(info.uuid)
+self._abort_if_unique_id_mismatch()
+# On reauth success:
+return self.async_update_reload_and_abort(
+    self._get_reauth_entry(), data_updates={...}
+)
 ```
 
 ## Validation

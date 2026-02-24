@@ -60,8 +60,8 @@ These files auto-load in Copilot based on `applyTo` patterns:
 | Pattern | File | Scope |
 |---------|------|-------|
 | `**/*.py` | `python.instructions.md` | Python conventions |
-| Entity files | `entities.instructions.md` | Entity hierarchy, state, actions |
-| `coordinator.py` | `coordinator.instructions.md` | Triple coordinator, error handling |
+| `**/entity.py`, `**/entities/*.py` | `entities.instructions.md` | Entity hierarchy, state, actions |
+| `**/coordinator.py`, `**/coordinators/*.py` | `coordinator.instructions.md` | Triple coordinator, error handling |
 | `config_flow.py` | `config_flow.instructions.md` | SSL, versions, options flow |
 | `diagnostics.py` | `diagnostics.instructions.md` | Diagnostic data, security |
 | `repairs.py` | `repairs.instructions.md` | Repair flows |

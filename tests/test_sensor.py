@@ -2934,16 +2934,17 @@ def test_upsenergysensor_tracks_energy_accumulation() -> None:
         ups_nominal_power=1000,  # 1000W nominal
     )
 
-    # First read - initializes tracking
+    # First coordinator update - initializes tracking
+    sensor._update_energy()
     assert sensor.native_value == 0.0
 
-    # Simulate some time passing by updating internal state
-    # After first read, _last_power_watts and _last_update_time are set
+    # After first update, _last_power_watts and _last_update_time are set
     assert sensor._last_power_watts == 500.0  # 50% of 1000W
 
     # Manually simulate time passing and another update
     sensor._last_update_time = datetime.now(UTC) - timedelta(hours=1)
-    # Now read again - should show energy accumulated over 1 hour at 500W
+    # Now update again - should show energy accumulated over 1 hour at 500W
+    sensor._update_energy()
     energy = sensor.native_value
     # 500W for 1 hour = 0.5 kWh
     assert energy is not None
@@ -2991,7 +2992,7 @@ def test_upsenergysensor_attributes() -> None:
     )
 
     # Trigger an update to populate _last_power_watts
-    _ = sensor.native_value
+    sensor._update_energy()
 
     attrs = sensor.extra_state_attributes
     assert attrs["model"] == "APC UPS Pro"
@@ -5125,7 +5126,7 @@ def test_parityspeedsensor_creation() -> None:
     )
 
     assert sensor.unique_id == "test-uuid_parity_speed"
-    assert sensor.native_unit_of_measurement == "MB/s"
+    assert sensor.native_unit_of_measurement == "MiB/s"
     assert sensor.state_class == SensorStateClass.MEASUREMENT
     assert sensor.translation_key == "parity_speed"
     assert sensor.entity_registry_enabled_default is False
@@ -5133,9 +5134,9 @@ def test_parityspeedsensor_creation() -> None:
 
 
 def test_parityspeedsensor_state() -> None:
-    """Test parity speed sensor returns speed in MB/s."""
+    """Test parity speed sensor returns speed in MiB/s."""
     coordinator = MagicMock(spec=UnraidStorageCoordinator)
-    # 100 MB/s = 104857600 bytes/s
+    # 100 MiB/s = 104857600 bytes/s
     coordinator.data = make_storage_data(parity_status=ParityCheck(speed=104857600))
 
     sensor = ParitySpeedSensor(

@@ -29,7 +29,7 @@ Each decision is documented with:
 - Disk SMART queries are expensive — polling every 30s would overload the server
 - CPU/RAM and Docker container states need responsive updates
 - Infrastructure data (plugins, services, registration) rarely changes
-- HA Core guidelines require fixed polling intervals (not user-configurable)
+- Intentional design choice: exposing interval settings risks user misconfiguration (e.g., setting SMART polls to seconds), and HA recommends sensible defaults
 
 **Consequences:**
 
@@ -150,6 +150,7 @@ Each decision is documented with:
 
 - Initial connection takes slightly longer (two attempts if HTTPS fails)
 - `verify_ssl` flag is passed to `async_get_clientsession` for proper session handling
+- Self-signed certificate servers: if cert validation failure triggers `UnraidSSLError`, the connection retries with `verify_ssl=False`; the stored `CONF_SSL` reflects the effective SSL state
 
 ---
 

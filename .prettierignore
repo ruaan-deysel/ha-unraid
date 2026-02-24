@@ -1,5 +1,5 @@
 # Generated/runtime files
-config/
+config/*
 !config/configuration.yaml
 .venv/
 htmlcov/

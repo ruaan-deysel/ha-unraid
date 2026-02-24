@@ -13,8 +13,10 @@ Read these files before starting:
 - `custom_components/unraid/sensor.py` — Existing sensor patterns
 - `custom_components/unraid/entity.py` — Base entity classes
 - `custom_components/unraid/coordinator.py` — Data classes and coordinator types
+- `custom_components/unraid/const.py` — Existing constants
 - `custom_components/unraid/strings.json` — Translation keys
 - `custom_components/unraid/icons.json` — Icon definitions
+- `tests/test_sensor.py` — Existing test patterns
 
 ## Requirements
 

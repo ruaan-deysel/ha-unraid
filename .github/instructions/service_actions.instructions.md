@@ -40,7 +40,11 @@ service_name:
 async def async_handle_service(call: ServiceCall) -> None:
     """Handle a service call."""
     entry_id = call.data.get("entry_id")
+    if not entry_id:
+        raise ServiceValidationError("entry_id is required")
     entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        raise ServiceValidationError(f"Config entry {entry_id!r} not found")
     runtime_data = entry.runtime_data
     # ... perform action via runtime_data.api_client
 ```

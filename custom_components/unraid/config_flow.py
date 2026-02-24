@@ -388,7 +388,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                     return self.async_update_reload_and_abort(
                         reconfigure_entry,
-                        data_updates=user_input,
+                        data_updates={**user_input, CONF_SSL: self._use_ssl},
                     )
 
                 except InvalidAuthError:

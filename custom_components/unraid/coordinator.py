@@ -282,6 +282,8 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
         """Query parity history (fails gracefully)."""
         try:
             return await self.api_client.get_parity_history()
+        except UnraidAuthenticationError:
+            raise
         except (UnraidAPIError, UnraidConnectionError) as err:
             _LOGGER.debug("Parity history not available: %s", err)
             return []

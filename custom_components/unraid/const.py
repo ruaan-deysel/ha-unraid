@@ -51,6 +51,7 @@ MANUFACTURER: Final = "Lime Technology"
 
 # Known placeholder UUIDs from AMI/OEM firmware that are not truly unique.
 # These are common on mini PCs and certain OEM boards.
+# IMPORTANT: All entries must be lowercase (compared via uuid.lower()).
 PLACEHOLDER_UUIDS: Final = frozenset(
     {
         "03000200-0400-0500-0006-000700080009",

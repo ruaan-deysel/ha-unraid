@@ -20,7 +20,7 @@ Create a new ADR in `docs/development/adr/NNNN-title-of-decision.md`:
 ```markdown
 # ADR-NNNN: [Title of Decision]
 
-**Status:** Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
+**Status:** Proposed | Accepted | Rejected | Deprecated | Superseded by ADR-XXXX
 
 **Date:** YYYY-MM-DD
 

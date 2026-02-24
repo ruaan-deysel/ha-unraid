@@ -371,10 +371,10 @@
         "name": "Reset VM {name}"
       },
       "archive_all_notifications": {
-        "name": "Archive all notifications"
+        "name": "Archive All Notifications"
       },
       "delete_all_archived_notifications": {
-        "name": "Delete all archived notifications"
+        "name": "Delete All Archived Notifications"
       }
     }
   }

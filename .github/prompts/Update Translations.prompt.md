@@ -11,7 +11,7 @@ Add or modify translation strings in the ha-unraid integration.
 Read these files:
 - `custom_components/unraid/strings.json` — Source of truth for English text
 - `custom_components/unraid/icons.json` — Icon definitions (often updated alongside)
-- `custom_components/unraid/translations/en.json` — Generated from strings.json
+- `custom_components/unraid/translations/en.json` — Kept in sync with strings.json
 
 ## Translation Structure
 

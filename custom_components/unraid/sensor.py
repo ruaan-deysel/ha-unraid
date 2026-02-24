@@ -751,7 +751,7 @@ class InstalledPluginsSensor(UnraidSensorEntity):
     def native_value(self) -> int | None:
         """Return the number of installed plugins."""
         data: UnraidInfraData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.plugins is None:
             return None
         return len(data.plugins)
 
@@ -912,7 +912,10 @@ class LastParityCheckDateSensor(UnraidSensorEntity):
             return date_val
         if isinstance(date_val, str):
             try:
-                return datetime.fromisoformat(date_val)
+                dt = datetime.fromisoformat(date_val)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                return dt
             except (ValueError, AttributeError):
                 return None
         # Handle numeric timestamps (epoch seconds)
@@ -1006,7 +1009,7 @@ class DiskTemperatureSensor(UnraidSensorEntity):
         data: UnraidStorageData | None = self.coordinator.data
         if data is None:
             return None
-        all_disks = data.disks + data.parities + data.caches
+        all_disks = (data.disks or []) + (data.parities or []) + (data.caches or [])
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -1109,7 +1112,7 @@ class DiskUsageSensor(UnraidSensorEntity):
         data: UnraidStorageData | None = self.coordinator.data
         if data is None:
             return None
-        all_disks = data.disks + data.parities + data.caches
+        all_disks = (data.disks or []) + (data.parities or []) + (data.caches or [])
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -1575,6 +1578,11 @@ class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
         self._last_power_watts = current_power
         self._last_update_time = current_time
 
+    def _handle_coordinator_update(self) -> None:
+        """Update energy accumulation on each coordinator data push."""
+        self._update_energy()
+        super()._handle_coordinator_update()
+
     @property
     def available(self) -> bool:
         """Return if entity is available."""
@@ -1587,8 +1595,6 @@ class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
         """Return cumulative energy consumption in kWh."""
         if self._ups_nominal_power <= 0:
             return None
-        # Update energy calculation on each read
-        self._update_energy()
         return round(self._total_energy_kwh, 3)
 
     @property
@@ -1869,7 +1875,7 @@ class ParitySpeedSensor(UnraidSensorEntity):
     """Parity check speed sensor (disabled by default)."""
 
     _attr_translation_key = "parity_speed"
-    _attr_native_unit_of_measurement = "MB/s"
+    _attr_native_unit_of_measurement = "MiB/s"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -1891,14 +1897,14 @@ class ParitySpeedSensor(UnraidSensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return current parity check speed in MB/s."""
+        """Return current parity check speed in MiB/s."""
         data: UnraidStorageData | None = self.coordinator.data
         if data is None or data.parity_status is None:
             return None
         speed = data.parity_status.speed
         if speed is None:
             return None
-        # Convert from bytes/s to MB/s
+        # Convert from bytes/s to MiB/s
         return round(speed / (1024 * 1024), 1)
 
     @property
@@ -2170,7 +2176,7 @@ def _create_disk_sensors(
     data = storage_coordinator.data
 
     # Data disks - usage and temperature sensors
-    for disk in data.disks:
+    for disk in data.disks or []:
         entities.append(
             DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
         )
@@ -2179,13 +2185,13 @@ def _create_disk_sensors(
         )
 
     # Parity disks - temperature sensors only
-    for disk in data.parities:
+    for disk in data.parities or []:
         entities.append(
             DiskTemperatureSensor(storage_coordinator, server_uuid, server_name, disk)
         )
 
     # Cache disks - usage and temperature sensors
-    for disk in data.caches:
+    for disk in data.caches or []:
         entities.append(
             DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
         )
@@ -2194,7 +2200,7 @@ def _create_disk_sensors(
         )
 
     # Share sensors
-    for share in data.shares:
+    for share in data.shares or []:
         entities.append(
             ShareUsageSensor(storage_coordinator, server_uuid, server_name, share)
         )

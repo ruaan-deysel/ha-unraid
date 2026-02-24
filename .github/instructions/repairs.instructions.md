@@ -47,4 +47,4 @@ class MyRepairFlow(RepairsFlow):
 - Repair flows must be `is_fixable=True` to show the "Fix" button
 - Use `is_persistent=True` for issues that survive restarts
 - Clear issues on resolution: `ir.async_delete_issue(hass, DOMAIN, issue_id)`
-- Always provide `translation_key` and `translation_placeholders`
+- Always provide `translation_key`; include `translation_placeholders` only when the translation string uses placeholder variables

@@ -38,17 +38,23 @@ async def async_get_config_entry_diagnostics(
 
 ```python
 runtime_data = entry.runtime_data
-server_info = runtime_data.server_info
+server_info = runtime_data.server_info if runtime_data else {}
 
 return {
     "entry_id": entry.entry_id,
+    "entry_title": entry.title,
+    "entry_version": entry.version,
     "server_info": {
-        "uuid": server_info.get("uuid"),
-        "hostname": server_info.get("name"),
+        "uuid": server_info.get("uuid") if server_info else None,
+        "hostname": server_info.get("name") if server_info else None,
         # ... safe fields only
     },
     "system_coordinator": {
-        "last_update_success": runtime_data.system_coordinator.last_update_success,
+        "last_update_success": (
+            runtime_data.system_coordinator.last_update_success
+            if runtime_data and runtime_data.system_coordinator
+            else None
+        ),
     },
 }
 ```
