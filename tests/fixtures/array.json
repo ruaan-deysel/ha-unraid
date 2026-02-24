@@ -29,5 +29,21 @@
     }
   ],
   "parities": [],
-  "caches": []
+  "caches": [
+    {
+      "id": "cache:garbage",
+      "idx": 0,
+      "device": "sdg",
+      "name": "garbage",
+      "type": "Cache",
+      "size": 234437632,
+      "fsSize": 230988710,
+      "fsUsed": 860,
+      "fsFree": 230987850,
+      "fsType": "zfs",
+      "temp": 40,
+      "status": "DISK_OK",
+      "isSpinning": true
+    }
+  ]
 }

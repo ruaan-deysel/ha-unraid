@@ -3,6 +3,21 @@
 from typing import Final
 
 # =============================================================================
+# Library State Constants (for reuse across modules)
+# =============================================================================
+from unraid_api.const import (
+    ARRAY_STATE_STARTED,
+    ARRAY_STATE_STOPPED,
+    CONTAINER_STATE_EXITED,
+    CONTAINER_STATE_PAUSED,
+    CONTAINER_STATE_RUNNING,
+    VM_STATE_IDLE,
+    VM_STATE_PAUSED,
+    VM_STATE_RUNNING,
+    VM_STATE_SHUT_OFF,
+)
+
+# =============================================================================
 # Library Exception Imports (for reuse across modules)
 # =============================================================================
 from unraid_api.exceptions import (
@@ -13,6 +28,15 @@ from unraid_api.exceptions import (
 )
 
 __all__ = [
+    "ARRAY_STATE_STARTED",
+    "ARRAY_STATE_STOPPED",
+    "CONTAINER_STATE_EXITED",
+    "CONTAINER_STATE_PAUSED",
+    "CONTAINER_STATE_RUNNING",
+    "VM_STATE_IDLE",
+    "VM_STATE_PAUSED",
+    "VM_STATE_RUNNING",
+    "VM_STATE_SHUT_OFF",
     "UnraidAPIError",
     "UnraidAuthenticationError",
     "UnraidConnectionError",
@@ -24,6 +48,14 @@ __all__ = [
 # =============================================================================
 DOMAIN: Final = "unraid"
 MANUFACTURER: Final = "Lime Technology"
+
+# Known placeholder UUIDs from AMI/OEM firmware that are not truly unique.
+# These are common on mini PCs and certain OEM boards.
+PLACEHOLDER_UUIDS: Final = frozenset(
+    {
+        "03000200-0400-0500-0006-000700080009",
+    }
+)
 
 # =============================================================================
 # Configuration Keys
@@ -44,6 +76,7 @@ DEFAULT_UPS_NOMINAL_POWER: Final = 0  # 0 = disabled, user must set for UPS Powe
 # =============================================================================
 SYSTEM_POLL_INTERVAL: Final = 30  # seconds - system metrics, Docker, VMs
 STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes) - array, disks, SMART
+INFRA_POLL_INTERVAL: Final = 900  # seconds (15 minutes) - services, registration, cloud
 # =============================================================================
 # Platforms
 # =============================================================================
@@ -82,6 +115,13 @@ SENSOR_UPS_POWER: Final = "ups_power"
 SENSOR_SHARE_USAGE: Final = "share_usage"
 SENSOR_FLASH_USAGE: Final = "flash_usage"
 SENSOR_NOTIFICATIONS: Final = "active_notifications"
+SENSOR_SWAP_USAGE: Final = "swap_usage"
+SENSOR_SWAP_USED: Final = "swap_used"
+SENSOR_CONTAINER_CPU: Final = "container_cpu"
+SENSOR_CONTAINER_MEMORY_USAGE: Final = "container_memory_usage"
+SENSOR_CONTAINER_MEMORY_PERCENT: Final = "container_memory_percent"
+SENSOR_PARITY_SPEED: Final = "parity_speed"
+SENSOR_UNRAID_VERSION: Final = "unraid_version"
 
 # =============================================================================
 # Binary Sensor Types
@@ -92,6 +132,14 @@ BINARY_SENSOR_PARITY_VALID: Final = "parity_valid"
 BINARY_SENSOR_DISK_HEALTH: Final = "disk_health"
 BINARY_SENSOR_DISK_STANDBY: Final = "disk_standby"
 BINARY_SENSOR_UPS_CONNECTED: Final = "ups_connected"
+BINARY_SENSOR_CONTAINER_UPDATE: Final = "container_update_available"
+BINARY_SENSOR_MOVER_ACTIVE: Final = "mover_active"
+BINARY_SENSOR_DISKS_DISABLED: Final = "disks_disabled"
+BINARY_SENSOR_DISKS_MISSING: Final = "disks_missing"
+BINARY_SENSOR_DISKS_INVALID: Final = "disks_invalid"
+BINARY_SENSOR_SAFE_MODE: Final = "safe_mode"
+BINARY_SENSOR_CONFIG_VALID: Final = "config_valid"
+BINARY_SENSOR_FS_UNMOUNTABLE: Final = "filesystems_unmountable"
 
 # =============================================================================
 # Switch Types
@@ -210,25 +258,14 @@ ERROR_ALREADY_CONFIGURED: Final = "already_configured"
 ERROR_CONTROL_FAILED: Final = "control_failed"
 
 # =============================================================================
-# State Values (for consistent state comparisons)
+# State Values (imported from unraid_api.const, re-exported above)
+# Legacy aliases for backward compatibility within integration
 # =============================================================================
-# Array states
-STATE_ARRAY_STARTED: Final = "STARTED"
-STATE_ARRAY_STOPPED: Final = "STOPPED"
-
-# Container states
-STATE_CONTAINER_RUNNING: Final = "RUNNING"
-STATE_CONTAINER_PAUSED: Final = "PAUSED"
-STATE_CONTAINER_EXITED: Final = "EXITED"
-
-# VM states
-STATE_VM_RUNNING: Final = "RUNNING"
-STATE_VM_IDLE: Final = "IDLE"
-STATE_VM_PAUSED: Final = "PAUSED"
-STATE_VM_SHUTOFF: Final = "SHUTOFF"
+STATE_ARRAY_STARTED: Final = ARRAY_STATE_STARTED
+STATE_ARRAY_STOPPED: Final = ARRAY_STATE_STOPPED
 
 # Running states for VMs (states where VM is considered "on")
-VM_RUNNING_STATES: Final = frozenset({STATE_VM_RUNNING, STATE_VM_IDLE})
+VM_RUNNING_STATES: Final = frozenset({VM_STATE_RUNNING, VM_STATE_IDLE})
 
 # =============================================================================
 # Repair Issue IDs

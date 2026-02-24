@@ -25,14 +25,24 @@ from unraid_api.exceptions import (
 from unraid_api.models import (
     ArrayCapacity,
     ArrayDisk,
+    Cloud,
+    Connect,
     DockerContainer,
+    NotificationOverview,
     ParityCheck,
+    ParityHistoryEntry,
+    Plugin,
+    Registration,
+    RemoteAccess,
+    Service,
     Share,
     UPSDevice,
+    Vars,
     VmDomain,
 )
 
 from .const import (
+    INFRA_POLL_INTERVAL,
     STORAGE_POLL_INTERVAL,
     SYSTEM_POLL_INTERVAL,
 )
@@ -49,6 +59,7 @@ class UnraidSystemData:
     containers: list[DockerContainer] = field(default_factory=list)
     vms: list[VmDomain] = field(default_factory=list)
     ups_devices: list[UPSDevice] = field(default_factory=list)
+    notification_overview: NotificationOverview | None = None
     notifications_unread: int = 0
 
 
@@ -58,6 +69,7 @@ class UnraidStorageData:
 
     array: UnraidArray
     shares: list[Share] = field(default_factory=list)
+    parity_history: list[ParityHistoryEntry] = field(default_factory=list)
 
     # Convenience properties delegating to array
     @property
@@ -189,6 +201,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 containers=containers,
                 vms=vms,
                 ups_devices=ups_devices,
+                notification_overview=notifications,
                 notifications_unread=notifications.unread.total
                 if notifications.unread
                 else 0,
@@ -265,6 +278,14 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             )
             return []
 
+    async def _query_optional_parity_history(self) -> list[ParityHistoryEntry]:
+        """Query parity history (fails gracefully)."""
+        try:
+            return await self.api_client.get_parity_history()
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Parity history not available: %s", err)
+            return []
+
     async def _async_update_data(self) -> UnraidStorageData:
         """
         Fetch storage data from Unraid server using library typed methods.
@@ -284,6 +305,9 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
             # Query shares separately (gracefully handles failure)
             shares = await self._query_optional_shares()
 
+            # Query parity history (gracefully handles failure)
+            parity_history = await self._query_optional_parity_history()
+
             # Log recovery if previously unavailable
             if self._previously_unavailable:
                 _LOGGER.info(
@@ -292,12 +316,195 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
                 )
                 self._previously_unavailable = False
 
-            return UnraidStorageData(array=array, shares=shares)
+            return UnraidStorageData(
+                array=array, shares=shares, parity_history=parity_history
+            )
 
         except UnraidAuthenticationError as err:
             self._previously_unavailable = True
             _LOGGER.error("Storage data update failed: Authentication failed: %s", err)
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        except (UnraidConnectionError, UnraidTimeoutError) as err:
+            self._previously_unavailable = True
+            raise UpdateFailed(f"Connection error: {err}") from err
+        except UnraidAPIError as err:
+            self._previously_unavailable = True
+            raise UpdateFailed(f"API error: {err}") from err
+        except Exception as err:
+            self._previously_unavailable = True
+            raise UpdateFailed(f"Unexpected error: {err}") from err
+
+
+@dataclass
+class UnraidInfraData:
+    """Data class for infrastructure coordinator data (slow-changing)."""
+
+    services: list[Service] = field(default_factory=list)
+    registration: Registration | None = None
+    cloud: Cloud | None = None
+    connect: Connect | None = None
+    remote_access: RemoteAccess | None = None
+    vars: Vars | None = None
+    plugins: list[Plugin] = field(default_factory=list)
+
+
+class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
+    """
+    Coordinator for Unraid infrastructure data (polls every 15 minutes).
+
+    Handles slow-changing data: services, registration, cloud/connect status,
+    system variables, and plugins.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api_client: UnraidClient,
+        server_name: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """
+        Initialize the infrastructure coordinator.
+
+        Args:
+            hass: Home Assistant instance
+            api_client: Unraid API client (from unraid_api library)
+            server_name: Server name for logging
+            config_entry: The config entry for this coordinator
+
+        """
+        super().__init__(
+            hass,
+            logger=_LOGGER,
+            name=f"{server_name} Infrastructure",
+            update_interval=timedelta(seconds=INFRA_POLL_INTERVAL),
+            config_entry=config_entry,
+        )
+        self.api_client = api_client
+        self._server_name = server_name
+        self._previously_unavailable = False
+
+    async def _query_optional_services(self) -> list[Service]:
+        """Query services (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_services()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Services data not available: %s", err)
+            return []
+
+    async def _query_optional_registration(self) -> Registration | None:
+        """Query registration info (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_registration()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Registration data not available: %s", err)
+            return None
+
+    async def _query_optional_cloud(self) -> Cloud | None:
+        """Query cloud status (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_cloud()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Cloud data not available: %s", err)
+            return None
+
+    async def _query_optional_connect(self) -> Connect | None:
+        """Query connect status (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_connect()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Connect data not available: %s", err)
+            return None
+
+    async def _query_optional_remote_access(self) -> RemoteAccess | None:
+        """Query remote access config (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_remote_access()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Remote access data not available: %s", err)
+            return None
+
+    async def _query_optional_vars(self) -> Vars | None:
+        """Query system variables (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_vars()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Vars data not available: %s", err)
+            return None
+
+    async def _query_optional_plugins(self) -> list[Plugin]:
+        """Query plugins (fails gracefully)."""
+        try:
+            return await self.api_client.typed_get_plugins()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError) as err:
+            _LOGGER.debug("Plugins data not available: %s", err)
+            return []
+
+    async def _async_update_data(self) -> UnraidInfraData:
+        """
+        Fetch infrastructure data from Unraid server.
+
+        Returns:
+            UnraidInfraData containing services, registration, cloud, etc.
+
+        Raises:
+            UpdateFailed: If update fails
+
+        """
+        _LOGGER.debug("Starting infrastructure data update")
+        try:
+            # All sub-queries are optional and fail gracefully
+            services = await self._query_optional_services()
+            registration = await self._query_optional_registration()
+            cloud = await self._query_optional_cloud()
+            connect = await self._query_optional_connect()
+            remote_access = await self._query_optional_remote_access()
+            vars_data = await self._query_optional_vars()
+            plugins = await self._query_optional_plugins()
+
+            # Log recovery if previously unavailable
+            if self._previously_unavailable:
+                _LOGGER.info(
+                    "Connection restored to Unraid server %s (infrastructure)",
+                    self._server_name,
+                )
+                self._previously_unavailable = False
+
+            _LOGGER.debug(
+                "Infrastructure data update completed: %d services, %d plugins",
+                len(services),
+                len(plugins),
+            )
+
+            return UnraidInfraData(
+                services=services,
+                registration=registration,
+                cloud=cloud,
+                connect=connect,
+                remote_access=remote_access,
+                vars=vars_data,
+                plugins=plugins,
+            )
+
+        except UnraidAuthenticationError as err:
+            self._previously_unavailable = True
+            msg = f"Authentication failed: {err}"
+            _LOGGER.error("Infrastructure data update failed: %s", msg)
+            raise ConfigEntryAuthFailed(msg) from err
         except (UnraidConnectionError, UnraidTimeoutError) as err:
             self._previously_unavailable = True
             raise UpdateFailed(f"Connection error: {err}") from err

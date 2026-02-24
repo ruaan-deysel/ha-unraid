@@ -1,1 +1,11 @@
-* text=auto eol=lf
+# Ensure consistent line endings
+*       text eol=lf
+
+# Python files - show proper diffs and enforce no trailing whitespace
+*.py    diff=python whitespace=error
+
+# Binary files
+*.ico   binary
+*.jpg   binary
+*.png   binary
+*.zip   binary

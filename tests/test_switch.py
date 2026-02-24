@@ -52,9 +52,8 @@ def test_container_switch_creation() -> None:
 
     # unique_id uses container NAME (stable) not ID (ephemeral)
     assert switch.unique_id == "test-uuid_container_switch_web"
-    assert (
-        switch.name == "Container web"
-    )  # Should strip leading / and prefix with Container
+    assert switch._attr_translation_key == "docker_container"
+    assert switch._attr_translation_placeholders == {"name": "web"}
     assert switch.device_info is not None
 
 
@@ -109,6 +108,8 @@ def test_container_switch_attributes() -> None:
         name="/web",
         state="RUNNING",
         image="nginx:latest",
+        imageId="sha256:abc123",
+        autoStart=True,
         webUiUrl="https://tower/apps/web",
         iconUrl="https://cdn/icons/web.png",
     )
@@ -127,6 +128,8 @@ def test_container_switch_attributes() -> None:
     attrs = switch.extra_state_attributes
     assert attrs["status"] == "RUNNING"
     assert attrs["image"] == "nginx:latest"
+    assert attrs["image_id"] == "sha256:abc123"
+    assert attrs["auto_start"] is True
     assert attrs["web_ui_url"] == "https://tower/apps/web"
     assert attrs["icon_url"] == "https://cdn/icons/web.png"
 
@@ -332,9 +335,9 @@ def test_vm_switch_creation() -> None:
         vm=vm,
     )
 
-    # unique_id uses VM NAME (stable) not ID (may be ephemeral)
     assert switch.unique_id == "test-uuid_vm_switch_Ubuntu"
-    assert switch.name == "VM Ubuntu"  # Should prefix with VM
+    assert switch._attr_translation_key == "virtual_machine"
+    assert switch._attr_translation_placeholders == {"name": "Ubuntu"}
 
 
 def test_vm_switch_is_on_when_running() -> None:
@@ -417,6 +420,8 @@ def test_vm_switch_attributes() -> None:
         state="RUNNING",
         memory=4096,
         vcpu=4,
+        autostart=True,
+        primaryGpu="NVIDIA GeForce RTX 3080",
     )
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(vms=[vm])
@@ -434,6 +439,8 @@ def test_vm_switch_attributes() -> None:
     assert attrs["state"] == "RUNNING"
     assert attrs["memory"] == 4096
     assert attrs["vcpu"] == 4
+    assert attrs["auto_start"] is True
+    assert attrs["primary_gpu"] == "NVIDIA GeForce RTX 3080"
 
 
 def test_vm_switch_attributes_filters_none() -> None:
@@ -629,7 +636,7 @@ def test_array_switch_creation() -> None:
     )
 
     assert switch.unique_id == "test-uuid_array_switch"
-    assert switch.name == "Array"
+    assert switch._attr_translation_key == "array"
     assert switch.entity_registry_enabled_default is False
 
 
@@ -799,7 +806,7 @@ def test_parity_check_switch_creation() -> None:
     )
 
     assert switch.unique_id == "test-uuid_parity_check_switch"
-    assert switch.name == "Parity Check"
+    assert switch._attr_translation_key == "parity_check"
     assert switch.entity_registry_enabled_default is False
 
 
@@ -997,7 +1004,8 @@ def test_disk_spin_switch_creation() -> None:
     )
 
     assert switch.unique_id == "test-uuid_disk_spin_disk1"
-    assert switch.name == "Disk Disk 1 Spin"
+    assert switch._attr_translation_key == "disk_spin"
+    assert switch._attr_translation_placeholders == {"name": "Disk 1"}
     assert switch.entity_registry_enabled_default is False
 
 
@@ -1398,6 +1406,7 @@ async def test_setup_creates_control_switches(hass) -> None:
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -1435,6 +1444,7 @@ async def test_setup_creates_container_switches(hass) -> None:
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -1470,6 +1480,7 @@ async def test_setup_creates_vm_switches(hass) -> None:
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -1503,6 +1514,7 @@ async def test_setup_no_containers_or_vms(hass) -> None:
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -1537,6 +1549,7 @@ async def test_setup_no_coordinator_data(hass) -> None:
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",

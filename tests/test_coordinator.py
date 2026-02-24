@@ -22,6 +22,7 @@ from unraid_api.models import (
     DockerContainer,
     NotificationOverview,
     NotificationOverviewCounts,
+    ParityHistoryEntry,
     ServerInfo,
     Share,
     SystemMetrics,
@@ -173,6 +174,7 @@ def mock_api_client():
     client.typed_get_ups_devices = AsyncMock(return_value=[])
     client.typed_get_array = AsyncMock(return_value=make_array())
     client.typed_get_shares = AsyncMock(return_value=[])
+    client.get_parity_history = AsyncMock(return_value=[])
     client.close = AsyncMock()
     return client
 
@@ -384,6 +386,8 @@ async def test_system_coordinator_parses_notifications(
     data = await coordinator._async_update_data()
 
     assert data.notifications_unread == 5
+    assert data.notification_overview is not None
+    assert data.notification_overview.unread.total == 5
 
 
 # =============================================================================
@@ -611,6 +615,7 @@ async def test_storage_coordinator_queries_all_endpoints(
     # Verify library methods were called
     mock_api_client.typed_get_array.assert_called_once()
     mock_api_client.typed_get_shares.assert_called_once()
+    mock_api_client.get_parity_history.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -777,6 +782,51 @@ async def test_storage_coordinator_handles_shares_query_failure(
     # Should still return data with empty shares list
     assert data is not None
     assert data.shares == []
+    assert data.array is not None
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_stores_parity_history(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator stores parity history from API."""
+    mock_api_client.get_parity_history.return_value = [
+        ParityHistoryEntry(
+            date="2025-01-15T10:00:00Z",
+            duration=3600,
+            speed=150000000,
+            status="OK",
+            errors=0,
+        )
+    ]
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+    data = await coordinator._async_update_data()
+
+    assert len(data.parity_history) == 1
+    assert data.parity_history[0].status == "OK"
+    assert data.parity_history[0].errors == 0
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_handles_parity_history_failure(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test storage coordinator handles parity history failure gracefully."""
+    mock_api_client.get_parity_history.side_effect = UnraidAPIError(
+        "Parity history failed"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+    data = await coordinator._async_update_data()
+
+    # Should still return data with empty parity history
+    assert data is not None
+    assert data.parity_history == []
     assert data.array is not None
 
 

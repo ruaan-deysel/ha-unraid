@@ -1,0 +1,18 @@
+# Generated/runtime files
+config/
+!config/configuration.yaml
+.venv/
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+__pycache__/
+
+# Lock files
+uv.lock
+
+# Custom components (formatted by ruff, not prettier)
+custom_components/**/*.py
+tests/**/*.py

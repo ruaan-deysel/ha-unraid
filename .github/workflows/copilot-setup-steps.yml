@@ -1,0 +1,53 @@
+# Copilot Coding Agent Setup
+#
+# This workflow configures the environment for GitHub Copilot coding agent.
+# It runs automatically before Copilot starts working on any task.
+#
+# Documentation:
+# - https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras
+          echo "Dependencies installed successfully"
+
+      - name: Verify lint passes
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          echo "Lint checks passed"
+
+      - name: Verify tests pass
+        run: |
+          uv run pytest tests/ --no-cov -q
+          echo "Tests passed"

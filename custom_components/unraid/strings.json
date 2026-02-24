@@ -106,6 +106,21 @@
     "vm_stop_failed": {
       "message": "Failed to stop VM {name}: {error}"
     },
+    "vm_force_stop_failed": {
+      "message": "Failed to force stop VM {name}: {error}"
+    },
+    "vm_reboot_failed": {
+      "message": "Failed to reboot VM {name}: {error}"
+    },
+    "vm_pause_failed": {
+      "message": "Failed to pause VM {name}: {error}"
+    },
+    "vm_resume_failed": {
+      "message": "Failed to resume VM {name}: {error}"
+    },
+    "vm_reset_failed": {
+      "message": "Failed to reset VM {name}: {error}"
+    },
     "array_start_failed": {
       "message": "Failed to start array: {error}"
     },
@@ -130,6 +145,12 @@
     "disk_spin_down_failed": {
       "message": "Failed to spin down disk {name}: {error}"
     },
+    "archive_all_notifications_failed": {
+      "message": "Failed to archive all notifications: {error}"
+    },
+    "delete_all_archived_notifications_failed": {
+      "message": "Failed to delete all archived notifications: {error}"
+    },
     "graphql_query_failed": {
       "message": "GraphQL query failed: {error}"
     }
@@ -151,11 +172,32 @@
       "ram_used": {
         "name": "RAM used"
       },
+      "swap_usage": {
+        "name": "Swap usage"
+      },
+      "swap_used": {
+        "name": "Swap used"
+      },
+      "unraid_version": {
+        "name": "Unraid version"
+      },
       "uptime": {
         "name": "Up since"
       },
       "active_notifications": {
         "name": "Active notifications"
+      },
+      "notifications_unread_info": {
+        "name": "Unread info notifications"
+      },
+      "notifications_unread_warning": {
+        "name": "Unread warning notifications"
+      },
+      "notifications_unread_alert": {
+        "name": "Unread alert notifications"
+      },
+      "notifications_archived_total": {
+        "name": "Archived notifications"
       },
       "array_state": {
         "name": "Array state"
@@ -165,6 +207,12 @@
       },
       "parity_progress": {
         "name": "Parity progress"
+      },
+      "last_parity_check_date": {
+        "name": "Last parity check"
+      },
+      "last_parity_check_errors": {
+        "name": "Last parity check errors"
       },
       "disk_temperature": {
         "name": "Disk {name} temperature"
@@ -189,6 +237,92 @@
       },
       "ups_power": {
         "name": "UPS {name} power"
+      },
+      "ups_energy": {
+        "name": "UPS {name} energy"
+      },
+      "ups_input_voltage": {
+        "name": "UPS {name} input voltage"
+      },
+      "ups_output_voltage": {
+        "name": "UPS {name} output voltage"
+      },
+      "ups_battery_health": {
+        "name": "UPS {name} battery health"
+      },
+      "registration_type": {
+        "name": "License type"
+      },
+      "registration_state": {
+        "name": "License state"
+      },
+      "installed_plugins": {
+        "name": "Installed plugins"
+      },
+      "container_cpu": {
+        "name": "Container {name} CPU"
+      },
+      "container_memory_usage": {
+        "name": "Container {name} memory"
+      },
+      "container_memory_percent": {
+        "name": "Container {name} memory %"
+      },
+      "parity_speed": {
+        "name": "Parity check speed"
+      }
+    },
+    "binary_sensor": {
+      "disk_health": {
+        "name": "Disk {name} health"
+      },
+      "parity_status": {
+        "name": "Parity status"
+      },
+      "array_started": {
+        "name": "Array started"
+      },
+      "parity_check_running": {
+        "name": "Parity check running"
+      },
+      "parity_valid": {
+        "name": "Parity valid"
+      },
+      "ups_connected": {
+        "name": "UPS {name} connected"
+      },
+      "service": {
+        "name": "Service {name}"
+      },
+      "cloud_connected": {
+        "name": "Cloud connected"
+      },
+      "remote_access": {
+        "name": "Remote access"
+      },
+      "container_update_available": {
+        "name": "Container {name} update"
+      },
+      "mover_active": {
+        "name": "Mover active"
+      },
+      "disks_disabled": {
+        "name": "Disks disabled"
+      },
+      "disks_missing": {
+        "name": "Disks missing"
+      },
+      "disks_invalid": {
+        "name": "Disks invalid"
+      },
+      "safe_mode": {
+        "name": "Safe mode"
+      },
+      "config_valid": {
+        "name": "Config valid"
+      },
+      "filesystems_unmountable": {
+        "name": "Filesystems unmountable"
       }
     },
     "switch": {
@@ -220,6 +354,27 @@
       },
       "docker_container_restart": {
         "name": "Restart Container {name}"
+      },
+      "vm_force_stop": {
+        "name": "Force Stop VM {name}"
+      },
+      "vm_reboot": {
+        "name": "Reboot VM {name}"
+      },
+      "vm_pause": {
+        "name": "Pause VM {name}"
+      },
+      "vm_resume": {
+        "name": "Resume VM {name}"
+      },
+      "vm_reset": {
+        "name": "Reset VM {name}"
+      },
+      "archive_all_notifications": {
+        "name": "Archive all notifications"
+      },
+      "delete_all_archived_notifications": {
+        "name": "Delete all archived notifications"
       }
     }
   }

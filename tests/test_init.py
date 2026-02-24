@@ -73,6 +73,10 @@ async def test_setup_entry_successful(
             "custom_components.unraid.UnraidStorageCoordinator",
             return_value=mock_coordinator,
         ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -163,6 +167,10 @@ async def test_setup_entry_captures_hardware_info(
             "custom_components.unraid.UnraidStorageCoordinator",
             return_value=mock_coordinator,
         ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -191,6 +199,7 @@ async def test_setup_entry_creates_coordinators(
         patch(
             "custom_components.unraid.UnraidStorageCoordinator"
         ) as mock_storage_coord,
+        patch("custom_components.unraid.UnraidInfraCoordinator") as mock_infra_coord,
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -198,11 +207,13 @@ async def test_setup_entry_creates_coordinators(
     ):
         mock_system_coord.return_value = mock_coordinator
         mock_storage_coord.return_value = mock_coordinator
+        mock_infra_coord.return_value = mock_coordinator
         mock_session.return_value = MagicMock()
         await async_setup_entry(hass, mock_config_entry)
 
     mock_system_coord.assert_called_once()
     mock_storage_coord.assert_called_once()
+    mock_infra_coord.assert_called_once()
 
 
 # =============================================================================
@@ -229,6 +240,7 @@ async def test_unload_entry_successful(hass: HomeAssistant) -> None:
         api_client=mock_api,
         system_coordinator=MagicMock(),
         storage_coordinator=MagicMock(),
+        infra_coordinator=MagicMock(),
         server_info={"uuid": "test-uuid", "name": "tower"},
     )
 
@@ -262,6 +274,7 @@ async def test_unload_entry_platform_failure(hass: HomeAssistant) -> None:
         api_client=mock_api,
         system_coordinator=MagicMock(),
         storage_coordinator=MagicMock(),
+        infra_coordinator=MagicMock(),
         server_info={},
     )
 
@@ -405,6 +418,10 @@ async def test_setup_entry_builds_configuration_url_from_lan_ip(
             "custom_components.unraid.UnraidStorageCoordinator",
             return_value=mock_coordinator,
         ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -458,6 +475,10 @@ async def test_setup_entry_builds_configuration_url_http_when_ssl_disabled(
             "custom_components.unraid.UnraidStorageCoordinator",
             return_value=mock_coordinator,
         ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -506,6 +527,10 @@ async def test_setup_entry_uses_local_url_when_available(
         ),
         patch(
             "custom_components.unraid.UnraidStorageCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
             return_value=mock_coordinator,
         ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
@@ -560,6 +585,10 @@ async def test_setup_entry_uses_host_when_hostname_missing(
             "custom_components.unraid.UnraidStorageCoordinator",
             return_value=mock_coordinator,
         ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", return_value=None
@@ -607,6 +636,10 @@ async def test_setup_entry_uses_unknown_when_sw_version_missing(
         ),
         patch(
             "custom_components.unraid.UnraidStorageCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
             return_value=mock_coordinator,
         ),
         patch("custom_components.unraid.async_get_clientsession") as mock_session,

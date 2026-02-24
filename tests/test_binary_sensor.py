@@ -9,23 +9,45 @@ import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from unraid_api.models import (
     ArrayDisk,
+    Cloud,
+    CloudResponse,
+    DockerContainer,
     ParityCheck,
+    RemoteAccess,
+    Service,
+    ServiceUptime,
     UnraidArray,
     UPSBattery,
     UPSDevice,
+    Vars,
 )
 
 from custom_components.unraid import UnraidRuntimeData
 from custom_components.unraid.binary_sensor import (
     ArrayStartedBinarySensor,
+    CloudConnectedBinarySensor,
+    ConfigValidBinarySensor,
+    ContainerUpdateAvailableBinarySensor,
     DiskHealthBinarySensor,
+    DisksDisabledBinarySensor,
+    DisksInvalidBinarySensor,
+    DisksMissingBinarySensor,
+    FilesystemsUnmountableBinarySensor,
+    MoverActiveBinarySensor,
     ParityCheckRunningBinarySensor,
     ParityStatusBinarySensor,
     ParityValidBinarySensor,
+    RemoteAccessBinarySensor,
+    SafeModeBinarySensor,
+    ServiceBinarySensor,
     UPSConnectedBinarySensor,
     async_setup_entry,
 )
-from custom_components.unraid.coordinator import UnraidStorageData
+from custom_components.unraid.coordinator import (
+    UnraidStorageData,
+    UnraidSystemCoordinator,
+)
+from tests.conftest import make_infra_data, make_system_data
 
 # =============================================================================
 # Helper Functions
@@ -101,6 +123,19 @@ def make_ups(**kwargs: Any) -> UPSDevice:
     return UPSDevice(**defaults)
 
 
+def make_service(**kwargs: Any) -> Service:
+    """Create a Service model for testing."""
+    defaults = {
+        "id": "smb",
+        "name": "SMB",
+        "online": True,
+        "uptime": ServiceUptime(timestamp="2025-12-01T10:00:00Z"),
+        "version": "4.21.4",
+    }
+    defaults.update(kwargs)
+    return Service(**defaults)
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -118,6 +153,15 @@ def mock_storage_coordinator():
 @pytest.fixture
 def mock_system_coordinator():
     """Create a mock system coordinator."""
+    coordinator = MagicMock()
+    coordinator.last_update_success = True
+    coordinator.async_add_listener = MagicMock(return_value=lambda: None)
+    return coordinator
+
+
+@pytest.fixture
+def mock_infra_coordinator():
+    """Create a mock infrastructure coordinator."""
     coordinator = MagicMock()
     coordinator.last_update_success = True
     coordinator.async_add_listener = MagicMock(return_value=lambda: None)
@@ -150,7 +194,8 @@ def test_disk_health_init(mock_storage_coordinator, mock_disk):
         disk=mock_disk,
     )
     assert sensor._attr_unique_id == "test-uuid_disk_health_disk:1"
-    assert sensor._attr_name == "Disk Disk 1 Health"
+    assert sensor._attr_translation_key == "disk_health"
+    assert sensor._attr_translation_placeholders == {"name": "Disk 1"}
     assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
 
 
@@ -343,7 +388,7 @@ def test_parity_status_init(mock_storage_coordinator):
         server_name="tower",
     )
     assert sensor._attr_unique_id == "test-uuid_parity_status"
-    assert sensor._attr_name == "Parity Status"
+    assert sensor._attr_translation_key == "parity_status"
     assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
 
 
@@ -469,7 +514,7 @@ def test_array_started_init(mock_storage_coordinator):
         server_name="tower",
     )
     assert sensor._attr_unique_id == "test-uuid_array_started"
-    assert sensor._attr_name == "Array Started"
+    assert sensor._attr_translation_key == "array_started"
     assert sensor._attr_device_class == BinarySensorDeviceClass.RUNNING
 
 
@@ -530,7 +575,7 @@ def test_parity_check_running_init(mock_storage_coordinator):
         server_name="tower",
     )
     assert sensor._attr_unique_id == "test-uuid_parity_check_running"
-    assert sensor._attr_name == "Parity Check Running"
+    assert sensor._attr_translation_key == "parity_check_running"
     assert sensor._attr_device_class == BinarySensorDeviceClass.RUNNING
 
 
@@ -655,7 +700,7 @@ def test_parity_valid_init(mock_storage_coordinator):
         server_name="tower",
     )
     assert sensor._attr_unique_id == "test-uuid_parity_valid"
-    assert sensor._attr_name == "Parity Valid"
+    assert sensor._attr_translation_key == "parity_valid"
     assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
 
 
@@ -753,7 +798,8 @@ def test_ups_connected_init(mock_system_coordinator, mock_ups):
         ups=mock_ups,
     )
     assert sensor._attr_unique_id == "test-uuid_ups_ups:1_connected"
-    assert sensor._attr_name == "UPS Connected"
+    assert sensor._attr_translation_key == "ups_connected"
+    assert sensor._attr_translation_placeholders == {"name": "APC Smart-UPS"}
     assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
 
 
@@ -910,6 +956,7 @@ async def test_setup_entry_creates_entities(hass):
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -959,6 +1006,7 @@ async def test_setup_entry_no_ups(hass):
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -992,6 +1040,7 @@ async def test_setup_entry_no_storage_data(hass):
         api_client=MagicMock(),
         system_coordinator=system_coordinator,
         storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
         server_info={
             "uuid": "test-uuid",
             "name": "tower",
@@ -1009,3 +1058,970 @@ async def test_setup_entry_no_storage_data(hass):
     assert (
         len(added_entities) >= 4
     )  # ArrayStarted, ParityCheck, ParityValid, ParityStatus
+
+
+# =============================================================================
+# ServiceBinarySensor Tests
+# =============================================================================
+
+
+def test_service_init(mock_infra_coordinator):
+    """Test ServiceBinarySensor initialization."""
+    service = make_service(name="SMB")
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor._attr_unique_id == "test-uuid_service_SMB"
+    assert sensor._attr_translation_key == "service"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
+    assert sensor._attr_entity_registry_enabled_default is False
+    assert sensor._attr_translation_placeholders == {"name": "SMB"}
+
+
+def test_service_is_on_online(mock_infra_coordinator):
+    """Test is_on returns True when service is online."""
+    service = make_service(name="SMB", online=True)
+    mock_infra_coordinator.data = make_infra_data(services=[service])
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor.is_on is True
+
+
+def test_service_is_on_offline(mock_infra_coordinator):
+    """Test is_on returns False when service is offline."""
+    service = make_service(name="Nginx", online=False)
+    mock_infra_coordinator.data = make_infra_data(services=[service])
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor.is_on is False
+
+
+def test_service_is_on_no_data(mock_infra_coordinator):
+    """Test is_on returns None when no coordinator data."""
+    service = make_service(name="SMB")
+    mock_infra_coordinator.data = None
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor.is_on is None
+
+
+def test_service_is_on_service_not_found(mock_infra_coordinator):
+    """Test is_on returns None when service not found in data."""
+    service = make_service(name="SMB")
+    other_service = make_service(id="nfs", name="NFS")
+    mock_infra_coordinator.data = make_infra_data(services=[other_service])
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor.is_on is None
+
+
+def test_service_extra_state_attributes(mock_infra_coordinator):
+    """Test extra state attributes with version and uptime."""
+    service = make_service(
+        name="SMB",
+        version="4.21.4",
+        uptime=ServiceUptime(timestamp="2025-12-01T10:00:00Z"),
+    )
+    mock_infra_coordinator.data = make_infra_data(services=[service])
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs["version"] == "4.21.4"
+    assert attrs["uptime"] == "2025-12-01T10:00:00Z"
+
+
+def test_service_extra_state_attributes_minimal(mock_infra_coordinator):
+    """Test extra state attributes with no version or uptime."""
+    service = make_service(name="CustomSvc", version=None, uptime=None)
+    mock_infra_coordinator.data = make_infra_data(services=[service])
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs == {}
+
+
+def test_service_extra_state_attributes_no_data(mock_infra_coordinator):
+    """Test extra state attributes when no coordinator data."""
+    service = make_service(name="SMB")
+    mock_infra_coordinator.data = None
+    sensor = ServiceBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        service=service,
+    )
+    assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# CloudConnectedBinarySensor Tests
+# =============================================================================
+
+
+def test_cloud_connected_init(mock_infra_coordinator):
+    """Test CloudConnectedBinarySensor initialization."""
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor._attr_unique_id == "test-uuid_cloud_connected"
+    assert sensor._attr_translation_key == "cloud_connected"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
+    assert sensor._attr_entity_registry_enabled_default is False
+
+
+def test_cloud_connected_is_on_connected(mock_infra_coordinator):
+    """Test is_on returns True when cloud is connected."""
+    cloud = Cloud(cloud=CloudResponse(status="connected", ip="1.2.3.4"))
+    mock_infra_coordinator.data = make_infra_data(cloud=cloud)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is True
+
+
+def test_cloud_connected_is_on_disconnected(mock_infra_coordinator):
+    """Test is_on returns False when cloud is not connected."""
+    cloud = Cloud(cloud=CloudResponse(status="disconnected"))
+    mock_infra_coordinator.data = make_infra_data(cloud=cloud)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is False
+
+
+def test_cloud_connected_is_on_no_data(mock_infra_coordinator):
+    """Test is_on returns None when no coordinator data."""
+    mock_infra_coordinator.data = None
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_cloud_connected_is_on_no_cloud(mock_infra_coordinator):
+    """Test is_on returns None when cloud data is None."""
+    mock_infra_coordinator.data = make_infra_data(cloud=None)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_cloud_connected_is_on_no_cloud_response(mock_infra_coordinator):
+    """Test is_on returns None when cloud.cloud is None."""
+    cloud = Cloud()
+    mock_infra_coordinator.data = make_infra_data(cloud=cloud)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_cloud_connected_extra_attributes(mock_infra_coordinator):
+    """Test extra state attributes with full cloud data."""
+    from unraid_api.models import MinigraphqlResponse, RelayResponse
+
+    cloud = Cloud(
+        cloud=CloudResponse(status="connected", ip="1.2.3.4"),
+        relay=RelayResponse(status="connected"),
+        minigraphql=MinigraphqlResponse(status="CONNECTED"),
+    )
+    mock_infra_coordinator.data = make_infra_data(cloud=cloud)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs["status"] == "connected"
+    assert attrs["ip"] == "1.2.3.4"
+    assert attrs["relay_status"] == "connected"
+    assert attrs["minigraphql_status"] == "CONNECTED"
+
+
+def test_cloud_connected_extra_attributes_no_data(mock_infra_coordinator):
+    """Test extra state attributes when no data."""
+    mock_infra_coordinator.data = None
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.extra_state_attributes == {}
+
+
+def test_cloud_connected_extra_attributes_no_cloud(mock_infra_coordinator):
+    """Test extra state attributes when cloud is None."""
+    mock_infra_coordinator.data = make_infra_data(cloud=None)
+    sensor = CloudConnectedBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# RemoteAccessBinarySensor Tests
+# =============================================================================
+
+
+def test_remote_access_init(mock_infra_coordinator):
+    """Test RemoteAccessBinarySensor initialization."""
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor._attr_unique_id == "test-uuid_remote_access"
+    assert sensor._attr_translation_key == "remote_access"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
+    assert sensor._attr_entity_registry_enabled_default is False
+
+
+def test_remote_access_is_on_dynamic(mock_infra_coordinator):
+    """Test is_on returns True when access type is DYNAMIC."""
+    ra = RemoteAccess(accessType="DYNAMIC", forwardType="UPNP", port=443)
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is True
+
+
+def test_remote_access_is_on_always(mock_infra_coordinator):
+    """Test is_on returns True when access type is ALWAYS."""
+    ra = RemoteAccess(accessType="ALWAYS", port=443)
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is True
+
+
+def test_remote_access_is_on_disabled(mock_infra_coordinator):
+    """Test is_on returns False when access type is DISABLED."""
+    ra = RemoteAccess(accessType="DISABLED")
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is False
+
+
+def test_remote_access_is_on_no_data(mock_infra_coordinator):
+    """Test is_on returns None when no data."""
+    mock_infra_coordinator.data = None
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_remote_access_is_on_no_remote_access(mock_infra_coordinator):
+    """Test is_on returns None when remote_access is None."""
+    mock_infra_coordinator.data = make_infra_data(remote_access=None)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_remote_access_is_on_no_access_type(mock_infra_coordinator):
+    """Test is_on returns None when accessType is None."""
+    ra = RemoteAccess()
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.is_on is None
+
+
+def test_remote_access_extra_attributes(mock_infra_coordinator):
+    """Test extra state attributes with remote access data."""
+    ra = RemoteAccess(accessType="DYNAMIC", forwardType="UPNP", port=443)
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    attrs = sensor.extra_state_attributes
+    assert attrs["access_type"] == "DYNAMIC"
+    assert attrs["forward_type"] == "UPNP"
+    assert attrs["port"] == 443
+
+
+def test_remote_access_extra_attributes_no_data(mock_infra_coordinator):
+    """Test extra state attributes when no data."""
+    mock_infra_coordinator.data = None
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.extra_state_attributes == {}
+
+
+def test_remote_access_extra_attributes_minimal(mock_infra_coordinator):
+    """Test extra state attributes with minimal remote access data."""
+    ra = RemoteAccess()
+    mock_infra_coordinator.data = make_infra_data(remote_access=ra)
+    sensor = RemoteAccessBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+    assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# ContainerUpdateAvailableBinarySensor Tests
+# =============================================================================
+
+
+def test_container_update_available_init():
+    """Test ContainerUpdateAvailableBinarySensor initialization."""
+    container = DockerContainer(
+        id="ct:1", name="/nginx", state="RUNNING", isUpdateAvailable=True
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_container_nginx_update"
+    assert sensor._attr_translation_key == "container_update_available"
+    assert sensor._attr_translation_placeholders == {"name": "nginx"}
+    assert sensor._attr_device_class == BinarySensorDeviceClass.UPDATE
+
+
+def test_container_update_available_is_on():
+    """Test is_on returns True when update is available."""
+    container = DockerContainer(
+        id="ct:1", name="/nginx", state="RUNNING", isUpdateAvailable=True
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    assert sensor.is_on is True
+
+
+def test_container_update_available_is_off():
+    """Test is_on returns False when no update available."""
+    container = DockerContainer(
+        id="ct:1", name="/nginx", state="RUNNING", isUpdateAvailable=False
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    assert sensor.is_on is False
+
+
+def test_container_update_available_none_data():
+    """Test is_on returns None when coordinator data is None."""
+    container = DockerContainer(id="ct:1", name="/nginx", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    assert sensor.is_on is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_container_update_available_not_found():
+    """Test is_on returns None when container not in coordinator data."""
+    container = DockerContainer(id="ct:1", name="/nginx", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    assert sensor.is_on is None
+
+
+def test_container_update_available_none_treated_as_false():
+    """Test is_on returns False when isUpdateAvailable is None (unknown)."""
+    container = DockerContainer(
+        id="ct:1", name="/nginx", state="RUNNING", isUpdateAvailable=None
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    # None from API is treated as False (no update detected)
+    assert sensor.is_on is False
+
+
+def test_container_update_available_attributes():
+    """Test extra_state_attributes includes image and state."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/nginx",
+        state="RUNNING",
+        image="nginx:latest",
+        isUpdateAvailable=True,
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    sensor = ContainerUpdateAvailableBinarySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        container=container,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["image"] == "nginx:latest"
+    assert attrs["state"] == "RUNNING"
+
+
+# =============================================================================
+# MoverActiveBinarySensor Tests
+# =============================================================================
+
+
+def test_mover_active_init(mock_infra_coordinator):
+    """Test MoverActiveBinarySensor initialization."""
+    mock_infra_coordinator.data = make_infra_data(
+        vars_data=Vars(share_mover_active=False)
+    )
+
+    sensor = MoverActiveBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_mover_active"
+    assert sensor._attr_translation_key == "mover_active"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.RUNNING
+
+
+def test_mover_active_is_on(mock_infra_coordinator):
+    """Test is_on returns True when mover is active."""
+    mock_infra_coordinator.data = make_infra_data(
+        vars_data=Vars(share_mover_active=True)
+    )
+
+    sensor = MoverActiveBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+
+
+def test_mover_active_is_off(mock_infra_coordinator):
+    """Test is_on returns False when mover is idle."""
+    mock_infra_coordinator.data = make_infra_data(
+        vars_data=Vars(share_mover_active=False)
+    )
+
+    sensor = MoverActiveBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_mover_active_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = MoverActiveBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+def test_mover_active_no_vars(mock_infra_coordinator):
+    """Test is_on returns None when vars is None."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=None)
+
+    sensor = MoverActiveBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+# =============================================================================
+# DisksDisabledBinarySensor Tests
+# =============================================================================
+
+
+def test_disks_disabled_init(mock_infra_coordinator):
+    """Test DisksDisabledBinarySensor initialization."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_disabled=0))
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_disks_disabled"
+    assert sensor._attr_translation_key == "disks_disabled"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
+
+
+def test_disks_disabled_is_on_when_count_gt_zero(mock_infra_coordinator):
+    """Test is_on returns True when disabled disk count > 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_disabled=2))
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+
+
+def test_disks_disabled_is_off_when_count_zero(mock_infra_coordinator):
+    """Test is_on returns False when disabled disk count is 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_disabled=0))
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_disks_disabled_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_disks_disabled_none_count(mock_infra_coordinator):
+    """Test is_on returns None when md_num_disabled is None."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_disabled=None))
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+def test_disks_disabled_attributes(mock_infra_coordinator):
+    """Test extra_state_attributes includes count."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_disabled=3))
+
+    sensor = DisksDisabledBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.extra_state_attributes == {"count": 3}
+
+
+# =============================================================================
+# DisksMissingBinarySensor Tests
+# =============================================================================
+
+
+def test_disks_missing_is_on_when_count_gt_zero(mock_infra_coordinator):
+    """Test is_on returns True when missing disk count > 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_missing=1))
+
+    sensor = DisksMissingBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {"count": 1}
+
+
+def test_disks_missing_is_off_when_count_zero(mock_infra_coordinator):
+    """Test is_on returns False when missing disk count is 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_missing=0))
+
+    sensor = DisksMissingBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_disks_missing_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = DisksMissingBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+# =============================================================================
+# DisksInvalidBinarySensor Tests
+# =============================================================================
+
+
+def test_disks_invalid_is_on_when_count_gt_zero(mock_infra_coordinator):
+    """Test is_on returns True when invalid disk count > 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_invalid=1))
+
+    sensor = DisksInvalidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {"count": 1}
+
+
+def test_disks_invalid_is_off_when_count_zero(mock_infra_coordinator):
+    """Test is_on returns False when invalid disk count is 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(md_num_invalid=0))
+
+    sensor = DisksInvalidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_disks_invalid_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = DisksInvalidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+# =============================================================================
+# SafeModeBinarySensor Tests
+# =============================================================================
+
+
+def test_safe_mode_init(mock_infra_coordinator):
+    """Test SafeModeBinarySensor initialization."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(safe_mode=False))
+
+    sensor = SafeModeBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_safe_mode"
+    assert sensor._attr_translation_key == "safe_mode"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
+
+
+def test_safe_mode_is_on(mock_infra_coordinator):
+    """Test is_on returns True when server is in safe mode."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(safe_mode=True))
+
+    sensor = SafeModeBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+
+
+def test_safe_mode_is_off(mock_infra_coordinator):
+    """Test is_on returns False when server is not in safe mode."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(safe_mode=False))
+
+    sensor = SafeModeBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_safe_mode_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = SafeModeBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+# =============================================================================
+# ConfigValidBinarySensor Tests
+# =============================================================================
+
+
+def test_config_valid_init(mock_infra_coordinator):
+    """Test ConfigValidBinarySensor initialization."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(config_valid=True))
+
+    sensor = ConfigValidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_config_valid"
+    assert sensor._attr_translation_key == "config_valid"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
+
+
+def test_config_valid_is_off_when_valid(mock_infra_coordinator):
+    """Test is_on returns False when config is valid (no problem)."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(config_valid=True))
+
+    sensor = ConfigValidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    # config_valid=True means no problem, so is_on=False
+    assert sensor.is_on is False
+
+
+def test_config_valid_is_on_when_invalid(mock_infra_coordinator):
+    """Test is_on returns True when config is invalid (problem)."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(config_valid=False))
+
+    sensor = ConfigValidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    # config_valid=False means problem, so is_on=True
+    assert sensor.is_on is True
+
+
+def test_config_valid_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = ConfigValidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+def test_config_valid_none_value(mock_infra_coordinator):
+    """Test is_on returns None when config_valid is None."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(config_valid=None))
+
+    sensor = ConfigValidBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+
+
+# =============================================================================
+# FilesystemsUnmountableBinarySensor Tests
+# =============================================================================
+
+
+def test_filesystems_unmountable_init(mock_infra_coordinator):
+    """Test FilesystemsUnmountableBinarySensor initialization."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(fs_num_unmountable=0))
+
+    sensor = FilesystemsUnmountableBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor._attr_unique_id == "test-uuid_filesystems_unmountable"
+    assert sensor._attr_translation_key == "filesystems_unmountable"
+    assert sensor._attr_device_class == BinarySensorDeviceClass.PROBLEM
+
+
+def test_filesystems_unmountable_is_on(mock_infra_coordinator):
+    """Test is_on returns True when unmountable count > 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(fs_num_unmountable=2))
+
+    sensor = FilesystemsUnmountableBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {"count": 2}
+
+
+def test_filesystems_unmountable_is_off(mock_infra_coordinator):
+    """Test is_on returns False when unmountable count is 0."""
+    mock_infra_coordinator.data = make_infra_data(vars_data=Vars(fs_num_unmountable=0))
+
+    sensor = FilesystemsUnmountableBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is False
+
+
+def test_filesystems_unmountable_none_data(mock_infra_coordinator):
+    """Test is_on returns None when coordinator data is None."""
+    mock_infra_coordinator.data = None
+
+    sensor = FilesystemsUnmountableBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_filesystems_unmountable_none_count(mock_infra_coordinator):
+    """Test is_on returns None when fs_num_unmountable is None."""
+    mock_infra_coordinator.data = make_infra_data(
+        vars_data=Vars(fs_num_unmountable=None)
+    )
+
+    sensor = FilesystemsUnmountableBinarySensor(
+        coordinator=mock_infra_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+    )
+
+    assert sensor.is_on is None

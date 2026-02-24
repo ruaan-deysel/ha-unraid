@@ -1,32 +1,43 @@
-# ha-unraid Development Guidelines
+# Claude Code Instructions — ha-unraid
 
-Auto-generated from all feature plans. Last updated: 2025-12-23
+> Read **[`AGENTS.md`](AGENTS.md)** for comprehensive project documentation.
+> This file is a thin wrapper for Claude Code / Claude AI agents.
 
-## Active Technologies
-- Python 3.12+ (Home Assistant 2025.6+ requirement) + homeassistant, unraid-api>=1.3.1, aiohttp (for session injection), pydantic v2 (001-unraid-api-migration)
-- N/A (no local storage, data fetched from Unraid server via API) (001-unraid-api-migration)
+## Quick Reference
 
-- Python 3.12+ (Home Assistant 2025.6+ requirement) + homeassistant, aiohttp (GraphQL over HTTPS), pydantic v2 (data validation) (001-unraid-graphql-integration)
+- **Domain**: `unraid` | **Prefix**: `Unraid` | **Python**: 3.13+
+- **Code**: `custom_components/unraid/` | **Tests**: `tests/`
+- **Lint**: `./scripts/lint` | **Test**: `./scripts/test` | **Validate**: `./scripts/validate`
 
-## Project Structure
+## Path-Specific Instructions
 
-```text
-src/
-tests/
-```
+When editing specific file types, consult the relevant instruction file in `.github/instructions/`:
 
-## Commands
+| File Pattern | Instruction File |
+|---|---|
+| `**/*.py` | [`python.instructions.md`](.github/instructions/python.instructions.md) |
+| Entity platform files | [`entities.instructions.md`](.github/instructions/entities.instructions.md) |
+| `coordinator.py` | [`coordinator.instructions.md`](.github/instructions/coordinator.instructions.md) |
+| `config_flow.py` | [`config_flow.instructions.md`](.github/instructions/config_flow.instructions.md) |
+| `diagnostics.py` | [`diagnostics.instructions.md`](.github/instructions/diagnostics.instructions.md) |
+| `repairs.py` | [`repairs.instructions.md`](.github/instructions/repairs.instructions.md) |
+| `tests/**/*.py` | [`tests.instructions.md`](.github/instructions/tests.instructions.md) |
+| `strings.json`, `translations/` | [`translations.instructions.md`](.github/instructions/translations.instructions.md) |
+| `icons.json` | [`json.instructions.md`](.github/instructions/json.instructions.md) |
+| `manifest.json` | [`manifest.instructions.md`](.github/instructions/manifest.instructions.md) |
+| `quality_scale.yaml` | [`yaml.instructions.md`](.github/instructions/yaml.instructions.md) |
+| `**/*.md` | [`markdown.instructions.md`](.github/instructions/markdown.instructions.md) |
+| `services.yaml` / `services.py` | [`service_actions.instructions.md`](.github/instructions/service_actions.instructions.md) |
 
-cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+## Task Prompts
 
-## Code Style
+Reusable prompts for common tasks in `.github/prompts/`:
 
-Python 3.12+ (Home Assistant 2025.6+ requirement): Follow standard conventions
-
-## Recent Changes
-- 001-unraid-api-migration: Added Python 3.12+ (Home Assistant 2025.6+ requirement) + homeassistant, unraid-api>=1.3.1, aiohttp (for session injection), pydantic v2
-
-- 001-unraid-graphql-integration: Added Python 3.12+ (Home Assistant 2025.6+ requirement) + homeassistant, aiohttp (GraphQL over HTTPS), pydantic v2 (data validation)
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+- **Add New Sensor** — Step-by-step sensor entity creation
+- **Add Entity Platform** — Adding a new platform (number, select, etc.)
+- **Add Config Option** — Adding options flow fields
+- **Add Action** — Adding custom service actions
+- **Debug Coordinator Issue** — Troubleshooting coordinator problems
+- **Create Implementation Plan** — Structured planning for new features
+- **Review Integration** — Quality scale and best practices audit
+- **Update Translations** — Translation string management

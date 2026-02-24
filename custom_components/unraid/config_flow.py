@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import voluptuous as vol
-from awesomeversion import AwesomeVersion
 from homeassistant import config_entries
 from homeassistant.config_entries import OptionsFlowWithReload
 from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_SSL
@@ -20,6 +19,7 @@ from unraid_api.exceptions import (
     UnraidConnectionError,
     UnraidSSLError,
     UnraidTimeoutError,
+    UnraidVersionError,
 )
 
 from .const import (
@@ -29,6 +29,7 @@ from .const import (
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
+    PLACEHOLDER_UUIDS,
     REPAIR_AUTH_FAILED,
 )
 
@@ -37,8 +38,6 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-MIN_API_VERSION = "4.21.0"
-MIN_UNRAID_VERSION = "7.2.0"
 MAX_HOSTNAME_LEN = 253
 MIN_PORT = 1
 MAX_PORT = 65535
@@ -51,7 +50,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._reauth_entry: config_entries.ConfigEntry | None = None
         self._server_uuid: str | None = None
         self._server_hostname: str | None = None
         self._use_ssl: bool = True  # Track whether SSL connection succeeded
@@ -242,26 +240,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Test connection
             await api_client.test_connection()
 
-            # Get version - library returns dict with "api" and "unraid" keys
-            version_info = await api_client.get_version()
-
-            # Check version
-            api_version = version_info.get("api", "0.0.0")
-            unraid_version = version_info.get("unraid", "0.0.0")
-
-            if not self._is_supported_version(api_version):
-                msg = (
-                    f"Unraid {unraid_version} (API {api_version}) not supported. "
-                    f"Minimum required: Unraid {MIN_UNRAID_VERSION} "
-                    f"(API {MIN_API_VERSION})"
-                )
-                raise UnsupportedVersionError(msg)
+            # Check version compatibility using library method
+            # Raises UnraidVersionError if server version is below minimum
+            await api_client.check_compatibility()
 
             # Get server UUID and hostname for unique identification
             await self._fetch_server_info(api_client, host)
 
         except (InvalidAuthError, CannotConnectError, UnsupportedVersionError):
             raise
+        except UnraidVersionError as err:
+            msg = str(err)
+            raise UnsupportedVersionError(msg) from err
         except UnraidAuthenticationError as err:
             msg = "Invalid API key or insufficient permissions"
             raise InvalidAuthError(msg) from err
@@ -283,12 +273,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._handle_generic_error(err)
 
     async def _fetch_server_info(self, api_client: UnraidClient, host: str) -> None:
-        """Fetch server UUID and hostname for unique identification."""
+        """
+        Fetch server UUID and hostname for unique identification.
+
+        Some systems (common AMI-based mini PCs) report a placeholder SMBIOS UUID
+        that is not truly unique. When detected, the UUID is combined with the
+        hostname to allow multiple servers to be configured.
+        """
         # Use library's typed get_server_info() method
         server_info = await api_client.get_server_info()
 
-        self._server_uuid = server_info.uuid
-        self._server_hostname = server_info.hostname or host
+        uuid = server_info.uuid
+        hostname = server_info.hostname or host
+
+        if uuid and uuid.lower() in PLACEHOLDER_UUIDS:
+            _LOGGER.warning(
+                "Detected placeholder SMBIOS UUID %s on %s; "
+                "combining with hostname for unique identification",
+                uuid,
+                hostname,
+            )
+            self._server_uuid = f"{uuid}_{hostname}"
+        else:
+            self._server_uuid = uuid
+
+        self._server_hostname = hostname
 
     def _handle_http_error(self, err: aiohttp.ClientResponseError, host: str) -> None:
         """Handle HTTP errors from API client."""
@@ -310,27 +319,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         _LOGGER.exception("Unexpected error during connection test")
         raise CannotConnectError(f"Unexpected error: {err}") from err
 
-    def _is_supported_version(self, api_version: str) -> bool:
-        """Check if API version is supported using AwesomeVersion."""
-        try:
-            current = AwesomeVersion(api_version)
-            minimum = AwesomeVersion(MIN_API_VERSION)
-            return current >= minimum
-        except Exception:  # noqa: BLE001
-            # Reject connection when version parsing fails - cannot verify compatibility
-            _LOGGER.error(
-                "Failed to parse API version '%s', rejecting connection", api_version
-            )
-            return False
-
     async def async_step_reauth(
         self,
         entry_data: dict[str, Any],
     ) -> ConfigFlowResult:
         """Handle reauth when API key becomes invalid."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context.get("entry_id", "")
-        )
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -338,32 +331,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle reauth confirmation - prompt for new API key."""
         errors: dict[str, str] = {}
+        reauth_entry = self._get_reauth_entry()
 
         if user_input is not None:
-            if self._reauth_entry is None:
-                return self.async_abort(reason="reauth_failed")
-
             # Test the new API key with existing connection settings
             test_input = {
-                CONF_HOST: self._reauth_entry.data[CONF_HOST],
-                CONF_PORT: self._reauth_entry.data.get(CONF_PORT, DEFAULT_PORT),
+                CONF_HOST: reauth_entry.data[CONF_HOST],
+                CONF_PORT: reauth_entry.data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_API_KEY: user_input[CONF_API_KEY],
             }
 
             try:
                 await self._test_connection(test_input)
 
-                # Update config entry with new API key
-                self.hass.config_entries.async_update_entry(
-                    self._reauth_entry,
-                    data={**self._reauth_entry.data, **user_input},
-                )
-
                 # Clear auth repair issue
                 ir.async_delete_issue(self.hass, DOMAIN, REPAIR_AUTH_FAILED)
 
-                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
+                return self.async_update_reload_and_abort(
+                    reauth_entry,
+                    data_updates={**reauth_entry.data, **user_input},
+                    reason="reauth_successful",
+                )
 
             except InvalidAuthError:
                 errors["base"] = "invalid_auth"
@@ -379,9 +367,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=vol.Schema({vol.Required(CONF_API_KEY): str}),
             errors=errors,
-            description_placeholders={
-                "host": self._reauth_entry.data[CONF_HOST] if self._reauth_entry else ""
-            },
+            description_placeholders={"host": reauth_entry.data[CONF_HOST]},
         )
 
     async def async_step_reconfigure(
@@ -389,12 +375,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle reconfiguration of the integration."""
         errors: dict[str, str] = {}
-        reconfigure_entry = self.hass.config_entries.async_get_entry(
-            self.context.get("entry_id", "")
-        )
-
-        if reconfigure_entry is None:
-            return self.async_abort(reason="reconfigure_failed")
+        reconfigure_entry = self._get_reconfigure_entry()
 
         if user_input is not None:
             # Validate inputs
@@ -405,16 +386,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     await self._test_connection(user_input)
 
-                    # Update the config entry with new data
-                    self.hass.config_entries.async_update_entry(
+                    return self.async_update_reload_and_abort(
                         reconfigure_entry,
-                        data=user_input,
+                        data_updates=user_input,
                     )
-
-                    await self.hass.config_entries.async_reload(
-                        reconfigure_entry.entry_id
-                    )
-                    return self.async_abort(reason="reconfigure_successful")
 
                 except InvalidAuthError:
                     errors["base"] = "invalid_auth"

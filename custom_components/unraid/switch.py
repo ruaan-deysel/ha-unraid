@@ -8,14 +8,13 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from unraid_api import UnraidClient
 from unraid_api.models import ArrayDisk, DockerContainer, VmDomain
 
 from .const import (
+    ARRAY_STATE_STARTED,
     DOMAIN,
-    STATE_ARRAY_STARTED,
-    STATE_CONTAINER_RUNNING,
-    VM_RUNNING_STATES,
 )
 from .entity import UnraidBaseEntity
 
@@ -35,14 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 # Switches make API calls, limit to one at a time to avoid overloading server
 PARALLEL_UPDATES = 1
 
-# Export PARALLEL_UPDATES for Home Assistant
-__all__ = ["PARALLEL_UPDATES", "async_setup_entry"]
-
 
 class UnraidSwitchEntity(UnraidBaseEntity, SwitchEntity):
     """Base class for Unraid switch entities."""
-
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -98,6 +92,7 @@ class DockerContainerSwitch(UnraidSwitchEntity):
             resource_id=f"container_switch_{self._container_name}",
             name=f"Container {self._container_name}",
         )
+        self._attr_translation_placeholders = {"name": self._container_name}
 
     def _get_container(self) -> DockerContainer | None:
         """
@@ -136,7 +131,7 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         container = self._get_container()
         if container is None:
             return False
-        return container.state == STATE_CONTAINER_RUNNING
+        return container.is_running
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -149,6 +144,10 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         }
         if container.image is not None:
             attrs["image"] = container.image
+        if container.imageId is not None:
+            attrs["image_id"] = container.imageId
+        if container.autoStart is not None:
+            attrs["auto_start"] = container.autoStart
         if container.webUiUrl is not None:
             attrs["web_ui_url"] = container.webUiUrl
         if container.iconUrl is not None:
@@ -218,6 +217,7 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
             resource_id=f"vm_switch_{self._vm_name}",
             name=f"VM {vm.name}",
         )
+        self._attr_translation_placeholders = {"name": self._vm_name}
 
     def _get_vm(self) -> VmDomain | None:
         """
@@ -256,7 +256,7 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
         vm = self._get_vm()
         if vm is None:
             return False
-        return vm.state in VM_RUNNING_STATES
+        return vm.is_running
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -271,6 +271,10 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
             attrs["memory"] = vm.memory
         if vm.vcpu is not None:
             attrs["vcpu"] = vm.vcpu
+        if vm.autostart is not None:
+            attrs["auto_start"] = vm.autostart
+        if vm.primaryGpu is not None:
+            attrs["primary_gpu"] = vm.primaryGpu
         return attrs
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -319,7 +323,6 @@ class ArraySwitch(UnraidBaseEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -346,7 +349,7 @@ class ArraySwitch(UnraidBaseEntity, SwitchEntity):
         data: UnraidStorageData | None = self.coordinator.data
         if data is None or data.array_state is None:
             return None
-        return data.array_state.upper() == STATE_ARRAY_STARTED
+        return data.array_state.upper() == ARRAY_STATE_STARTED
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -408,7 +411,6 @@ class ParityCheckSwitch(UnraidBaseEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -435,12 +437,9 @@ class ParityCheckSwitch(UnraidBaseEntity, SwitchEntity):
         data: UnraidStorageData | None = self.coordinator.data
         if data is None or data.parity_status is None:
             return None
-        status = data.parity_status.status
-        if status is None:
+        if data.parity_status.status is None:
             return False
-        # Running states include RUNNING and PAUSED
-        running_states = {"RUNNING", "PAUSED"}
-        return status.upper() in running_states
+        return data.parity_status.is_running
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -506,7 +505,6 @@ class DiskSpinSwitch(UnraidBaseEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -529,6 +527,7 @@ class DiskSpinSwitch(UnraidBaseEntity, SwitchEntity):
             server_info=server_info,
         )
         self.api_client = api_client
+        self._attr_translation_placeholders = {"name": self._disk_name}
 
     def _get_disk(self) -> ArrayDisk | None:
         """Get current disk from coordinator data."""
@@ -598,7 +597,7 @@ class DiskSpinSwitch(UnraidBaseEntity, SwitchEntity):
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
     entry: UnraidConfigEntry,
-    async_add_entities: Any,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up switch entities."""
     _LOGGER.debug("Setting up Unraid switch platform")

@@ -7,6 +7,56 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.3.0] - 2026-03-01
+
+### Added
+- **Unraid Version Sensor**: Diagnostic sensor showing the Unraid OS version (e.g. "7.2.3") with API version and architecture in attributes ([#168](https://github.com/ruaan-deysel/ha-unraid/discussions/168))
+- **System Health Binary Sensors**: 7 binary sensors for monitoring array and system health
+  - Mover active: Indicates if the Unraid mover is currently running
+  - Disks disabled: Problem sensor — ON if any disks are disabled (with count attribute)
+  - Disks missing: Problem sensor — ON if any disks are missing (with count attribute)
+  - Disks invalid: Problem sensor — ON if any disks are invalid (with count attribute)
+  - Safe mode: Problem sensor — ON if server is in safe mode (plugins/Docker disabled)
+  - Config invalid: Problem sensor — ON if array configuration is invalid
+  - Filesystems unmountable: Problem sensor — ON if any filesystems cannot be mounted (with count attribute)
+- **Service Binary Sensors**: Per-service binary sensor (SMB, NFS, etc.) indicating if each service is online, with version and uptime attributes (disabled by default)
+- **Container Resource Sensors**: Per-container CPU, memory usage (bytes), and memory percentage sensors for detailed Docker monitoring (disabled by default)
+- **Container Update Available Binary Sensor**: Per-container binary sensor indicating if a Docker image update is available, with image and state attributes
+- **Parity Check Speed Sensor**: Current parity check/rebuild speed in MB/s with elapsed time, estimated time, and progress attributes (disabled by default)
+- **UPS Voltage & Health Sensors**: 3 additional UPS sensors (disabled by default)
+  - Input voltage (V)
+  - Output voltage (V)
+  - Battery health status (e.g. "Good", "Replace")
+- **VM Control Buttons**: Added 5 button entities per VM for fine control
+  - Force Stop: Immediately power off VM
+  - Reboot: Gracefully restart VM
+  - Pause: Suspend VM execution
+  - Resume: Resume paused VM
+  - Reset: Hard reset VM
+- **Notification Management**: Added 4 sensors and 2 buttons for notification tracking and management
+  - **Sensors**: Active notifications count, Unread info/warning/alert notifications, Archived notifications total
+  - **Buttons**: Archive all unread notifications, Delete all archived notifications
+- **Parity History Sensors**: Added 2 sensors for parity check tracking
+  - Last parity check date (timestamp of most recent check)
+  - Last parity check errors count (number of errors found)
+- **Registration/License Sensors**: Added 2 sensors for license monitoring
+  - License type (Basic, Plus, Pro, Trial) with expiration details in attributes
+  - License state (valid, expired, trial, etc.)
+- **Cloud/Remote Access Binary Sensors**: Added 2 binary sensors for connectivity status
+  - Cloud connected: Indicates if server is connected to Unraid's Cloud service
+  - Remote access: Indicates if myunraid.net remote access is active
+- **Installed Plugins Sensor**: Count of installed plugins with full plugin list (name, version) in attributes
+
+### Changed
+- **Updated unraid-api to v1.6.0**: New API features including typed vars access, container resource metrics, and UPS voltage/health data
+- **Infrastructure Coordinator**: Extended to fetch system variables (vars), registration, cloud, remote access, and plugins data
+- **Container Switch Attributes**: Added `image_id`, `auto_start`, `web_ui_url`, and `icon_url` to Docker container switch extra state attributes
+- **VM Switch Attributes**: Added `memory`, `vcpu`, `auto_start`, and `primary_gpu` to VM switch extra state attributes
+- **Entity Settings**: All new entities are disabled by default with appropriate entity categories (diagnostic/config) per HA guidelines
+
+### Fixed
+- **Container Update Entities Showing UNKNOWN**: Fixed all container update available binary sensors showing "unknown" state when the API returns `None` for `isUpdateAvailable` — now correctly treated as "no update available" (off)
+
 ## [2026.2.3] - 2026-02-07
 
 ### Changed
@@ -175,7 +225,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.2...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.0...HEAD
+[2026.3.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.3...v2026.3.0
+[2026.2.3]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.2...v2026.2.3
 [2026.2.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.1...v2026.2.2
 [2026.2.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.0...v2026.2.1
 [2026.2.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.01.0...v2026.2.0

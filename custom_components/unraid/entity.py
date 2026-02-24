@@ -14,6 +14,8 @@ from .const import DOMAIN
 
 if TYPE_CHECKING:
     from .coordinator import (
+        UnraidInfraCoordinator,
+        UnraidInfraData,
         UnraidStorageCoordinator,
         UnraidStorageData,
         UnraidSystemCoordinator,
@@ -29,19 +31,21 @@ class UnraidEntityDescription(EntityDescription):
     Extends EntityDescription with availability and support checks.
     """
 
-    available_fn: Callable[[UnraidSystemData | UnraidStorageData], bool] = (
-        lambda _: True
-    )
+    available_fn: Callable[
+        [UnraidSystemData | UnraidStorageData | UnraidInfraData], bool
+    ] = lambda _: True
     """Function that returns whether entity is available based on coordinator data."""
 
-    supported_fn: Callable[[UnraidSystemData | UnraidStorageData], bool] = (
-        lambda _: True
-    )
+    supported_fn: Callable[
+        [UnraidSystemData | UnraidStorageData | UnraidInfraData], bool
+    ] = lambda _: True
     """Function that returns whether entity is supported (used in async_setup_entry)."""
 
 
 class UnraidBaseEntity(
-    CoordinatorEntity["UnraidSystemCoordinator | UnraidStorageCoordinator"]
+    CoordinatorEntity[
+        "UnraidSystemCoordinator | UnraidStorageCoordinator | UnraidInfraCoordinator"
+    ]
 ):
     """
     Base entity for all Unraid entities.
@@ -60,7 +64,9 @@ class UnraidBaseEntity(
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator | UnraidStorageCoordinator,
+        coordinator: UnraidSystemCoordinator
+        | UnraidStorageCoordinator
+        | UnraidInfraCoordinator,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -92,7 +98,12 @@ class UnraidBaseEntity(
 
         # Construct stable unique_id: {server_uuid}_{resource_id}
         self._attr_unique_id = f"{server_uuid}_{resource_id}"
-        self._attr_name = name
+
+        # Only set _attr_name if no translation_key is defined on the class.
+        # When translation_key is set, the name comes from strings.json
+        # (HA Core i18n pattern). Setting _attr_name would override translations.
+        if not getattr(self, "_attr_translation_key", None):
+            self._attr_name = name
 
         # Build DeviceInfo using HA's DeviceInfo class
         self._attr_device_info = DeviceInfo(
@@ -127,7 +138,9 @@ class UnraidEntity(UnraidBaseEntity):
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator | UnraidStorageCoordinator,
+        coordinator: UnraidSystemCoordinator
+        | UnraidStorageCoordinator
+        | UnraidInfraCoordinator,
         entity_description: UnraidEntityDescription,
         server_uuid: str,
         server_name: str,

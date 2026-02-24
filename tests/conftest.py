@@ -16,19 +16,32 @@ from unraid_api.models import (
     ArrayCapacity,
     ArrayDisk,
     CapacityKilobytes,
+    Cloud,
+    Connect,
     DockerContainer,
     NotificationOverview,
     NotificationOverviewCounts,
     ParityCheck,
+    ParityHistoryEntry,
+    Plugin,
+    Registration,
+    RemoteAccess,
     ServerInfo,
+    Service,
     Share,
     SystemMetrics,
     UnraidArray,
     UPSDevice,
+    Vars,
+    VersionInfo,
     VmDomain,
 )
 
-from custom_components.unraid.coordinator import UnraidStorageData, UnraidSystemData
+from custom_components.unraid.coordinator import (
+    UnraidInfraData,
+    UnraidStorageData,
+    UnraidSystemData,
+)
 
 # Import pytest_homeassistant_custom_component's autouse fixtures
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -96,11 +109,15 @@ def make_system_data(
     memory_available: int | None = None,
     cpu_temps: list[float] | None = None,
     cpu_power: float | None = None,
+    swap_percent: float | None = None,
+    swap_total: int | None = None,
+    swap_used: int | None = None,
     uptime: str | datetime | None = None,  # ISO format string or datetime
     ups_devices: list[UPSDevice] | None = None,
     containers: list[DockerContainer] | None = None,
     vms: list[VmDomain] | None = None,
     notifications_unread: int = 0,
+    notification_overview: NotificationOverview | None = None,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
     from datetime import datetime
@@ -128,11 +145,15 @@ def make_system_data(
             memory_used=memory_used,
             memory_free=memory_free,
             memory_available=memory_available,
+            swap_percent=swap_percent,
+            swap_total=swap_total,
+            swap_used=swap_used,
             uptime=uptime_dt,
         ),
         ups_devices=ups_devices or [],
         containers=containers or [],
         vms=vms or [],
+        notification_overview=notification_overview,
         notifications_unread=notifications_unread,
     )
 
@@ -150,6 +171,7 @@ def make_storage_data(
     caches: list[ArrayDisk] | None = None,
     shares: list[Share] | None = None,
     boot: ArrayDisk | None = None,
+    parity_history: list[ParityHistoryEntry] | None = None,
 ) -> UnraidStorageData:
     """Create a UnraidStorageData instance for testing."""
     # Provide default capacity only if not explicitly set
@@ -173,6 +195,28 @@ def make_storage_data(
     return UnraidStorageData(
         array=array,
         shares=shares or [],
+        parity_history=parity_history or [],
+    )
+
+
+def make_infra_data(
+    services: list[Service] | None = None,
+    registration: Registration | None = None,
+    cloud: Cloud | None = None,
+    connect: Connect | None = None,
+    remote_access: RemoteAccess | None = None,
+    vars_data: Vars | None = None,
+    plugins: list[Plugin] | None = None,
+) -> UnraidInfraData:
+    """Create a UnraidInfraData instance for testing."""
+    return UnraidInfraData(
+        services=services or [],
+        registration=registration,
+        cloud=cloud,
+        connect=connect,
+        remote_access=remote_access,
+        vars=vars_data,
+        plugins=plugins or [],
     )
 
 
@@ -232,6 +276,13 @@ def create_mock_unraid_client(
     ups_devices: list[UPSDevice] | None = None,
     array: UnraidArray | None = None,
     shares: list[Share] | None = None,
+    services: list[Service] | None = None,
+    registration: Registration | None = None,
+    cloud: Cloud | None = None,
+    connect: Connect | None = None,
+    remote_access: RemoteAccess | None = None,
+    vars_data: Vars | None = None,
+    plugins: list[Plugin] | None = None,
 ) -> MagicMock:
     """
     Create a mock UnraidClient with configurable responses.
@@ -248,12 +299,20 @@ def create_mock_unraid_client(
     # Server info (returns ServerInfo model)
     client.get_server_info = AsyncMock(return_value=server_info or make_server_info())
 
-    # Version (returns dict)
+    # Version (returns VersionInfo model)
+    _api_ver = (
+        server_info.api_version if server_info and server_info.api_version else "4.29.2"
+    )
+    _unraid_ver = (
+        server_info.sw_version if server_info and server_info.sw_version else "7.2.0"
+    )
     client.get_version = AsyncMock(
-        return_value={
-            "api": server_info.api_version if server_info else "4.29.2",
-            "unraid": server_info.sw_version if server_info else "7.2.0",
-        }
+        return_value=VersionInfo(api=_api_ver, unraid=_unraid_ver)
+    )
+
+    # Compatibility check (returns VersionInfo model)
+    client.check_compatibility = AsyncMock(
+        return_value=VersionInfo(api=_api_ver, unraid=_unraid_ver)
     )
 
     # System metrics (returns SystemMetrics model)
@@ -301,6 +360,28 @@ def create_mock_unraid_client(
 
     # Shares (returns list of Share models)
     client.get_shares = AsyncMock(return_value=shares or [])
+
+    # Infrastructure data (infra coordinator methods)
+    # Services (returns list of Service models)
+    client.typed_get_services = AsyncMock(return_value=services or [])
+
+    # Registration (returns Registration model)
+    client.typed_get_registration = AsyncMock(return_value=registration)
+
+    # Cloud (returns Cloud model)
+    client.typed_get_cloud = AsyncMock(return_value=cloud)
+
+    # Connect (returns Connect model)
+    client.typed_get_connect = AsyncMock(return_value=connect)
+
+    # Remote access (returns RemoteAccess model)
+    client.typed_get_remote_access = AsyncMock(return_value=remote_access)
+
+    # Vars (returns Vars model)
+    client.typed_get_vars = AsyncMock(return_value=vars_data)
+
+    # Plugins (returns list of Plugin models)
+    client.typed_get_plugins = AsyncMock(return_value=plugins or [])
 
     return client
 

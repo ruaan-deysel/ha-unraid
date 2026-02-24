@@ -18,8 +18,9 @@ from unraid_api.exceptions import (
     UnraidConnectionError,
     UnraidSSLError,
     UnraidTimeoutError,
+    UnraidVersionError,
 )
-from unraid_api.models import ServerInfo, UPSDevice
+from unraid_api.models import ServerInfo, UPSDevice, VersionInfo
 
 from custom_components.unraid.config_flow import CannotConnectError
 from custom_components.unraid.const import (
@@ -48,7 +49,12 @@ def mock_api_client() -> MagicMock:
     """Create a mock API client with standard responses."""
     mock_api = MagicMock()
     mock_api.test_connection = AsyncMock(return_value=True)
-    mock_api.get_version = AsyncMock(return_value={"unraid": "7.2.0", "api": "4.29.2"})
+    mock_api.get_version = AsyncMock(
+        return_value=VersionInfo(api="4.29.2", unraid="7.2.0")
+    )
+    mock_api.check_compatibility = AsyncMock(
+        return_value=VersionInfo(api="4.29.2", unraid="7.2.0")
+    )
     mock_api.get_server_info = AsyncMock(
         return_value=ServerInfo(
             uuid="test-server-uuid",
@@ -332,7 +338,9 @@ async def test_unsupported_version_error(hass: HomeAssistant) -> None:
     """Test old Unraid version shows version error."""
     mock_api = AsyncMock()
     mock_api.test_connection = AsyncMock(return_value=True)
-    mock_api.get_version = AsyncMock(return_value={"unraid": "6.9.0", "api": "4.10.0"})
+    mock_api.check_compatibility = AsyncMock(
+        side_effect=UnraidVersionError("Unraid 6.9.0 (API 4.10.0) not supported")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -378,6 +386,136 @@ async def test_duplicate_config_entry(
 
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "already_configured"
+
+
+async def test_placeholder_uuid_combines_with_hostname(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test placeholder SMBIOS UUID is combined with hostname for unique ID."""
+    mock_api_client.get_server_info.return_value = ServerInfo(
+        uuid="03000200-0400-0500-0006-000700080009",
+        hostname="tower",
+        sw_version="7.2.0",
+        api_version="4.29.2",
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.2", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "03000200-0400-0500-0006-000700080009_tower"
+
+
+async def test_placeholder_uuid_allows_multiple_servers(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test two servers with same placeholder UUID but different hostnames."""
+    placeholder_uuid = "03000200-0400-0500-0006-000700080009"
+
+    # First server
+    mock_api_client.get_server_info.return_value = ServerInfo(
+        uuid=placeholder_uuid,
+        hostname="tower",
+        sw_version="7.2.0",
+        api_version="4.29.2",
+    )
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result1 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.2", "api_key": "key1"},
+        )
+
+    assert result1["type"] is FlowResultType.CREATE_ENTRY
+    assert result1["result"].unique_id == f"{placeholder_uuid}_tower"
+
+    # Second server with same UUID but different hostname
+    mock_api_client.get_server_info.return_value = ServerInfo(
+        uuid=placeholder_uuid,
+        hostname="beelink",
+        sw_version="7.2.0",
+        api_version="4.29.2",
+    )
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result2 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.5", "api_key": "key2"},
+        )
+
+    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    assert result2["result"].unique_id == f"{placeholder_uuid}_beelink"
+
+
+async def test_placeholder_uuid_same_hostname_still_rejected(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test same placeholder UUID and hostname is still rejected."""
+    placeholder_uuid = "03000200-0400-0500-0006-000700080009"
+    mock_api_client.get_server_info.return_value = ServerInfo(
+        uuid=placeholder_uuid,
+        hostname="tower",
+        sw_version="7.2.0",
+        api_version="4.29.2",
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result1 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.2", "api_key": "key1"},
+        )
+        assert result1["type"] is FlowResultType.CREATE_ENTRY
+
+        result2 = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.5", "api_key": "key2"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "already_configured"
+
+
+async def test_normal_uuid_not_combined_with_hostname(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test normal (non-placeholder) UUIDs are used as-is."""
+    mock_api_client.get_server_info.return_value = ServerInfo(
+        uuid="real-unique-uuid-1234",
+        hostname="tower",
+        sw_version="7.2.0",
+        api_version="4.29.2",
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "192.168.1.2", "api_key": "valid-key"},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == "real-unique-uuid-1234"
 
 
 async def test_hostname_validation(hass: HomeAssistant) -> None:
@@ -522,7 +660,10 @@ async def test_ssl_error_retries_with_verify_disabled(
         else:
             mock_api.test_connection = AsyncMock(return_value=True)
             mock_api.get_version = AsyncMock(
-                return_value={"unraid": "7.2.0", "api": "4.29.2"}
+                return_value=VersionInfo(api="4.29.2", unraid="7.2.0")
+            )
+            mock_api.check_compatibility = AsyncMock(
+                return_value=VersionInfo(api="4.29.2", unraid="7.2.0")
             )
             mock_api.get_server_info = AsyncMock(
                 return_value=ServerInfo(
@@ -797,7 +938,9 @@ async def test_reauth_flow_unsupported_version_error(
 
     mock_api = AsyncMock()
     mock_api.test_connection = AsyncMock()
-    mock_api.get_version = AsyncMock(return_value={"api": "0.0.1", "unraid": "6.0.0"})
+    mock_api.check_compatibility = AsyncMock(
+        side_effect=UnraidVersionError("Unraid 6.0.0 (API 0.0.1) not supported")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -1127,17 +1270,17 @@ async def test_reconfigure_flow_connection_error(
 
 
 async def test_reconfigure_flow_missing_entry(hass: HomeAssistant) -> None:
-    """Test reconfigure flow aborts when entry is missing."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "entry_id": "nonexistent-entry",
-        },
-    )
+    """Test reconfigure flow raises UnknownEntry when entry is missing."""
+    from homeassistant.config_entries import UnknownEntry
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_failed"
+    with pytest.raises(UnknownEntry):
+        await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": "nonexistent-entry",
+            },
+        )
 
 
 async def test_reconfigure_flow_validation_errors(
@@ -1234,7 +1377,9 @@ async def test_reconfigure_flow_unsupported_version_error(
 
     mock_api = AsyncMock()
     mock_api.test_connection = AsyncMock()
-    mock_api.get_version = AsyncMock(return_value={"api": "0.0.1", "unraid": "6.0.0"})
+    mock_api.check_compatibility = AsyncMock(
+        side_effect=UnraidVersionError("Unraid 6.0.0 (API 0.0.1) not supported")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -1637,8 +1782,8 @@ async def test_version_parsing_failure_rejected(
     """Test that malformed version strings result in connection rejection."""
     mock_api = AsyncMock()
     mock_api.test_connection = AsyncMock(return_value=True)
-    mock_api.get_version = AsyncMock(
-        return_value={"unraid": "invalid-version", "api": "not.a.version"}
+    mock_api.check_compatibility = AsyncMock(
+        side_effect=UnraidVersionError("Version parsing failed: invalid-version")
     )
     mock_api.close = AsyncMock()
 
@@ -1680,12 +1825,8 @@ async def test_user_flow_generic_exception_converted_to_cannot_connect(
 async def test_reauth_flow_missing_entry_aborts(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test reauth flow aborts when _reauth_entry is None (edge case)."""
-    # This tests the defensive check at line 338 in config_flow.py
-    # This can happen if reauth is initiated but the entry is somehow removed
-    # before the user submits the form. The safeguard returns an abort.
-    # We can test this by manually calling the step with user_input
-    # after setting _reauth_entry to None on an existing flow.
+    """Test reauth flow is cleaned up when entry is removed during flow."""
+    from homeassistant.data_entry_flow import UnknownFlow
 
     # Create a valid entry first
     entry = MockConfigEntry(
@@ -1705,18 +1846,15 @@ async def test_reauth_flow_missing_entry_aborts(
     )
     assert result["step_id"] == "reauth_confirm"
 
-    # Get the flow and manually set _reauth_entry to None to simulate edge case
-    flow = hass.config_entries.flow._progress.get(result["flow_id"])
-    flow._reauth_entry = None
+    # Remove the entry - HA Core cleans up associated flows
+    await hass.config_entries.async_remove(entry.entry_id)
 
-    # Now submit - it should abort
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_API_KEY: "new-key"},
-    )
-
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_failed"
+    # Flow is cleaned up when entry is removed, so configuring it raises UnknownFlow
+    with pytest.raises(UnknownFlow):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "new-key"},
+        )
 
 
 async def test_reconfigure_flow_generic_exception_converted_to_cannot_connect(

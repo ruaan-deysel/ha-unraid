@@ -21,7 +21,7 @@ dependencies = [
     "homeassistant>=2025.6.3",
     "aiohttp>=3.9.0",
     "pydantic>=2.0.0",
-    "unraid-api>=1.5.0",
+    "unraid-api>=1.6.0",
 ]
 
 [project.optional-dependencies]
@@ -128,3 +128,8 @@ warn_no_return = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[tool.bandit]
+targets = ["custom_components/unraid"]
+exclude_dirs = ["tests"]
+skips = ["B101"]
