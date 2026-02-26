@@ -7,6 +7,22 @@ Contributing to this project should be as easy and transparent as possible, whet
 - Submitting a fix
 - Proposing new features
 
+## Before Opening an Issue ⚠️
+
+**Please do the following BEFORE creating a new issue:**
+
+1. **Search existing issues** — check **both open AND closed** issues:
+   - [Open issues](https://github.com/ruaan-deysel/ha-unraid/issues)
+   - [Closed issues](https://github.com/ruaan-deysel/ha-unraid/issues?q=is%3Aissue+is%3Aclosed)
+2. **Use the correct channel:**
+   - **Bug reports** → [Open a Bug Report issue](https://github.com/ruaan-deysel/ha-unraid/issues/new?template=bug-report.yml)
+   - **Feature requests** → [Open a Feature Request issue](https://github.com/ruaan-deysel/ha-unraid/issues/new?template=feature-request.yml)
+   - **Questions, setup help, "how do I…"** → [GitHub Discussions](https://github.com/ruaan-deysel/ha-unraid/discussions) (NOT Issues)
+3. **Use the issue templates** — do not bypass them. Blank issues are disabled.
+4. **Fill in all required fields** — incomplete issues will be closed.
+
+> **Issues that are duplicates, missing required information, or are questions/support requests will be closed without further notice.**
+
 ## Github is used for everything
 
 Github is used to host code, to track issues and feature requests, as well as accept pull requests.
@@ -60,8 +76,10 @@ In short, when you submit code changes, your submissions are understood to be un
 
 ## Report bugs using Github's [issues](../../issues)
 
-GitHub issues are used to track public bugs.
-Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
+GitHub issues are used to track **confirmed bugs and feature requests only**.
+For questions, setup help, or troubleshooting, use [GitHub Discussions](https://github.com/ruaan-deysel/ha-unraid/discussions) instead.
+
+Report a bug by [opening a new issue](../../issues/new/choose) — but **search existing open and closed issues first** to avoid duplicates.
 
 ## Write bug reports with detail, background, and sample code
 
@@ -79,7 +97,7 @@ People *love* thorough bug reports. I'm not even kidding.
 
 ## Use a Consistent Coding Style
 
-Use [black](https://github.com/ambv/black) to make sure the code follows the style.
+Use [ruff](https://github.com/astral-sh/ruff) for formatting and linting. Run `./scripts/lint` after every code change.
 
 ## Test your code modification
 
