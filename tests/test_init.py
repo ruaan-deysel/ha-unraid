@@ -359,7 +359,7 @@ async def test_setup_entry_unexpected_error(
     mock_config_entry: MockConfigEntry,
     mock_unraid_client: MagicMock,
 ) -> None:
-    """Test setup fails with unexpected error and raises ConfigEntryNotReady."""
+    """Test setup propagates unexpected errors."""
     mock_config_entry.add_to_hass(hass)
     mock_unraid_client.test_connection.side_effect = RuntimeError(
         "Something unexpected happened"
@@ -367,11 +367,8 @@ async def test_setup_entry_unexpected_error(
 
     with patch("custom_components.unraid.async_get_clientsession") as mock_session:
         mock_session.return_value = MagicMock()
-        with pytest.raises(ConfigEntryNotReady) as exc_info:
+        with pytest.raises(RuntimeError, match="Something unexpected happened"):
             await async_setup_entry(hass, mock_config_entry)
-
-    assert "Unexpected error" in str(exc_info.value)
-    mock_unraid_client.close.assert_called_once()
 
 
 # =============================================================================

@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/strings.json,custom_components/unraid/transla
 
 # Translation Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Source of Truth
 

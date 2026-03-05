@@ -38,8 +38,8 @@ indent_size = 4
 indent_size = 2
 end_of_line = lf
 
-# Scripts without extension (scripts/lint, scripts/test, etc.)
-[scripts/*]
+# Scripts without extension (script/lint, script/test, etc.)
+[script/*]
 indent_size = 2
 end_of_line = lf
 

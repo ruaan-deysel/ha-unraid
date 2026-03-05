@@ -4,7 +4,7 @@ applyTo: "tests/**/*.py"
 
 # Test Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Test Framework
 

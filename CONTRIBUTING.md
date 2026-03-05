@@ -14,9 +14,9 @@ GitHub is used to host code, to track issues and feature requests, as well as ac
 Pull requests are the best way to propose changes to the codebase.
 
 1. Fork the repo and create your branch from `main`.
-2. Run `./scripts/setup` to install dependencies and pre-commit hooks.
+2. Run `./script/setup` to install dependencies and pre-commit hooks.
 3. If you've changed something, update the documentation.
-4. Make sure your code passes all checks (`./scripts/lint`).
+4. Make sure your code passes all checks (`./script/lint`).
 5. Test your contribution (`pytest`).
 6. Issue that pull request!
 
@@ -62,18 +62,18 @@ This approach makes it much easier to review, test, and merge your contributions
 
 ```bash
 # 1. Setup (once)
-./scripts/setup
+./script/setup
 
 # 2. Make code changes
 
 # 3. Lint (auto-fixes most issues)
-./scripts/lint
+./script/lint
 
 # 4. Run tests
 pytest
 
 # 5. Test in live HA instance (optional)
-./scripts/develop
+./script/develop
 ```
 
 ## Use a Consistent Coding Style
@@ -92,7 +92,7 @@ if you use Visual Studio Code. With this container you will have a standalone
 Home Assistant instance running and already configured with the included
 [`configuration.yaml`](./config/configuration.yaml) file.
 
-Use `./scripts/develop` to start a local HA instance with the integration loaded.
+Use `./script/develop` to start a local HA instance with the integration loaded.
 
 ## Any contributions you make will be under the Apache License 2.0
 
@@ -115,7 +115,7 @@ Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
 - What actually happens
 - Notes (possibly including why you think this might be happening, or stuff you tried that didn't work)
 
-People _love_ thorough bug reports. I'm not even kidding.
+People *love* thorough bug reports. I'm not even kidding.
 
 ## License
 

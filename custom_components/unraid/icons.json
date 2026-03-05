@@ -178,15 +178,6 @@
       }
     },
     "button": {
-      "array_start": {
-        "default": "mdi:play"
-      },
-      "array_stop": {
-        "default": "mdi:stop"
-      },
-      "parity_check_start": {
-        "default": "mdi:play"
-      },
       "parity_check_start_correct": {
         "default": "mdi:play"
       },
@@ -195,15 +186,6 @@
       },
       "parity_check_resume": {
         "default": "mdi:play"
-      },
-      "parity_check_stop": {
-        "default": "mdi:stop"
-      },
-      "disk_spin_up": {
-        "default": "mdi:rotate-right"
-      },
-      "disk_spin_down": {
-        "default": "mdi:sleep"
       },
       "vm_force_stop": {
         "default": "mdi:stop"

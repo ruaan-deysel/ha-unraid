@@ -48,9 +48,9 @@ If not provided, ask for:
 
 **Verification:**
 
-- Run `./scripts/lint` to verify code quality
+- Run `./script/lint` to verify code quality
 - Add test in `tests/test_{platform}.py`
-- Verify entity unique_id follows `{server_uuid}_{resource_id}` format
+- Verify entity unique*id follows `{server_uuid}*{resource_id}` format
 
 **Related Files:**
 

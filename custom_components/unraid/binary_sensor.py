@@ -9,7 +9,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import ARRAY_STATE_STARTED

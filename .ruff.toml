@@ -2,6 +2,10 @@
 
 target-version = "py313"
 
+# Exclude the hassfest sparse HA core checkout — its ruff.toml files reference
+# a pyproject.toml that doesn't exist in the sparse checkout, causing errors.
+exclude = [".local"]
+
 [lint]
 select = [
     "ALL",

@@ -23,6 +23,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from unraid_api import ServerInfo, UnraidClient
 from unraid_api.exceptions import (
+    UnraidAPIError,
     UnraidAuthenticationError,
     UnraidConnectionError,
     UnraidSSLError,
@@ -158,9 +159,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         await api_client.close()
         msg = f"Failed to connect to Unraid server: {err}"
         raise ConfigEntryNotReady(msg) from err
-    except Exception as err:
+    except UnraidAPIError as err:
         await api_client.close()
-        msg = f"Unexpected error connecting to Unraid server: {err}"
+        msg = f"Unraid API error connecting to server {host}: {err}"
         raise ConfigEntryNotReady(msg) from err
 
     # Build server info using helper function
@@ -190,9 +191,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     )
 
     # Fetch initial data
-    await system_coordinator.async_config_entry_first_refresh()
-    await storage_coordinator.async_config_entry_first_refresh()
-    await infra_coordinator.async_config_entry_first_refresh()
+    try:
+        await system_coordinator.async_config_entry_first_refresh()
+        await storage_coordinator.async_config_entry_first_refresh()
+        await infra_coordinator.async_config_entry_first_refresh()
+    except ConfigEntryAuthFailed:
+        raise
+    except ConfigEntryNotReady:
+        raise
 
     # Store runtime data in config entry (HA 2024.4+ pattern)
     entry.runtime_data = UnraidRuntimeData(

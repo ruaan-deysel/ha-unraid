@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
+from unraid_api.exceptions import UnraidAPIError
 
 from custom_components.unraid.button import (
     ArchiveAllNotificationsButton,
@@ -26,15 +27,28 @@ from custom_components.unraid.button import (
 
 
 @pytest.fixture
-def mock_api_client():
-    """Create a mock API client."""
-    client = MagicMock()
-    client.start_parity_check = AsyncMock(return_value={"parityCheck": {"start": True}})
-    client.pause_parity_check = AsyncMock(return_value={"parityCheck": {"pause": True}})
-    client.resume_parity_check = AsyncMock(
+def mock_coordinator():
+    """Create a mock coordinator with action wrappers."""
+    coordinator = MagicMock()
+    coordinator.last_update_success = True
+    coordinator.async_start_parity_check = AsyncMock(
+        return_value={"parityCheck": {"start": True}}
+    )
+    coordinator.async_pause_parity_check = AsyncMock(
+        return_value={"parityCheck": {"pause": True}}
+    )
+    coordinator.async_resume_parity_check = AsyncMock(
         return_value={"parityCheck": {"resume": True}}
     )
-    return client
+    coordinator.async_restart_container = AsyncMock()
+    coordinator.async_force_stop_vm = AsyncMock()
+    coordinator.async_reboot_vm = AsyncMock()
+    coordinator.async_pause_vm = AsyncMock()
+    coordinator.async_resume_vm = AsyncMock()
+    coordinator.async_reset_vm = AsyncMock()
+    coordinator.async_archive_all_notifications = AsyncMock()
+    coordinator.async_delete_all_notifications = AsyncMock()
+    return coordinator
 
 
 @pytest.fixture
@@ -53,10 +67,10 @@ def mock_server_info():
 # =============================================================================
 
 
-def test_parity_check_correction_button_creation(mock_api_client, mock_server_info):
+def test_parity_check_correction_button_creation(mock_coordinator, mock_server_info):
     """Test parity check correction button is created correctly."""
     button = ParityCheckStartCorrectionButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -68,24 +82,26 @@ def test_parity_check_correction_button_creation(mock_api_client, mock_server_in
 
 
 @pytest.mark.asyncio
-async def test_parity_check_correction_button_press(mock_api_client, mock_server_info):
+async def test_parity_check_correction_button_press(mock_coordinator, mock_server_info):
     """Test pressing correction button calls API with correct=True."""
     button = ParityCheckStartCorrectionButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.start_parity_check.assert_called_once_with(correct=True)
+    mock_coordinator.async_start_parity_check.assert_called_once_with(correct=True)
 
 
 @pytest.mark.asyncio
-async def test_parity_check_correction_button_error(mock_api_client, mock_server_info):
+async def test_parity_check_correction_button_error(mock_coordinator, mock_server_info):
     """Test parity check correction button raises HomeAssistantError."""
-    mock_api_client.start_parity_check = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_start_parity_check = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = ParityCheckStartCorrectionButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -100,10 +116,10 @@ async def test_parity_check_correction_button_error(mock_api_client, mock_server
 # =============================================================================
 
 
-def test_parity_check_pause_button_creation(mock_api_client, mock_server_info):
+def test_parity_check_pause_button_creation(mock_coordinator, mock_server_info):
     """Test parity check pause button is created correctly."""
     button = ParityCheckPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -114,24 +130,26 @@ def test_parity_check_pause_button_creation(mock_api_client, mock_server_info):
 
 
 @pytest.mark.asyncio
-async def test_parity_check_pause_button_press(mock_api_client, mock_server_info):
+async def test_parity_check_pause_button_press(mock_coordinator, mock_server_info):
     """Test pressing pause button calls API."""
     button = ParityCheckPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.pause_parity_check.assert_called_once()
+    mock_coordinator.async_pause_parity_check.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_parity_check_pause_button_error(mock_api_client, mock_server_info):
+async def test_parity_check_pause_button_error(mock_coordinator, mock_server_info):
     """Test parity check pause button raises HomeAssistantError on failure."""
-    mock_api_client.pause_parity_check = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_pause_parity_check = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = ParityCheckPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -146,10 +164,10 @@ async def test_parity_check_pause_button_error(mock_api_client, mock_server_info
 # =============================================================================
 
 
-def test_parity_check_resume_button_creation(mock_api_client, mock_server_info):
+def test_parity_check_resume_button_creation(mock_coordinator, mock_server_info):
     """Test parity check resume button is created correctly."""
     button = ParityCheckResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -160,24 +178,26 @@ def test_parity_check_resume_button_creation(mock_api_client, mock_server_info):
 
 
 @pytest.mark.asyncio
-async def test_parity_check_resume_button_press(mock_api_client, mock_server_info):
+async def test_parity_check_resume_button_press(mock_coordinator, mock_server_info):
     """Test pressing resume button calls API."""
     button = ParityCheckResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.resume_parity_check.assert_called_once()
+    mock_coordinator.async_resume_parity_check.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_parity_check_resume_button_error(mock_api_client, mock_server_info):
+async def test_parity_check_resume_button_error(mock_coordinator, mock_server_info):
     """Test parity check resume button raises HomeAssistantError on failure."""
-    mock_api_client.resume_parity_check = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_resume_parity_check = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = ParityCheckResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -297,11 +317,11 @@ def mock_container():
 
 
 def test_docker_restart_button_creation(
-    mock_api_client, mock_server_info, mock_container
+    mock_coordinator, mock_server_info, mock_container
 ):
     """Test Docker container restart button is created correctly."""
     button = DockerContainerRestartButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         container=mock_container,
@@ -317,13 +337,11 @@ def test_docker_restart_button_creation(
 
 @pytest.mark.asyncio
 async def test_docker_restart_button_press(
-    mock_api_client, mock_server_info, mock_container
+    mock_coordinator, mock_server_info, mock_container
 ):
     """Test pressing restart button calls restart_container."""
-    mock_api_client.restart_container = AsyncMock()
-
     button = DockerContainerRestartButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         container=mock_container,
@@ -332,20 +350,20 @@ async def test_docker_restart_button_press(
 
     await button.async_press()
 
-    mock_api_client.restart_container.assert_called_once_with("abc123")
+    mock_coordinator.async_restart_container.assert_called_once_with("abc123")
 
 
 @pytest.mark.asyncio
 async def test_docker_restart_button_error_on_stop(
-    mock_api_client, mock_server_info, mock_container
+    mock_coordinator, mock_server_info, mock_container
 ):
     """Test restart button raises HomeAssistantError if restart fails."""
-    mock_api_client.restart_container = AsyncMock(
-        side_effect=Exception("Restart failed")
+    mock_coordinator.async_restart_container = AsyncMock(
+        side_effect=UnraidAPIError("Restart failed")
     )
 
     button = DockerContainerRestartButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         container=mock_container,
@@ -360,13 +378,15 @@ async def test_docker_restart_button_error_on_stop(
 
 @pytest.mark.asyncio
 async def test_docker_restart_button_error_on_start(
-    mock_api_client, mock_server_info, mock_container
+    mock_coordinator, mock_server_info, mock_container
 ):
     """Test restart button raises HomeAssistantError if library restart raises."""
-    mock_api_client.restart_container = AsyncMock(side_effect=Exception("Start failed"))
+    mock_coordinator.async_restart_container = AsyncMock(
+        side_effect=UnraidAPIError("Start failed")
+    )
 
     button = DockerContainerRestartButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         container=mock_container,
@@ -473,10 +493,10 @@ def mock_vm():
 # =============================================================================
 
 
-def test_vm_force_stop_button_creation(mock_api_client, mock_server_info, mock_vm):
+def test_vm_force_stop_button_creation(mock_coordinator, mock_server_info, mock_vm):
     """Test VM force stop button is created correctly."""
     button = VMForceStopButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -489,26 +509,27 @@ def test_vm_force_stop_button_creation(mock_api_client, mock_server_info, mock_v
 
 
 @pytest.mark.asyncio
-async def test_vm_force_stop_button_press(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_force_stop_button_press(mock_coordinator, mock_server_info, mock_vm):
     """Test pressing force stop button calls API."""
-    mock_api_client.force_stop_vm = AsyncMock()
     button = VMForceStopButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.force_stop_vm.assert_called_once_with("vm-uuid-001")
+    mock_coordinator.async_force_stop_vm.assert_called_once_with("vm-uuid-001")
 
 
 @pytest.mark.asyncio
-async def test_vm_force_stop_button_error(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_force_stop_button_error(mock_coordinator, mock_server_info, mock_vm):
     """Test force stop button raises HomeAssistantError on failure."""
-    mock_api_client.force_stop_vm = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_force_stop_vm = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = VMForceStopButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -524,10 +545,10 @@ async def test_vm_force_stop_button_error(mock_api_client, mock_server_info, moc
 # =============================================================================
 
 
-def test_vm_reboot_button_creation(mock_api_client, mock_server_info, mock_vm):
+def test_vm_reboot_button_creation(mock_coordinator, mock_server_info, mock_vm):
     """Test VM reboot button is created correctly."""
     button = VMRebootButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -539,26 +560,27 @@ def test_vm_reboot_button_creation(mock_api_client, mock_server_info, mock_vm):
 
 
 @pytest.mark.asyncio
-async def test_vm_reboot_button_press(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_reboot_button_press(mock_coordinator, mock_server_info, mock_vm):
     """Test pressing reboot button calls API."""
-    mock_api_client.reboot_vm = AsyncMock()
     button = VMRebootButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.reboot_vm.assert_called_once_with("vm-uuid-001")
+    mock_coordinator.async_reboot_vm.assert_called_once_with("vm-uuid-001")
 
 
 @pytest.mark.asyncio
-async def test_vm_reboot_button_error(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_reboot_button_error(mock_coordinator, mock_server_info, mock_vm):
     """Test reboot button raises HomeAssistantError on failure."""
-    mock_api_client.reboot_vm = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_reboot_vm = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = VMRebootButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -574,10 +596,10 @@ async def test_vm_reboot_button_error(mock_api_client, mock_server_info, mock_vm
 # =============================================================================
 
 
-def test_vm_pause_button_creation(mock_api_client, mock_server_info, mock_vm):
+def test_vm_pause_button_creation(mock_coordinator, mock_server_info, mock_vm):
     """Test VM pause button is created correctly."""
     button = VMPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -589,26 +611,25 @@ def test_vm_pause_button_creation(mock_api_client, mock_server_info, mock_vm):
 
 
 @pytest.mark.asyncio
-async def test_vm_pause_button_press(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_pause_button_press(mock_coordinator, mock_server_info, mock_vm):
     """Test pressing pause button calls API."""
-    mock_api_client.pause_vm = AsyncMock()
     button = VMPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.pause_vm.assert_called_once_with("vm-uuid-001")
+    mock_coordinator.async_pause_vm.assert_called_once_with("vm-uuid-001")
 
 
 @pytest.mark.asyncio
-async def test_vm_pause_button_error(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_pause_button_error(mock_coordinator, mock_server_info, mock_vm):
     """Test pause button raises HomeAssistantError on failure."""
-    mock_api_client.pause_vm = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_pause_vm = AsyncMock(side_effect=UnraidAPIError("API Error"))
     button = VMPauseButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -624,10 +645,10 @@ async def test_vm_pause_button_error(mock_api_client, mock_server_info, mock_vm)
 # =============================================================================
 
 
-def test_vm_resume_button_creation(mock_api_client, mock_server_info, mock_vm):
+def test_vm_resume_button_creation(mock_coordinator, mock_server_info, mock_vm):
     """Test VM resume button is created correctly."""
     button = VMResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -639,26 +660,27 @@ def test_vm_resume_button_creation(mock_api_client, mock_server_info, mock_vm):
 
 
 @pytest.mark.asyncio
-async def test_vm_resume_button_press(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_resume_button_press(mock_coordinator, mock_server_info, mock_vm):
     """Test pressing resume button calls API."""
-    mock_api_client.resume_vm = AsyncMock()
     button = VMResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.resume_vm.assert_called_once_with("vm-uuid-001")
+    mock_coordinator.async_resume_vm.assert_called_once_with("vm-uuid-001")
 
 
 @pytest.mark.asyncio
-async def test_vm_resume_button_error(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_resume_button_error(mock_coordinator, mock_server_info, mock_vm):
     """Test resume button raises HomeAssistantError on failure."""
-    mock_api_client.resume_vm = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_resume_vm = AsyncMock(
+        side_effect=UnraidAPIError("API Error")
+    )
     button = VMResumeButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -674,10 +696,10 @@ async def test_vm_resume_button_error(mock_api_client, mock_server_info, mock_vm
 # =============================================================================
 
 
-def test_vm_reset_button_creation(mock_api_client, mock_server_info, mock_vm):
+def test_vm_reset_button_creation(mock_coordinator, mock_server_info, mock_vm):
     """Test VM reset button is created correctly."""
     button = VMResetButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -689,26 +711,25 @@ def test_vm_reset_button_creation(mock_api_client, mock_server_info, mock_vm):
 
 
 @pytest.mark.asyncio
-async def test_vm_reset_button_press(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_reset_button_press(mock_coordinator, mock_server_info, mock_vm):
     """Test pressing reset button calls API."""
-    mock_api_client.reset_vm = AsyncMock()
     button = VMResetButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
         server_info=mock_server_info,
     )
     await button.async_press()
-    mock_api_client.reset_vm.assert_called_once_with("vm-uuid-001")
+    mock_coordinator.async_reset_vm.assert_called_once_with("vm-uuid-001")
 
 
 @pytest.mark.asyncio
-async def test_vm_reset_button_error(mock_api_client, mock_server_info, mock_vm):
+async def test_vm_reset_button_error(mock_coordinator, mock_server_info, mock_vm):
     """Test reset button raises HomeAssistantError on failure."""
-    mock_api_client.reset_vm = AsyncMock(side_effect=Exception("API Error"))
+    mock_coordinator.async_reset_vm = AsyncMock(side_effect=UnraidAPIError("API Error"))
     button = VMResetButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         vm=mock_vm,
@@ -825,10 +846,10 @@ async def test_setup_entry_creates_container_and_vm_buttons(hass):
 # =============================================================================
 
 
-def test_archive_all_notifications_button_creation(mock_api_client, mock_server_info):
+def test_archive_all_notifications_button_creation(mock_coordinator, mock_server_info):
     """Test archive all notifications button is created correctly."""
     button = ArchiveAllNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -840,15 +861,11 @@ def test_archive_all_notifications_button_creation(mock_api_client, mock_server_
 
 @pytest.mark.asyncio
 async def test_archive_all_notifications_button_press(
-    mock_api_client, mock_server_info
+    mock_coordinator, mock_server_info
 ):
     """Test pressing archive all notifications button."""
-    mock_api_client.archive_all_notifications = AsyncMock(
-        return_value={"success": True}
-    )
-
     button = ArchiveAllNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -856,20 +873,20 @@ async def test_archive_all_notifications_button_press(
 
     await button.async_press()
 
-    mock_api_client.archive_all_notifications.assert_called_once()
+    mock_coordinator.async_archive_all_notifications.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_archive_all_notifications_button_error(
-    mock_api_client, mock_server_info
+    mock_coordinator, mock_server_info
 ):
     """Test archive all notifications button raises error on failure."""
-    mock_api_client.archive_all_notifications = AsyncMock(
-        side_effect=Exception("Archive failed")
+    mock_coordinator.async_archive_all_notifications = AsyncMock(
+        side_effect=UnraidAPIError("Archive failed")
     )
 
     button = ArchiveAllNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -886,11 +903,11 @@ async def test_archive_all_notifications_button_error(
 
 
 def test_delete_all_archived_notifications_button_creation(
-    mock_api_client, mock_server_info
+    mock_coordinator, mock_server_info
 ):
     """Test delete all archived notifications button is created correctly."""
     button = DeleteAllArchivedNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -902,13 +919,11 @@ def test_delete_all_archived_notifications_button_creation(
 
 @pytest.mark.asyncio
 async def test_delete_all_archived_notifications_button_press(
-    mock_api_client, mock_server_info
+    mock_coordinator, mock_server_info
 ):
     """Test pressing delete all archived notifications button."""
-    mock_api_client.delete_all_notifications = AsyncMock(return_value={"success": True})
-
     button = DeleteAllArchivedNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,
@@ -916,20 +931,20 @@ async def test_delete_all_archived_notifications_button_press(
 
     await button.async_press()
 
-    mock_api_client.delete_all_notifications.assert_called_once()
+    mock_coordinator.async_delete_all_notifications.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_delete_all_archived_notifications_button_error(
-    mock_api_client, mock_server_info
+    mock_coordinator, mock_server_info
 ):
     """Test delete all archived button raises error on failure."""
-    mock_api_client.delete_all_notifications = AsyncMock(
-        side_effect=Exception("Delete failed")
+    mock_coordinator.async_delete_all_notifications = AsyncMock(
+        side_effect=UnraidAPIError("Delete failed")
     )
 
     button = DeleteAllArchivedNotificationsButton(
-        api_client=mock_api_client,
+        coordinator=mock_coordinator,
         server_uuid="test-uuid",
         server_name="Test Server",
         server_info=mock_server_info,

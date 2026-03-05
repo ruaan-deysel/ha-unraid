@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/diagnostics.py"
 
 # Diagnostics Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Purpose
 

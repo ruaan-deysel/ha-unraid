@@ -32,6 +32,7 @@ from unraid_api.models import (
 )
 
 from custom_components.unraid.coordinator import (
+    UnraidInfraCoordinator,
     UnraidStorageCoordinator,
     UnraidSystemCoordinator,
 )
@@ -175,6 +176,13 @@ def mock_api_client():
     client.typed_get_array = AsyncMock(return_value=make_array())
     client.typed_get_shares = AsyncMock(return_value=[])
     client.get_parity_history = AsyncMock(return_value=[])
+    client.typed_get_services = AsyncMock(return_value=[])
+    client.typed_get_registration = AsyncMock(return_value=None)
+    client.typed_get_cloud = AsyncMock(return_value=None)
+    client.typed_get_connect = AsyncMock(return_value=None)
+    client.typed_get_remote_access = AsyncMock(return_value=None)
+    client.typed_get_vars = AsyncMock(return_value=None)
+    client.typed_get_plugins = AsyncMock(return_value=[])
     client.close = AsyncMock()
     return client
 
@@ -264,6 +272,23 @@ async def test_storage_coordinator_fixed_interval(
 
     # Should always be 300 seconds (5 minutes) regardless of options
     assert coordinator.update_interval == timedelta(seconds=300)
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_initialization(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test UnraidInfraCoordinator initializes with default 15min interval."""
+    coordinator = UnraidInfraCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+    )
+
+    assert coordinator.name == "tower Infrastructure"
+    assert coordinator.update_interval == timedelta(seconds=900)
+    assert coordinator.api_client == mock_api_client
 
 
 # =============================================================================
@@ -535,6 +560,57 @@ async def test_system_coordinator_handles_ups_query_failure(
     assert data.info is not None
 
 
+@pytest.mark.asyncio
+async def test_system_coordinator_optional_docker_auth_error_reraised(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional Docker query re-raises auth errors."""
+    mock_api_client.typed_get_containers.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_docker()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_optional_vms_auth_error_reraised(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional VM query re-raises auth errors."""
+    mock_api_client.typed_get_vms.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_vms()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_optional_ups_auth_error_reraised(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional UPS query re-raises auth errors."""
+    mock_api_client.typed_get_ups_devices.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_ups()
+
+
 # =============================================================================
 # Connection Recovery Tests
 # =============================================================================
@@ -741,14 +817,14 @@ async def test_storage_coordinator_http_error_handling(
 async def test_storage_coordinator_unexpected_error_handling(
     hass, mock_api_client, mock_config_entry
 ):
-    """Test storage coordinator handles unexpected errors."""
+    """Test storage coordinator propagates unexpected errors."""
     mock_api_client.typed_get_array.side_effect = RuntimeError("Something went wrong")
 
     coordinator = UnraidStorageCoordinator(
         hass, mock_api_client, "tower", mock_config_entry
     )
 
-    with pytest.raises(UpdateFailed, match="Unexpected error"):
+    with pytest.raises(RuntimeError, match="Something went wrong"):
         await coordinator._async_update_data()
 
 
@@ -783,6 +859,23 @@ async def test_storage_coordinator_handles_shares_query_failure(
     assert data is not None
     assert data.shares == []
     assert data.array is not None
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_optional_shares_auth_error_reraised(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional shares query re-raises auth errors."""
+    mock_api_client.typed_get_shares.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_shares()
 
 
 @pytest.mark.asyncio
@@ -861,6 +954,112 @@ async def test_storage_coordinator_connection_recovery(
 
     data = await coordinator._async_update_data()
 
+    assert data is not None
+    assert coordinator._previously_unavailable is False
+
+
+# =============================================================================
+# Infrastructure Coordinator Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_fetch_success(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test infrastructure coordinator successfully fetches data."""
+    coordinator = UnraidInfraCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert data.services == []
+    assert data.plugins == []
+    mock_api_client.typed_get_services.assert_called_once()
+    mock_api_client.typed_get_registration.assert_called_once()
+    mock_api_client.typed_get_cloud.assert_called_once()
+    mock_api_client.typed_get_connect.assert_called_once()
+    mock_api_client.typed_get_remote_access.assert_called_once()
+    mock_api_client.typed_get_vars.assert_called_once()
+    mock_api_client.typed_get_plugins.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_handles_optional_query_failure(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test infra coordinator handles optional query failures gracefully."""
+    mock_api_client.typed_get_services.side_effect = UnraidAPIError(
+        "Services not available"
+    )
+
+    coordinator = UnraidInfraCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert data.services == []
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_authentication_error_handling(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test infra coordinator raises ConfigEntryAuthFailed on auth errors."""
+    mock_api_client.typed_get_services.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidInfraCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(ConfigEntryAuthFailed, match="Authentication failed"):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_connection_error_handling(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test infra coordinator handles optional connection errors gracefully."""
+    mock_api_client.typed_get_services.side_effect = UnraidConnectionError(
+        "Connection refused"
+    )
+
+    coordinator = UnraidInfraCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    data = await coordinator._async_update_data()
+    assert data is not None
+    assert data.services == []
+
+
+@pytest.mark.asyncio
+async def test_infra_coordinator_connection_recovery(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test infra coordinator clears unavailable state after auth recovery."""
+    mock_api_client.typed_get_services.side_effect = UnraidAuthenticationError(
+        "Unauthorized"
+    )
+
+    coordinator = UnraidInfraCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator._previously_unavailable is True
+
+    mock_api_client.typed_get_services.side_effect = None
+    mock_api_client.typed_get_services.return_value = []
+
+    data = await coordinator._async_update_data()
     assert data is not None
     assert coordinator._previously_unavailable is False
 
@@ -1357,35 +1556,27 @@ async def test_storage_coordinator_auth_error_triggers_reauth(
 async def test_system_coordinator_unexpected_error_handled(
     hass, mock_api_client, mock_config_entry
 ):
-    """Test system coordinator handles unexpected errors gracefully."""
+    """Test system coordinator propagates unexpected errors."""
     mock_api_client.get_server_info.side_effect = RuntimeError("Something unexpected")
 
     coordinator = UnraidSystemCoordinator(
         hass, mock_api_client, "tower", mock_config_entry
     )
 
-    # Unexpected error should be wrapped in UpdateFailed
-    with pytest.raises(UpdateFailed) as exc_info:
+    with pytest.raises(RuntimeError, match="Something unexpected"):
         await coordinator._async_update_data()
-
-    assert "Unexpected error" in str(exc_info.value)
-    assert coordinator._previously_unavailable is True
 
 
 @pytest.mark.asyncio
 async def test_storage_coordinator_unexpected_error_handled(
     hass, mock_api_client, mock_config_entry
 ):
-    """Test storage coordinator handles unexpected errors gracefully."""
+    """Test storage coordinator propagates unexpected errors."""
     mock_api_client.typed_get_array.side_effect = RuntimeError("Something unexpected")
 
     coordinator = UnraidStorageCoordinator(
         hass, mock_api_client, "tower", mock_config_entry
     )
 
-    # Unexpected error should be wrapped in UpdateFailed
-    with pytest.raises(UpdateFailed) as exc_info:
+    with pytest.raises(RuntimeError, match="Something unexpected"):
         await coordinator._async_update_data()
-
-    assert "Unexpected error" in str(exc_info.value)
-    assert coordinator._previously_unavailable is True

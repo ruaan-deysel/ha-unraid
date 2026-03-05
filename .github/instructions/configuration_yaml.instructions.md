@@ -4,7 +4,7 @@ applyTo: "**/configuration.yaml"
 
 # configuration.yaml Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Integration Setup Model
 

@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/services.yaml"
 
 # services.yaml Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) and [`service_actions.instructions.md`](service_actions.instructions.md).
+Refer to `AGENTS.md` and [`service_actions.instructions.md`](service_actions.instructions.md).
 
 ## Status
 

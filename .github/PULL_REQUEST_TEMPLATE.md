@@ -18,6 +18,7 @@
 ## Related Issue
 
 <!-- Link to the issue this PR addresses -->
+
 Fixes #(issue number)
 
 ## Changes Made
@@ -32,9 +33,9 @@ Fixes #(issue number)
 
 <!-- Describe the testing you've done -->
 
-- [ ] Code lints successfully (`./scripts/lint`)
+- [ ] Code lints successfully (`./script/lint`)
 - [ ] Tests pass (`pytest`)
-- [ ] Tested in development environment (`./scripts/develop`)
+- [ ] Tested in development environment (`./script/develop`)
 - [ ] Manual testing completed
 
 ## Checklist

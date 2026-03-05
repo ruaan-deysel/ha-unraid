@@ -1,0 +1,16 @@
+{
+  "include": ["custom_components/unraid"],
+  "exclude": [
+    "tests",
+    ".local",
+    "config",
+    "htmlcov",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*"
+  ],
+  "typeCheckingMode": "basic",
+  "reportIncompatibleVariableOverride": "warning",
+  "reportAssignmentType": "warning",
+  "reportAttributeAccessIssue": "warning"
+}

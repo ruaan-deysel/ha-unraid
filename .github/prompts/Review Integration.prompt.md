@@ -1,60 +1,89 @@
 ---
-description: Review the Unraid integration against HA best practices and quality scale
+agent: "agent"
+tools:
+  - "search/codebase"
+  - "edit"
+  - "search"
+description: "Perform a comprehensive quality review of the Unraid integration"
 ---
 
 # Review Integration
 
-Perform a comprehensive review of the ha-unraid integration against Home Assistant best practices and the quality scale.
-
-## Context
-
-Read these files:
-- `AGENTS.md` — Project documentation
-- `custom_components/unraid/quality_scale.yaml` — Current self-assessment
-- `custom_components/unraid/manifest.json` — Integration metadata
+Your goal is to perform a comprehensive quality review of the Unraid integration against Home Assistant standards.
+Treat the official Quality Scale rules as mandatory review criteria:
+<https://developers.home-assistant.io/docs/core/integration-quality-scale/rules>
 
 ## Review Checklist
 
-### Code Quality
-- [ ] All files use `from __future__ import annotations`
-- [ ] Type hints on all public functions
-- [ ] `_LOGGER` follows naming convention
-- [ ] No bare `except:` — all exceptions are specific
-- [ ] Constants in `const.py` with `Final` annotation
-- [ ] `./scripts/lint` passes clean (zero warnings)
+### Quality Scale Compliance
 
-### Entity Standards
-- [ ] All entities use `_attr_has_entity_name = True`
-- [ ] All entities use `_attr_translation_key`
-- [ ] All entities have matching `icons.json` entries
-- [ ] Unique IDs follow `{server_uuid}_{resource_id}` format
-- [ ] Appropriate `entity_category` set (DIAGNOSTIC, CONFIG)
-- [ ] Appropriate `device_class` used where applicable
-- [ ] `entity_registry_enabled_default = False` for noisy entities
+- [ ] Applicable rules from the official Quality Scale rules page have been reviewed
+- [ ] All applicable rules are satisfied or clearly documented as not applicable
 
-### Coordinator
-- [ ] Auth errors → `ConfigEntryAuthFailed`
-- [ ] Connection errors → `UpdateFailed`
-- [ ] Optional services fail gracefully
-- [ ] Recovery logging implemented
-- [ ] `config_entry=` passed to super().__init__()
+### Architecture
+
+- [ ] Entities → Coordinator → API Client pattern followed (no layer skipping)
+- [ ] Multi-coordinator system properly structured
+- [ ] Data transforms handle all API response formats
+- [ ] No direct API calls from entities
 
 ### Config Flow
-- [ ] User step validates inputs
-- [ ] Reauth flow implemented
-- [ ] Reconfigure flow implemented
-- [ ] Error IDs match `strings.json`
-- [ ] Unique ID prevents duplicates
+
+- [ ] User setup works for both local and remote modes
+- [ ] Reauth flow handles expired credentials
+- [ ] Reconfigure flow allows changing settings
+- [ ] Unique ID properly set and checked
+- [ ] Validation errors shown to user clearly
+
+### Entity Quality
+
+- [ ] All entities use `EntityDescription` pattern
+- [ ] `has_entity_name = True` set on all entities
+- [ ] `translation_key` used (no hardcoded names)
+- [ ] Proper `device_class` and `state_class` assigned
+- [ ] Availability handled correctly (network vs Protect)
+- [ ] `PARALLEL_UPDATES` set appropriately per platform
+
+### Error Handling
+
+- [ ] `ConfigEntryNotReady` for temporary setup failures
+- [ ] `ConfigEntryAuthFailed` for authentication issues
+- [ ] `UpdateFailed` for coordinator fetch failures
+- [ ] `HomeAssistantError` for service call failures
+- [ ] No bare `except Exception:` outside config flows
+
+### Security
+
+- [ ] Diagnostics use `async_redact_data()`
+- [ ] No sensitive data in logs
+- [ ] API keys not exposed in entity attributes
+- [ ] SSL verification configurable
+
+### Code Quality
+
+- [ ] Full type hints on all public methods
+- [ ] Module docstrings on all files
+- [ ] Async patterns correctly applied
+- [ ] No blocking calls on event loop
+- [ ] Ruff and mypy pass cleanly
 
 ### Testing
-- [ ] All platforms have test files
-- [ ] Config flow paths tested (success, errors, reauth)
-- [ ] Coordinator error scenarios tested
-- [ ] `test-coverage` rule meets target (**>=95%**)
 
-### Quality Scale
-- [ ] Bronze: Includes `entity-unavailable` and `integration-owner` as done/exempt
-- [ ] Silver: Includes `docs-actions` and `entity-event-setup` as done/exempt
-- [ ] Silver: `test-coverage` is the only allowed `todo` if below 95%
-- [ ] Gold: All done/exempt
-- [ ] Platinum: async-dependency, inject-websession, strict-typing
+- [ ] 90%+ coverage maintained
+- [ ] Config flow tested (success + error paths)
+- [ ] Coordinator tested (success + failure paths)
+- [ ] Entity state and availability tested
+- [ ] Service actions tested
+
+### Translations
+
+- [ ] All user-facing strings in `strings.json`
+- [ ] Sentence case used consistently
+- [ ] No hardcoded strings in Python code
+
+## Output
+
+Provide a summary with:
+1. **Critical issues** — Must fix before release
+2. **Improvements** — Should fix for quality
+3. **Suggestions** — Nice to have

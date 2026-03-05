@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.helpers.redact import async_redact_data
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
@@ -24,7 +26,8 @@ async def async_get_config_entry_diagnostics(
     system_coordinator = runtime_data.system_coordinator
     storage_coordinator = runtime_data.storage_coordinator
 
-    return {
+    # Build diagnostics with redaction of sensitive identifiers
+    diag_data = {
         "entry_id": entry.entry_id,
         "title": entry.title,
         "version": entry.version,
@@ -39,14 +42,14 @@ async def async_get_config_entry_diagnostics(
         },
         "system_coordinator": {
             "last_update_success": system_coordinator.last_update_success,
-            "last_update_time": str(system_coordinator.last_update_success_time)
-            if hasattr(system_coordinator, "last_update_success_time")
-            else None,
+            "last_update_time": str(system_coordinator.last_update_success_time),
         },
         "storage_coordinator": {
             "last_update_success": storage_coordinator.last_update_success,
-            "last_update_time": str(storage_coordinator.last_update_success_time)
-            if hasattr(storage_coordinator, "last_update_success_time")
-            else None,
+            "last_update_time": str(storage_coordinator.last_update_success_time),
         },
     }
+
+    # Redact potentially sensitive identifiers (UUID, hostname)
+    # These are network identifiers that could identify the user's setup
+    return async_redact_data(diag_data, {"uuid", "hostname"})

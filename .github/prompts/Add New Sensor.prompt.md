@@ -9,6 +9,7 @@ Add a new sensor entity to the ha-unraid integration.
 ## Context
 
 Read these files before starting:
+
 - `AGENTS.md` — Full project documentation
 - `custom_components/unraid/sensor.py` — Existing sensor patterns
 - `custom_components/unraid/entity.py` — Base entity classes
@@ -40,5 +41,5 @@ Read these files before starting:
 - [ ] Translation key added to `strings.json` under `entity.sensor.{key}.name`
 - [ ] Icon added to `icons.json` under `entity.sensor.{key}.default`
 - [ ] Constant added to `const.py` if needed
-- [ ] `./scripts/lint` passes
+- [ ] `./script/lint` passes
 - [ ] Test added to `tests/test_sensor.py`

@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/sensor.py,custom_components/unraid/binary_sen
 
 # Entity Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Entity Class Hierarchy
 

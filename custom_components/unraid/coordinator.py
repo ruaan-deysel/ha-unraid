@@ -143,6 +143,8 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         """Query Docker containers (fails gracefully if Docker not enabled)."""
         try:
             return await self.api_client.typed_get_containers()
+        except UnraidAuthenticationError:
+            raise
         except (UnraidAPIError, UnraidConnectionError) as err:
             _LOGGER.debug("Docker data not available: %s", err)
             return []
@@ -151,6 +153,8 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         """Query VMs (fails gracefully if VMs not enabled)."""
         try:
             return await self.api_client.typed_get_vms()
+        except UnraidAuthenticationError:
+            raise
         except (UnraidAPIError, UnraidConnectionError) as err:
             _LOGGER.debug("VM data not available: %s", err)
             return []
@@ -159,9 +163,60 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         """Query UPS devices (fails gracefully if no UPS configured)."""
         try:
             return await self.api_client.typed_get_ups_devices()
+        except UnraidAuthenticationError:
+            raise
         except (UnraidAPIError, UnraidConnectionError) as err:
             _LOGGER.debug("UPS data not available: %s", err)
             return []
+
+    # Action wrappers for entity control operations
+    async def async_start_container(self, container_id: str) -> None:
+        """Start a Docker container."""
+        await self.api_client.start_container(container_id)
+
+    async def async_stop_container(self, container_id: str) -> None:
+        """Stop a Docker container."""
+        await self.api_client.stop_container(container_id)
+
+    async def async_restart_container(self, container_id: str) -> None:
+        """Restart a Docker container."""
+        await self.api_client.restart_container(container_id)
+
+    async def async_start_vm(self, vm_id: str) -> None:
+        """Start a virtual machine."""
+        await self.api_client.start_vm(vm_id)
+
+    async def async_stop_vm(self, vm_id: str) -> None:
+        """Stop a virtual machine."""
+        await self.api_client.stop_vm(vm_id)
+
+    async def async_force_stop_vm(self, vm_id: str) -> None:
+        """Force stop a virtual machine."""
+        await self.api_client.force_stop_vm(vm_id)
+
+    async def async_reboot_vm(self, vm_id: str) -> None:
+        """Reboot a virtual machine."""
+        await self.api_client.reboot_vm(vm_id)
+
+    async def async_pause_vm(self, vm_id: str) -> None:
+        """Pause a virtual machine."""
+        await self.api_client.pause_vm(vm_id)
+
+    async def async_resume_vm(self, vm_id: str) -> None:
+        """Resume a virtual machine."""
+        await self.api_client.resume_vm(vm_id)
+
+    async def async_reset_vm(self, vm_id: str) -> None:
+        """Reset a virtual machine."""
+        await self.api_client.reset_vm(vm_id)
+
+    async def async_archive_all_notifications(self) -> None:
+        """Archive all notifications."""
+        await self.api_client.archive_all_notifications()
+
+    async def async_delete_all_notifications(self) -> None:
+        """Delete all notifications."""
+        await self.api_client.delete_all_notifications()
 
     async def _async_update_data(self) -> UnraidSystemData:
         """
@@ -222,11 +277,6 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             msg = f"API error: {err}"
             _LOGGER.exception("System data update failed: %s", msg)
             raise UpdateFailed(msg) from err
-        except Exception as err:
-            self._previously_unavailable = True
-            msg = f"Unexpected error: {err}"
-            _LOGGER.exception("System data update failed: %s", msg)
-            raise UpdateFailed(msg) from err
 
 
 class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
@@ -271,6 +321,8 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
         """
         try:
             return await self.api_client.typed_get_shares()
+        except UnraidAuthenticationError:
+            raise
         except (UnraidAPIError, UnraidConnectionError) as err:
             # Log at debug level - shares are optional/nice-to-have
             _LOGGER.debug(
@@ -287,6 +339,39 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
         except (UnraidAPIError, UnraidConnectionError) as err:
             _LOGGER.debug("Parity history not available: %s", err)
             return []
+
+    # Action wrappers for entity control operations
+    async def async_start_array(self) -> None:
+        """Start the Unraid array."""
+        await self.api_client.start_array()
+
+    async def async_stop_array(self) -> None:
+        """Stop the Unraid array."""
+        await self.api_client.stop_array()
+
+    async def async_start_parity_check(self, *, correct: bool) -> None:
+        """Start a parity check."""
+        await self.api_client.start_parity_check(correct=correct)
+
+    async def async_cancel_parity_check(self) -> None:
+        """Cancel a running parity check."""
+        await self.api_client.cancel_parity_check()
+
+    async def async_pause_parity_check(self) -> None:
+        """Pause a running parity check."""
+        await self.api_client.pause_parity_check()
+
+    async def async_resume_parity_check(self) -> None:
+        """Resume a paused parity check."""
+        await self.api_client.resume_parity_check()
+
+    async def async_spin_up_disk(self, disk_id: str) -> None:
+        """Spin up a disk."""
+        await self.api_client.spin_up_disk(disk_id)
+
+    async def async_spin_down_disk(self, disk_id: str) -> None:
+        """Spin down a disk."""
+        await self.api_client.spin_down_disk(disk_id)
 
     async def _async_update_data(self) -> UnraidStorageData:
         """
@@ -332,9 +417,6 @@ class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
         except UnraidAPIError as err:
             self._previously_unavailable = True
             raise UpdateFailed(f"API error: {err}") from err
-        except Exception as err:
-            self._previously_unavailable = True
-            raise UpdateFailed(f"Unexpected error: {err}") from err
 
 
 @dataclass
@@ -513,6 +595,3 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
         except UnraidAPIError as err:
             self._previously_unavailable = True
             raise UpdateFailed(f"API error: {err}") from err
-        except Exception as err:
-            self._previously_unavailable = True
-            raise UpdateFailed(f"Unexpected error: {err}") from err

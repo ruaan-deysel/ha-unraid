@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# script/setup/bootstrap: Install/update all dependencies required to run the project
+#
+# Bootstraps the development environment by setting up the virtual environment
+# and installing all Python dependencies via uv sync.
+#
+# Usage:
+#   ./script/setup/bootstrap
+#
+# Examples:
+#   ./script/setup/bootstrap
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/../.."
+
+# shellcheck source=script/.lib/output.sh
+source "$SCRIPT_DIR/../.lib/output.sh"
+
+log_header "Checking for uv"
+if ! command -v uv >/dev/null 2>&1; then
+    log_info "uv not found, installing..."
+    if command -v pipx >/dev/null 2>&1; then
+        pipx install uv
+    else
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        # shellcheck source=/dev/null
+        source "$HOME/.local/bin/env" 2>/dev/null || export PATH="$HOME/.local/bin:$PATH"
+    fi
+fi
+
+log_header "Checking for Python virtual environment"
+
+# Determine venv location based on environment
+# In DevContainer: Use $HOME/.local/ha-venv (hardlinks work, avoids mount performance issues)
+# Local development: Use .local/ha-venv in workspace (isolated per project)
+# CI (GitHub Actions): Use $HOME/.local/ha-venv or workspace (both work)
+if [[ -n "${REMOTE_CONTAINERS:-}" || -n "${CODESPACES:-}" ]]; then
+    # Running in DevContainer or Codespaces
+    VENV_PATH="$HOME/.local/ha-venv"
+    VENV_IS_EXTERNAL=true
+    log_info "DevContainer/Codespaces detected - using external venv"
+elif [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    # Running in GitHub Actions
+    VENV_PATH="${GITHUB_WORKSPACE:-.}/.local/ha-venv"
+    VENV_IS_EXTERNAL=false
+    log_info "GitHub Actions detected - using workspace venv"
+else
+    # Local development (Mac, Linux, WSL)
+    VENV_PATH=".local/ha-venv"
+    VENV_IS_EXTERNAL=false
+    log_info "Local development detected - using workspace venv"
+fi
+
+if [[ ! -d "$VENV_PATH" ]]; then
+    log_info "Creating virtual environment at $VENV_PATH"
+    uv venv "$VENV_PATH"
+elif [[ ! -x "$VENV_PATH/bin/python3" ]]; then
+    # Venv exists but python3 is broken (broken symlink or missing)
+    log_warning "Existing venv has broken Python interpreter - recreating"
+    rm -rf "$VENV_PATH"
+    log_info "Creating virtual environment at $VENV_PATH"
+    uv venv "$VENV_PATH"
+fi
+
+# Create symlinks for IDE compatibility and tool expectations
+if [[ "$VENV_IS_EXTERNAL" == "true" ]]; then
+    # DevContainer: Create symlink from workspace to external venv
+    log_step "Creating workspace symlink for IDE type checking"
+    mkdir -p .local
+    # .local/ha-venv → /home/vscode/.local/ha-venv (absolute path)
+    if [[ -d .local/ha-venv && ! -L .local/ha-venv ]]; then
+        log_warning "Skipping .local/ha-venv: directory already exists (not a symlink)"
+    else
+        ln -sf "$VENV_PATH" .local/ha-venv
+    fi
+fi
+
+# Create compatibility symlinks for common venv locations (all environments)
+log_step "Creating compatibility symlinks for tool expectations"
+mkdir -p .local
+
+# .venv → .local/ha-venv (Python/uv standard location)
+if [[ -d .venv && ! -L .venv ]]; then
+    log_warning "Skipping .venv: directory already exists (not a symlink)"
+else
+    ln -sf .local/ha-venv .venv
+fi
+
+# .local/venv → ha-venv (GitHub Copilot Agent expectation)
+if [[ -d .local/venv && ! -L .local/venv ]]; then
+    log_warning "Skipping .local/venv: directory already exists (not a symlink)"
+else
+    ln -sf ha-venv .local/venv
+fi
+
+# shellcheck source=/dev/null
+source "$VENV_PATH/bin/activate"
+
+# Auto-activate venv in shell RC files (only in DevContainer/Codespaces where venv is external)
+if [[ "$VENV_IS_EXTERNAL" == "true" ]]; then
+    set +e
+    if [[ -f $HOME/.bashrc ]]; then
+        if ! grep -q "source $VENV_PATH/bin/activate" "$HOME/.bashrc" 2>/dev/null; then
+            log_step "Configuring Bash to auto-activate virtual environment"
+            echo "source $VENV_PATH/bin/activate" >> "$HOME/.bashrc" || log_warning "Failed to update .bashrc"
+        fi
+    fi
+    if [[ -f $HOME/.zshrc ]]; then
+        if ! grep -q "source $VENV_PATH/bin/activate" "$HOME/.zshrc"; then
+            log_step "Configuring ZSH to auto-activate virtual environment"
+            echo "source $VENV_PATH/bin/activate" >> "$HOME/.zshrc" || log_warning "Failed to update .zshrc"
+        fi
+    fi
+    set -e
+fi
+
+log_header "Installing all dependencies"
+log_info "Using pyproject.toml extras: dev + test"
+uv pip install -e ".[dev,test]"
+
+# Ensure Home Assistant is always upgraded to the latest version
+# This guarantees the devcontainer always uses the most recent HA release
+log_header "Upgrading Home Assistant to latest available version"
+uv pip install --upgrade homeassistant
+
+# Only install pre-commit hooks in local development, not in CI
+# GITHUB_ACTIONS is always set to "true" in GitHub Actions environments
+if [[ -d ".git" && -z "${GITHUB_ACTIONS:-}" ]]; then
+    log_header "Installing pre-commit hooks"
+    set +e
+    pre-commit install || log_warning "Failed to install pre-commit hooks (pre-commit may not be installed)"
+    set -e
+else
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+        log_info "Skipping pre-commit hooks (running in GitHub Actions)"
+    else
+        log_info "Skipping pre-commit hooks (not a Git repository)"
+    fi
+fi
+
+log_success "Bootstrap complete"

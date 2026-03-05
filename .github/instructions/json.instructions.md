@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/icons.json"
 
 # JSON Data Files Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## icons.json
 

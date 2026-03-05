@@ -5,37 +5,37 @@
 
 ## Project Identity
 
-| Field | Value |
-|-------|-------|
-| **Domain** | `unraid` |
-| **Integration name** | Unraid |
-| **Class prefix** | `Unraid` |
-| **Code path** | `custom_components/unraid/` |
-| **Test path** | `tests/` |
-| **Python** | 3.13+ |
-| **HA minimum** | 2025.12.0 |
-| **Key dependency** | `unraid-api>=1.6.0` |
-| **iot_class** | `local_polling` |
-| **Config flow** | Yes (UI only, no YAML) |
-| **Platforms** | `sensor`, `binary_sensor`, `switch`, `button` |
+| Field                | Value                                         |
+| -------------------- | --------------------------------------------- |
+| **Domain**           | `unraid`                                      |
+| **Integration name** | Unraid                                        |
+| **Class prefix**     | `Unraid`                                      |
+| **Code path**        | `custom_components/unraid/`                   |
+| **Test path**        | `tests/`                                      |
+| **Python**           | 3.13+                                         |
+| **HA minimum**       | 2026.3.0                                      |
+| **Key dependency**   | `unraid-api>=1.6.0`                           |
+| **iot_class**        | `local_polling`                               |
+| **Config flow**      | Yes (UI only, no YAML)                        |
+| **Platforms**        | `sensor`, `binary_sensor`, `switch`, `button` |
 
 ## Quick Commands
 
 ```bash
 # Lint
-./scripts/lint          # or: ruff check . --fix && ruff format .
+./script/lint          # or: ruff check . --fix && ruff format .
 
 # Test
-./scripts/test          # or: pytest
+./script/test          # or: pytest
 
 # Full validation
-./scripts/validate
+./script/validate
 
 # Setup dev environment
-./scripts/setup
+./script/setup
 
 # Start dev Home Assistant
-./scripts/develop
+./script/develop
 
 # Type checking
 mypy custom_components/unraid
@@ -45,7 +45,7 @@ mypy custom_components/unraid
 
 ### Data Flow
 
-```
+```text
 Entities ──▶ Coordinator ──▶ UnraidClient (unraid-api) ──▶ Unraid Server (GraphQL)
    ▲              │
    └──────────────┘
@@ -56,11 +56,11 @@ Entities ──▶ Coordinator ──▶ UnraidClient (unraid-api) ──▶ Unr
 
 Three `DataUpdateCoordinator` subclasses poll at different intervals:
 
-| Coordinator | Interval | Data |
-|-------------|----------|------|
-| `UnraidSystemCoordinator` | 30s | Server info, CPU/RAM metrics, Docker containers, VMs, UPS, notifications |
-| `UnraidStorageCoordinator` | 5min | Array state, disks, parity, shares, capacity |
-| `UnraidInfraCoordinator` | 15min | Services, registration, cloud, remote access, plugins |
+| Coordinator                | Interval | Data                                                                     |
+| -------------------------- | -------- | ------------------------------------------------------------------------ |
+| `UnraidSystemCoordinator`  | 30s      | Server info, CPU/RAM metrics, Docker containers, VMs, UPS, notifications |
+| `UnraidStorageCoordinator` | 5min     | Array state, disks, parity, shares, capacity                             |
+| `UnraidInfraCoordinator`   | 15min    | Services, registration, cloud, remote access, plugins                    |
 
 Intervals are **fixed** per HA Core guidelines (not user-configurable). Users can call `homeassistant.update_entity` for on-demand refresh.
 
@@ -90,7 +90,7 @@ Each coordinator returns a typed dataclass:
 
 ## Integration File Structure
 
-```
+```text
 custom_components/unraid/
 ├── __init__.py          # Setup/teardown, UnraidRuntimeData, platform forwarding
 ├── config_flow.py       # Config flow (user, reauth, reconfigure), options flow (UPS)
@@ -126,7 +126,7 @@ custom_components/unraid/
 
 Entity class hierarchy:
 
-```
+```text
 CoordinatorEntity
   └── UnraidBaseEntity          # Base: device_info, unique_id, availability
         └── UnraidEntity        # + EntityDescription support
@@ -135,6 +135,7 @@ CoordinatorEntity
 Entity MRO for platform entities: `PlatformEntity, UnraidBaseEntity` (e.g., `SensorEntity, UnraidBaseEntity`)
 
 Key patterns:
+
 - `_attr_has_entity_name = True` (always, set on `UnraidBaseEntity`)
 - `_attr_translation_key = "..."` for translated names via `strings.json`
 - Unique ID format: `{server_uuid}_{resource_id}`
@@ -179,12 +180,12 @@ Key patterns:
 ```bash
 pip install -e ".[dev]"
 # or
-./scripts/setup
+./script/setup
 ```
 
 ### Structure
 
-```
+```text
 tests/
 ├── conftest.py          # Shared fixtures: mock API client, coordinators, config entries
 ├── fixtures/            # JSON fixtures for API responses
@@ -226,7 +227,7 @@ pytest --no-cov                  # Skip coverage for speed
 - Use typed coordinator data access (e.g., `data: UnraidSystemData | None = self.coordinator.data`)
 - Handle `None` coordinator data gracefully
 - Use `Final` type annotations for constants in `const.py`
-- Run `./scripts/lint` before committing
+- Run `./script/lint` before committing
 - Pass `config_entry=` to coordinator `super().__init__()`
 - Use `entry.runtime_data` to access runtime data (not `hass.data[DOMAIN]`)
 
@@ -257,7 +258,7 @@ pytest --no-cov                  # Skip coverage for speed
 
 ## Commit Format
 
-```
+```text
 type: short description
 
 Longer explanation if needed.

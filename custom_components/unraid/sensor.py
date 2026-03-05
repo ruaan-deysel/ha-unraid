@@ -11,8 +11,12 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTemperature
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTemperature,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from unraid_api import format_bytes

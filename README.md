@@ -17,7 +17,6 @@
 A Home Assistant custom integration for monitoring and controlling Unraid servers via the official GraphQL API.
 
 > **Note**: This integration requires **Unraid 7.2.0 or later** which includes the GraphQL API.
-
 > ⚠️ **Migration Notice**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with **2025.12.0**, this integration has been completely rebuilt to use Unraid's official GraphQL API. **There is no direct migration or upgrade path** from SSH to GraphQL - you will need to remove the old integration and set up fresh with a new API key. Users who prefer the SSH-based integration can continue using [release 2025.06.11](https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.06.11).
 
 ## Installation
@@ -37,6 +36,7 @@ I encourage users to check out **[Unraid Management Agent integration](https://w
 ## Features
 
 ### System Monitoring
+
 - **CPU Usage**: Real-time CPU utilization percentage
 - **CPU Temperature**: Package temperature monitoring
 - **CPU Power**: Power consumption (when available)
@@ -44,6 +44,7 @@ I encourage users to check out **[Unraid Management Agent integration](https://w
 - **System Uptime**: Human-readable uptime display
 
 ### Storage Management
+
 - **Array Status**: State tracking (started/stopped/degraded)
 - **Array Capacity**: Total, used, free space with usage percentage
 - **Parity Status**: Parity check status, progress, and validation
@@ -53,16 +54,19 @@ I encourage users to check out **[Unraid Management Agent integration](https://w
 - **Flash Device**: Boot device usage monitoring
 
 ### Docker Container Control
+
 - **Container Switches**: Start/stop Docker containers
 - **State Sync**: Real-time container state updates
 - **Attributes**: Container image, status, and port information
 
 ### Virtual Machine Control
+
 - **VM Switches**: Start/stop virtual machines
 - **State Sync**: Real-time VM state updates
 - **Attributes**: VM name and state information
 
 ### UPS Monitoring (when connected)
+
 - **Battery Level**: Charge percentage
 - **Load**: Current UPS load percentage
 - **Runtime**: Estimated battery runtime
@@ -70,6 +74,7 @@ I encourage users to check out **[Unraid Management Agent integration](https://w
 - **Connection Status**: UPS connected binary sensor
 
 ### Notifications
+
 - **Active Notifications**: Count of unread Unraid notifications
 
 ## Requirements
@@ -116,6 +121,7 @@ After setup, you can adjust UPS settings (only shown if UPS is detected):
    - **UPS nominal power (W)**: Required for UPS Power sensor in Energy Dashboard
 
 > **Note**: Polling intervals are fixed per Home Assistant Core guidelines:
+>
 > - System data (CPU, RAM, Docker, VMs): **30 seconds**
 > - Storage data (array, disks, SMART): **5 minutes**
 >
@@ -125,49 +131,49 @@ After setup, you can adjust UPS settings (only shown if UPS is detected):
 
 ### Sensors
 
-| Entity | Description | Device Class |
-|--------|-------------|--------------|
-| CPU Usage | CPU utilization % | - |
-| CPU Temperature | Package temp °C | temperature |
-| CPU Power | Power consumption W | power |
-| Memory Usage | RAM used % | - |
-| Uptime | System uptime | - |
-| Array State | started/stopped | enum |
-| Array Usage | Capacity used % | - |
-| Parity Progress | Check progress % | - |
-| Disk Usage | Per-disk used % | - |
-| Share Usage | Per-share used % | - |
-| Flash Usage | Boot device used % | - |
-| UPS Battery | Charge level % | battery |
-| UPS Load | Current load % | - |
-| UPS Runtime | Estimated runtime | - |
-| UPS Power | Power consumption W | power |
-| Notifications | Unread count | - |
+| Entity          | Description         | Device Class |
+| --------------- | ------------------- | ------------ |
+| CPU Usage       | CPU utilization %   | -            |
+| CPU Temperature | Package temp °C     | temperature  |
+| CPU Power       | Power consumption W | power        |
+| Memory Usage    | RAM used %          | -            |
+| Uptime          | System uptime       | -            |
+| Array State     | started/stopped     | enum         |
+| Array Usage     | Capacity used %     | -            |
+| Parity Progress | Check progress %    | -            |
+| Disk Usage      | Per-disk used %     | -            |
+| Share Usage     | Per-share used %    | -            |
+| Flash Usage     | Boot device used %  | -            |
+| UPS Battery     | Charge level %      | battery      |
+| UPS Load        | Current load %      | -            |
+| UPS Runtime     | Estimated runtime   | -            |
+| UPS Power       | Power consumption W | power        |
+| Notifications   | Unread count        | -            |
 
 ### Binary Sensors
 
-| Entity | Description |
-|--------|-------------|
-| Array Started | Array running state |
-| Parity Check Running | Parity check in progress |
-| Parity Valid | Parity status healthy |
-| Disk Health | Per-disk health (problem if not OK) |
-| UPS Connected | UPS connection status |
+| Entity               | Description                         |
+| -------------------- | ----------------------------------- |
+| Array Started        | Array running state                 |
+| Parity Check Running | Parity check in progress            |
+| Parity Valid         | Parity status healthy               |
+| Disk Health          | Per-disk health (problem if not OK) |
+| UPS Connected        | UPS connection status               |
 
 ### Switches
 
-| Entity | Description |
-|--------|-------------|
+| Entity            | Description           |
+| ----------------- | --------------------- |
 | Docker Containers | Start/stop containers |
-| Virtual Machines | Start/stop VMs |
+| Virtual Machines  | Start/stop VMs        |
 
 ### Buttons
 
-| Entity | Description |
-|--------|-------------|
-| Array Start/Stop | Control array state |
+| Entity                  | Description               |
+| ----------------------- | ------------------------- |
+| Array Start/Stop        | Control array state       |
 | Parity Check Start/Stop | Control parity operations |
-| Disk Spin Up/Down | Control disk spin state |
+| Disk Spin Up/Down       | Control disk spin state   |
 
 ## UPS Power Sensor for Energy Dashboard
 
@@ -216,6 +222,7 @@ Entities are automatically created when services become available.
 ### Reauthentication
 
 If your API key becomes invalid:
+
 1. A repair notification will appear in Home Assistant
 2. Click the notification and follow the steps to enter a new API key
 3. Alternatively, go to **Settings** → **Devices & Services**, find Unraid, and use the "Reconfigure" option
@@ -311,10 +318,12 @@ automation:
 ## Development
 
 ### Prerequisites
+
 - Docker Desktop
 - VS Code with Dev Containers extension
 
 ### Setup
+
 ```bash
 git clone https://github.com/ruaan-deysel/ha-unraid.git
 cd ha-unraid
@@ -323,17 +332,19 @@ code .
 ```
 
 ### Commands
+
 ```bash
-./scripts/setup    # Install dependencies
-./scripts/lint     # Format and lint (run after every change!)
+./script/setup    # Install dependencies
+./script/lint     # Format and lint (run after every change!)
 pytest             # Run tests
-./scripts/develop  # Start Home Assistant for testing
+./script/develop  # Start Home Assistant for testing
 ```
 
 ### Code Quality
 
 This project enforces strict code quality:
-- All changes must pass `./scripts/lint` with zero warnings
+
+- All changes must pass `./script/lint` with zero warnings
 - All tests must pass before committing
 - Type hints required for all functions
 
@@ -343,7 +354,7 @@ Contributions are welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Make changes and run `./scripts/lint`
+3. Make changes and run `./script/lint`
 4. Run tests with `pytest`
 5. **Keep PRs small and focused** - one issue/feature per PR
 6. Submit a pull request

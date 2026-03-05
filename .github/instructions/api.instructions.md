@@ -4,7 +4,7 @@ applyTo: "custom_components/unraid/__init__.py,custom_components/unraid/config_f
 
 # API Usage Guidelines — ha-unraid
 
-Refer to [`AGENTS.md`](/AGENTS.md) for full project documentation.
+Refer to `AGENTS.md` for full project documentation.
 
 ## Architecture Boundary
 

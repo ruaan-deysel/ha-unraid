@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# script/setup/setup: Setup script used by DevContainers to prepare the project
+#
+# Runs bootstrap to install dependencies, then performs additional configuration
+# for the development environment. Called automatically by DevContainer postCreateCommand.
+#
+# Usage:
+#   ./script/setup/setup
+#
+# Examples:
+#   ./script/setup/setup
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/../.."
+
+# shellcheck source=script/.lib/output.sh
+source "$SCRIPT_DIR/../.lib/output.sh"
+
+"$SCRIPT_DIR/bootstrap"
+
+if [[ -z ${VIRTUAL_ENV:-} ]]; then
+    log_header "Activating virtual environment"
+    # shellcheck source=/dev/null
+    if [[ -f "$HOME/.local/ha-venv/bin/activate" ]]; then
+        source "$HOME/.local/ha-venv/bin/activate"
+    elif [[ -f "$PWD/.local/ha-venv/bin/activate" ]]; then
+        source "$PWD/.local/ha-venv/bin/activate"
+    fi
+fi
+
+# Create config directory if it doesn't exist
+if [[ ! -d config ]]; then
+    mkdir -p config
+fi
+
+# Initialize Home Assistant config directory if not already done
+if [[ ! -f config/.HA_VERSION ]]; then
+    log_header "Initializing Home Assistant config directory"
+    hass --config "${PWD}/config" --script ensure_config >/dev/null 2>&1 || true
+fi
+
+# Create custom_components directory if it doesn't exist
+mkdir -p config/custom_components
+
+echo ""
+log_success "Project setup complete"
+log_separator
+echo ""
+log_info "Next steps:"
+log_step "Run ${BOLD}./script/develop${NC} to start Home Assistant"
+log_step "Open ${BOLD}http://localhost:8123${NC} in your browser"
+log_step "Run ${BOLD}./script/lint${NC} to check and format code"
+log_step "Run ${BOLD}./script/test${NC} to run tests"
+log_step "Run ${BOLD}./script/help${NC} to see all available scripts"
+echo ""

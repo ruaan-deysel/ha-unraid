@@ -165,6 +165,9 @@ coverage.xml
 .serena/
 .specify/
 
+# Local tooling cache (hassfest sparse HA core checkout, venvs)
+.local/
+
 # UV package manager (optional - uncomment if you want to track uv.lock)
 # uv.lock
 

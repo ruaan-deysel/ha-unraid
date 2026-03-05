@@ -105,8 +105,8 @@ rules:
 
   # Above 95% test coverage for all integration modules
   test-coverage:
-    status: todo
-    comment: Coverage is below the 95% target for this rule.
+    status: done
+    comment: Test coverage is at or above the 95% target.
 
   # ============================================================================
   # 🥇 Gold (Best user experience)
@@ -200,4 +200,8 @@ rules:
   inject-websession: done
 
   # Strict typing
-  strict-typing: done
+  strict-typing:
+    status: done
+    comment: |
+      Type checking is scoped to integration modules only (custom_components/unraid).
+      script/type-check reports zero errors for the integration module scope.
