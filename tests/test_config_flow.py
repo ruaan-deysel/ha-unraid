@@ -1212,6 +1212,52 @@ async def test_reconfigure_flow_success(
     assert entry.data[CONF_SSL] is True
 
 
+async def test_reconfigure_flow_updates_ssl_flag_when_cert_changes(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test reconfigure flow clears SSL flag when SSL fallback succeeds."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={
+            CONF_HOST: "unraid.local",
+            CONF_API_KEY: "old-key",
+            CONF_SSL: True,
+        },
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    # Simulate SSL error on first attempt and success on fallback without SSL.
+    mock_api_client.test_connection = AsyncMock(
+        side_effect=[UnraidSSLError("SSL error"), True]
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "192.168.1.100", CONF_API_KEY: "new-key"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_HOST] == "192.168.1.100"
+    assert entry.data[CONF_API_KEY] == "new-key"
+    assert entry.data[CONF_SSL] is False
+
+
 async def test_reconfigure_flow_connection_error(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
