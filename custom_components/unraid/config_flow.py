@@ -310,9 +310,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if "401" in error_str or "unauthorized" in error_str:
             msg = "Invalid API key or insufficient permissions"
             raise InvalidAuthError(msg) from err
-        if "ssl" in error_str or "certificate" in error_str:
-            msg = f"SSL error: {err}. Try disabling SSL verification."
-            raise SSLCertificateError(msg) from err
         _LOGGER.exception("Unexpected error during connection test")
         raise CannotConnectError(f"Unexpected error: {err}") from err
 
@@ -417,7 +414,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     await self._test_connection(user_input)
 
                     # Update the config entry with new data
-                    merged_data = {**user_input, CONF_SSL: self._use_ssl}
+                    merged_data = {
+                        **reconfigure_entry.data,
+                        **user_input,
+                        CONF_SSL: self._use_ssl,
+                    }
                     self.hass.config_entries.async_update_entry(
                         reconfigure_entry,
                         data=merged_data,
