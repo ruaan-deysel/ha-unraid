@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
 from aiohttp import ClientConnectorError
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -22,7 +23,7 @@ from unraid_api.exceptions import (
 )
 from unraid_api.models import ServerInfo, UPSDevice, VersionInfo
 
-from custom_components.unraid.config_flow import CannotConnectError
+from custom_components.unraid.config_flow import CannotConnectError, SSLCertificateError
 from custom_components.unraid.const import (
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
@@ -640,22 +641,24 @@ async def test_client_connector_error_shows_cannot_connect(
 async def test_ssl_error_retries_with_verify_disabled(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test SSL errors trigger retry with verify_ssl=False (self-signed certs)."""
+    """Test connection errors retry with verify_ssl=False (self-signed certs)."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     call_count = 0
+    created_clients: list[MagicMock] = []
 
     def create_client(**kwargs: object) -> MagicMock:
         nonlocal call_count
         call_count += 1
         mock_api = MagicMock()
         mock_api.close = AsyncMock()
+        created_clients.append(mock_api)
 
         if kwargs.get("verify_ssl", True) is True:
             mock_api.test_connection = AsyncMock(
-                side_effect=CannotConnectError("SSL certificate verify failed")
+                side_effect=SSLCertificateError("SSL certificate verify failed")
             )
         else:
             mock_api.test_connection = AsyncMock(return_value=True)
@@ -684,9 +687,45 @@ async def test_ssl_error_retries_with_verify_disabled(
         )
 
     assert call_count == 2
+    assert len(created_clients) == 2
+    created_clients[0].close.assert_awaited_once()
+    created_clients[1].close.assert_awaited_once()
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert result2["result"].unique_id == "test-uuid"
     assert result2["data"]["ssl"] is False  # SSL verification disabled for self-signed
+
+
+async def test_non_ssl_connection_error_does_not_retry_with_verify_disabled(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test non-SSL connection errors do not trigger SSL verification fallback."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    call_count = 0
+
+    def create_client(**kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        mock_api = MagicMock()
+        mock_api.close = AsyncMock()
+        mock_api.test_connection = AsyncMock(
+            side_effect=CannotConnectError("Cannot connect to host")
+        )
+        return mock_api
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", side_effect=create_client
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "valid-key"},
+        )
+
+    assert call_count == 1
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"][CONF_HOST] == "cannot_connect"
 
 
 async def test_ssl_error_shows_cannot_connect_with_hint(
@@ -826,6 +865,91 @@ async def test_reauth_flow_success(
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "reauth_successful"
     assert entry.data[CONF_API_KEY] == "new-api-key"
+
+
+async def test_reauth_flow_adds_ssl_flag_for_legacy_entries(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test reauth sets CONF_SSL when legacy entries do not include it."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data={CONF_HOST: "unraid.local"},
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "new-api-key"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reauth_successful"
+    assert entry.data[CONF_SSL] is True
+
+
+async def test_reauth_flow_updates_ssl_flag_when_cert_changes(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test reauth updates CONF_SSL when SSL requirements change."""
+    # Entry created with SSL verification enabled
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key", CONF_SSL: True},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data={CONF_HOST: "unraid.local"},
+    )
+
+    # Mock SSL failure on first try, success with verify_ssl=False
+    def create_client(**kwargs: Any) -> MagicMock:
+        mock_api = MagicMock()
+        mock_api.close = AsyncMock()
+        if kwargs.get("verify_ssl", True):
+            mock_api.test_connection = AsyncMock(
+                side_effect=SSLCertificateError("SSL verify failed")
+            )
+        else:
+            mock_api.test_connection = AsyncMock(return_value=True)
+            mock_api.get_version = AsyncMock(
+                return_value={"unraid": "7.2.0", "api": "4.29.2"}
+            )
+            mock_api.get_server_info = AsyncMock(
+                return_value=MagicMock(uuid="test-uuid", hostname="tower")
+            )
+        return mock_api
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", side_effect=create_client
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "new-api-key"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reauth_successful"
+    # SSL flag should be updated to False since cert verification failed
+    assert entry.data[CONF_SSL] is False
 
 
 async def test_reauth_flow_invalid_key(
@@ -1228,6 +1352,53 @@ async def test_reconfigure_flow_success(
     assert result2["reason"] == "reconfigure_successful"
     assert entry.data[CONF_HOST] == "192.168.1.100"
     assert entry.data[CONF_API_KEY] == "new-key"
+    assert entry.data[CONF_SSL] is True
+
+
+async def test_reconfigure_flow_updates_ssl_flag_when_cert_changes(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test reconfigure flow clears SSL flag when SSL fallback succeeds."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={
+            CONF_HOST: "unraid.local",
+            CONF_API_KEY: "old-key",
+            CONF_SSL: True,
+        },
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    # Simulate SSL error on first attempt and success on fallback without SSL.
+    mock_api_client.test_connection = AsyncMock(
+        side_effect=[UnraidSSLError("SSL error"), True]
+    )
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "192.168.1.100", CONF_API_KEY: "new-key"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_HOST] == "192.168.1.100"
+    assert entry.data[CONF_API_KEY] == "new-key"
+    assert entry.data[CONF_SSL] is False
 
 
 async def test_reconfigure_flow_connection_error(

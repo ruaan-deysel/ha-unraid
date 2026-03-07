@@ -179,7 +179,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         Connection strategy:
         1. Let the library probe and auto-detect via http_port
-        2. If SSL cert error, retry with verify_ssl=False (self-signed certs)
+        2. If a certificate verification error is detected, retry once with
+           verify_ssl=False to support self-signed certificates
         """
         host = user_input[CONF_HOST].strip()
         api_key = user_input[CONF_API_KEY].strip()
@@ -202,36 +203,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             await self._validate_connection(api_client, host)
-        except CannotConnectError as err:
-            error_str = str(err).lower()
-            if "ssl" in error_str or "certificate" in error_str:
-                # SSL cert error - retry with verify_ssl=False
-                # (handles self-signed certificates)
-                _LOGGER.debug(
-                    "SSL verification failed, retrying with verify_ssl=False: %s", err
+        except SSLCertificateError as err:
+            _LOGGER.debug(
+                "SSL verification failed for %s, retrying with verify_ssl=False: %s",
+                host,
+                err,
+            )
+            await api_client.close()
+            session = async_get_clientsession(self.hass, verify_ssl=False)
+            fallback_client = UnraidClient(
+                host=host,
+                api_key=api_key,
+                http_port=port,
+                verify_ssl=False,
+                session=session,
+            )
+            try:
+                await self._validate_connection(fallback_client, host)
+                # Success with SSL verification disabled
+                self._use_ssl = False
+                _LOGGER.info(
+                    "Connected to %s with self-signed cert (SSL verify disabled)",
+                    host,
                 )
-                await api_client.close()
-                session = async_get_clientsession(self.hass, verify_ssl=False)
-                api_client = UnraidClient(
-                    host=host,
-                    api_key=api_key,
-                    http_port=port,
-                    verify_ssl=False,
-                    session=session,
-                )
-                try:
-                    await self._validate_connection(api_client, host)
-                    # Success with SSL verification disabled
-                    self._use_ssl = False
-                    _LOGGER.info(
-                        "Connected to %s with self-signed cert (SSL verify disabled)",
-                        host,
-                    )
-                finally:
-                    await api_client.close()
-            else:
-                raise
-        finally:
+            except CannotConnectError as fallback_err:
+                # Keep original failure reason if fallback also fails
+                raise err from fallback_err
+            finally:
+                await fallback_client.close()
+        except Exception:
+            await api_client.close()
+            raise
+        else:
             await api_client.close()
 
     async def _validate_connection(self, api_client: UnraidClient, host: str) -> None:
@@ -257,13 +260,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise InvalidAuthError(msg) from err
         except UnraidSSLError as err:
             msg = f"SSL certificate error for {host}: {err}"
-            raise CannotConnectError(msg) from err
+            raise SSLCertificateError(msg) from err
         except (UnraidConnectionError, UnraidTimeoutError) as err:
             msg = f"Cannot connect to {host} - {err}"
             raise CannotConnectError(msg) from err
         except aiohttp.ClientResponseError as err:
             self._handle_http_error(err, host)
         except aiohttp.ClientConnectorError as err:
+            if isinstance(err, aiohttp.ClientSSLError):
+                msg = f"SSL certificate error for {host}: {err}"
+                raise SSLCertificateError(msg) from err
             msg = f"Cannot connect to {host} - {err}"
             raise CannotConnectError(msg) from err
         except aiohttp.ClientError as err:
@@ -313,9 +319,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if "401" in error_str or "unauthorized" in error_str:
             msg = "Invalid API key or insufficient permissions"
             raise InvalidAuthError(msg) from err
-        if "ssl" in error_str or "certificate" in error_str:
-            msg = f"SSL error: {err}. Try disabling SSL verification."
-            raise CannotConnectError(msg) from err
         _LOGGER.exception("Unexpected error during connection test")
         raise CannotConnectError(f"Unexpected error: {err}") from err
 
@@ -349,7 +352,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 return self.async_update_reload_and_abort(
                     reauth_entry,
-                    data_updates={**reauth_entry.data, **user_input},
+                    data_updates={**user_input, CONF_SSL: self._use_ssl},
                     reason="reauth_successful",
                 )
 
@@ -482,6 +485,10 @@ class InvalidAuthError(HomeAssistantError):
 
 class CannotConnectError(HomeAssistantError):
     """Exception for cannot connect to server."""
+
+
+class SSLCertificateError(CannotConnectError):
+    """Exception for SSL certificate verification errors."""
 
 
 class UnsupportedVersionError(HomeAssistantError):
