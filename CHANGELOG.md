@@ -7,21 +7,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-### Added
-
-- **Container Updates Count Sensor**: Sensor showing the number of Docker containers with available image updates
-- **Registration Expiration Sensor**: Diagnostic sensor showing the Unraid registration expiration date (disabled by default)
-- **Disk Error Count Sensor**: Sensor showing total disk read/write errors across the array with per-disk breakdown in attributes
-- **Parity Check Elapsed Sensor**: Sensor showing elapsed time (seconds) for an active parity check/rebuild (disabled by default)
-- **Parity Check Estimated Sensor**: Sensor showing estimated completion time (seconds) for an active parity check/rebuild (disabled by default)
-- **Parity Check Paused Binary Sensor**: Binary sensor indicating if an active parity check is currently paused (disabled by default)
-- **UPS Status Sensor**: Sensor showing the UPS status text (e.g. "Online", "On Battery") when a UPS is configured
-
-### Fixed
-
-- **Parity Check Sensors**: Fixed parity elapsed/estimated sensors and paused binary sensor showing "Unknown" when no parity check is running — now shows 0/off respectively
-- **Documentation**: Removed pinned GraphQL API version requirement from README; added guidance to install the Unraid Connect plugin to keep the API up to date
-
+No unreleased changes yet.
 ## [2026.3.1] - 2026-03-20
 
 ### Added
