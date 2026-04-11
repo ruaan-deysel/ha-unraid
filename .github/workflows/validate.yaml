@@ -15,6 +15,6 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - name: HACS Action
-        uses: "hacs/action@main"
+        uses: "hacs/action@dcb30e72781db3f207d5236b861172774ab0b485" # main
         with:
           category: "integration"
