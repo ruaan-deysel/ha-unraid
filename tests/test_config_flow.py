@@ -185,7 +185,9 @@ async def test_connection_uses_default_port_when_not_specified(
 async def test_invalid_credentials_error(hass: HomeAssistant) -> None:
     """Test invalid API key shows authentication error."""
     mock_api = AsyncMock()
-    mock_api.test_connection = AsyncMock(side_effect=Exception("401: Unauthorized"))
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidAuthenticationError("401: Unauthorized")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -763,7 +765,9 @@ async def test_unauthorized_in_error_message_shows_invalid_auth(
     )
 
     mock_api = AsyncMock()
-    mock_api.test_connection = AsyncMock(side_effect=Exception("Request unauthorized"))
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidAuthenticationError("Request unauthorized")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -973,7 +977,9 @@ async def test_reauth_flow_invalid_key(
     )
 
     mock_api = AsyncMock()
-    mock_api.test_connection = AsyncMock(side_effect=Exception("401: Unauthorized"))
+    mock_api.test_connection = AsyncMock(
+        side_effect=UnraidAuthenticationError("401: Unauthorized")
+    )
     mock_api.close = AsyncMock()
 
     with patch(
@@ -1746,7 +1752,7 @@ USER_STEP_ERROR_CASES = [
     ),
     ErrorTestCase(
         name="unauthorized_in_message",
-        exception=Exception("401: Unauthorized"),
+        exception=UnraidAuthenticationError("401: Unauthorized"),
         expected_error_field=CONF_API_KEY,
         expected_error_value="invalid_auth",
     ),
@@ -1794,7 +1800,7 @@ async def test_user_step_parametrized_errors(
 REAUTH_ERROR_CASES = [
     ErrorTestCase(
         name="reauth_invalid_auth",
-        exception=Exception("401: Unauthorized"),
+        exception=UnraidAuthenticationError("401: Unauthorized"),
         expected_error_field="base",
         expected_error_value="invalid_auth",
     ),
@@ -1862,7 +1868,7 @@ async def test_reauth_parametrized_errors(
 RECONFIGURE_ERROR_CASES = [
     ErrorTestCase(
         name="reconfigure_invalid_auth",
-        exception=Exception("401: Unauthorized"),
+        exception=UnraidAuthenticationError("401: Unauthorized"),
         expected_error_field="base",
         expected_error_value="invalid_auth",
     ),

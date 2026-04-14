@@ -19,10 +19,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "homeassistant>=2026.4.1",
+    "homeassistant>=2026.4.2",
     "aiohttp>=3.9.0",
     "pydantic>=2.0.0",
-    "unraid-api>=1.7.1",
+    "unraid-api>=1.9.1",
 ]
 
 [project.optional-dependencies]
