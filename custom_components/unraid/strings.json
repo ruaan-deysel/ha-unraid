@@ -151,6 +151,9 @@
     "delete_all_archived_notifications_failed": {
       "message": "Failed to delete all archived notifications: {error}"
     },
+    "container_update_failed": {
+      "message": "Failed to update container {name}: {error}"
+    },
     "graphql_query_failed": {
       "message": "GraphQL query failed: {error}"
     }
@@ -267,9 +270,6 @@
       },
       "share_usage": {
         "name": "Share {name} usage"
-      },
-      "flash_usage": {
-        "name": "Flash usage"
       },
       "ups_battery": {
         "name": "UPS {name} battery"
@@ -453,6 +453,11 @@
       },
       "delete_all_archived_notifications": {
         "name": "Delete all archived notifications"
+      }
+    },
+    "update": {
+      "docker_container_update": {
+        "name": "Container {name} update"
       }
     }
   }

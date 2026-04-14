@@ -304,7 +304,8 @@ def test_platforms_list() -> None:
     assert Platform.BINARY_SENSOR in PLATFORMS
     assert Platform.SWITCH in PLATFORMS
     assert Platform.BUTTON in PLATFORMS
-    assert len(PLATFORMS) == 4
+    assert Platform.UPDATE in PLATFORMS
+    assert len(PLATFORMS) == 5
 
 
 # =============================================================================

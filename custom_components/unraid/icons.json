@@ -130,9 +130,6 @@
       "share_usage": {
         "default": "mdi:folder-network"
       },
-      "flash_usage": {
-        "default": "mdi:usb-flash-drive"
-      },
       "unraid_version": {
         "default": "mdi:server"
       },
@@ -297,6 +294,11 @@
       },
       "delete_all_archived_notifications": {
         "default": "mdi:bell-remove"
+      }
+    },
+    "update": {
+      "docker_container_update": {
+        "default": "mdi:package-up"
       }
     }
   }

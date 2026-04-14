@@ -188,6 +188,10 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         """Restart a Docker container."""
         await self.api_client.restart_container(container_id)
 
+    async def async_update_container(self, container_id: str) -> None:
+        """Update a Docker container to its latest image."""
+        await self.api_client.update_container(container_id)
+
     async def async_start_vm(self, vm_id: str) -> None:
         """Start a virtual machine."""
         await self.api_client.start_vm(vm_id)
