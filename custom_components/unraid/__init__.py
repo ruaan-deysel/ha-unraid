@@ -206,7 +206,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     websocket_manager = UnraidWebSocketManager(
         api_client=api_client,
         system_coordinator=system_coordinator,
-        storage_coordinator=storage_coordinator,
         server_name=server_name,
     )
 

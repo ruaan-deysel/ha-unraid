@@ -242,9 +242,12 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         _LOGGER.debug("Starting system data update")
         try:
             # Phase 1: Required calls — run concurrently; any failure raises immediately
+            # NOTE: We use get_system_metrics_safe() instead of
+            # get_system_metrics() to avoid querying metrics.temperature.sensors
+            # which triggers smartctl disk reads and wakes sleeping disks.
             info, metrics, notifications = await asyncio.gather(
                 self.api_client.get_server_info(),
-                self.api_client.get_system_metrics(),
+                self.api_client.get_system_metrics_safe(),
                 self.api_client.get_notification_overview(),
             )
 

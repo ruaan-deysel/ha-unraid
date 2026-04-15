@@ -34,8 +34,8 @@ Data flow must stay:
 
 ## Compatibility Checks
 
-- Call `await api_client.check_compatibility()` during setup/validation.
-- Minimum supported server/API levels are enforced by `unraid-api`.
+- Check API version from `get_server_info().api_version` against `MIN_API_VERSION` during config flow.
+- No Unraid OS version requirement — the API is upgradeable independently via Unraid Connect.
 
 ## Dependency Management
 

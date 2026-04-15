@@ -180,7 +180,7 @@ async def test_setup_entry_captures_hardware_info(
         await async_setup_entry(hass, entry)
 
     assert entry.runtime_data.server_info["manufacturer"] == "Supermicro"
-    assert entry.runtime_data.server_info["model"] == "Unraid 7.2.0"
+    assert entry.runtime_data.server_info["model"] == "Unraid 7.2.4"
     assert entry.runtime_data.server_info["hw_manufacturer"] == "Supermicro"
     assert entry.runtime_data.server_info["hw_model"] == "X11SSH-F"
 
