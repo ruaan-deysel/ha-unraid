@@ -47,8 +47,8 @@ def make_server_info(**kwargs: Any) -> ServerInfo:
     defaults = {
         "uuid": "abc-123",
         "hostname": "tower",
-        "sw_version": "7.2.0",
-        "api_version": "4.29.2",
+        "sw_version": "7.2.4",
+        "api_version": "4.31.1",
         "cpu_brand": "AMD Ryzen 7",
         "cpu_cores": 8,
         "cpu_threads": 16,
@@ -164,7 +164,7 @@ def mock_api_client():
     client = MagicMock()
     # All methods that the coordinator uses are async
     client.get_server_info = AsyncMock(return_value=make_server_info())
-    client.get_system_metrics = AsyncMock(return_value=make_system_metrics())
+    client.get_system_metrics_safe = AsyncMock(return_value=make_system_metrics())
     client.get_notification_overview = AsyncMock(
         return_value=make_notification_overview()
     )
@@ -314,7 +314,7 @@ async def test_system_coordinator_fetch_success(
     assert data.info.uuid == "abc-123"
     assert data.metrics.cpu_percent == 25.5
     mock_api_client.get_server_info.assert_called_once()
-    mock_api_client.get_system_metrics.assert_called_once()
+    mock_api_client.get_system_metrics_safe.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -329,7 +329,7 @@ async def test_system_coordinator_queries_all_endpoints(
 
     # Verify all library methods were called
     mock_api_client.get_server_info.assert_called_once()
-    mock_api_client.get_system_metrics.assert_called_once()
+    mock_api_client.get_system_metrics_safe.assert_called_once()
     mock_api_client.get_notification_overview.assert_called_once()
     mock_api_client.typed_get_containers.assert_called_once()
     mock_api_client.typed_get_vms.assert_called_once()
@@ -1098,7 +1098,7 @@ async def test_coordinator_data_refresh_cycle(hass, mock_api_client, mock_config
     assert data1 is not None
 
     # Update mock to return different values
-    mock_api_client.get_system_metrics.return_value = make_system_metrics(
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics(
         cpu_percent=75.0
     )
 

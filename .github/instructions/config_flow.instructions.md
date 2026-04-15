@@ -28,14 +28,16 @@ except CannotConnectError as err:
 
 ## Version Checking
 
-Enforce compatibility before accepting configuration:
+Enforce API version compatibility before accepting configuration:
 
 ```python
-await api_client.check_compatibility()
+server_info = await api_client.get_server_info()
+# Compare server_info.api_version against MIN_API_VERSION
 ```
 
-`unraid-api` raises `UnraidVersionError` when the server is below required
-Unraid/GraphQL API versions.
+The integration checks the GraphQL API version from `get_server_info()` against
+`MIN_API_VERSION` from `unraid-api`. No Unraid OS version requirement — the API
+is upgradeable independently via the Unraid Connect plugin.
 
 ## Options Flow
 

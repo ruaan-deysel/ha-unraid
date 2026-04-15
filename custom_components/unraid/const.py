@@ -90,10 +90,6 @@ WS_RETRY_BACKOFF_FACTOR: Final = 2.0
 # Leading-edge debounce: first WS event triggers refresh, subsequent events
 # within this window are suppressed to prevent refresh storms.
 WS_REFRESH_DEBOUNCE_SECONDS: Final = 10  # seconds
-# Minimum interval between WS-triggered storage refreshes (array updates).
-# Higher than the general debounce to prevent rapid disk queries from waking
-# spun-down disks (see GitHub issue #211).
-WS_ARRAY_UPDATE_MIN_INTERVAL: Final = 60  # seconds
 
 
 # =============================================================================
