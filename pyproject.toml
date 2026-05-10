@@ -40,7 +40,7 @@ dev = [
     "syrupy>=5.0.0",
 
     # Type checking
-    "mypy>=1.20.2",
+    "mypy>=2.0.0",
 
     # Utilities
     "colorlog>=6.10.0",
