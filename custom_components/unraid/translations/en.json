@@ -13,7 +13,7 @@
         "data_description": {
           "host": "IP address (for example, 192.168.1.100) or hostname/domain of your Unraid server.",
           "port": "HTTP port number (default: 80). Secure connections are handled automatically.",
-          "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
+          "api_key": "Generate in Unraid Settings \u2192 Management Access \u2192 API Keys. Requires ADMIN role."
         }
       },
       "reauth_confirm": {
@@ -23,7 +23,7 @@
           "api_key": "API key"
         },
         "data_description": {
-          "api_key": "Generate a new API key in Unraid Settings → Management Access → API Keys"
+          "api_key": "Generate a new API key in Unraid Settings \u2192 Management Access \u2192 API Keys"
         }
       },
       "reconfigure": {
@@ -69,7 +69,7 @@
         },
         "data_description": {
           "ups_capacity_va": "Optional. Your UPS VA rating (e.g., 1000 for a 1000VA UPS). Shown in sensor attributes for reference.",
-          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA × 0.6."
+          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA \u00d7 0.6."
         }
       }
     },
@@ -458,6 +458,11 @@
     "update": {
       "docker_container_update": {
         "name": "Container {name} update"
+      }
+    },
+    "event": {
+      "notifications": {
+        "name": "Notifications"
       }
     }
   }

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from unraid_api import (
     ServerInfo,
@@ -44,12 +47,15 @@ from unraid_api.models import (
 )
 
 from .const import (
+    DOMAIN,
     INFRA_POLL_INTERVAL,
     STORAGE_POLL_INTERVAL,
     SYSTEM_POLL_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
+MAX_SEEN_NOTIFICATION_IDS = 1000
+NOTIFICATION_EVENT_TYPE_CREATED = "notification_created"
 
 
 @dataclass
@@ -63,6 +69,22 @@ class UnraidSystemData:
     ups_devices: list[UPSDevice] = field(default_factory=list)
     notification_overview: NotificationOverview | None = None
     notifications_unread: int = 0
+
+
+@dataclass(frozen=True)
+class UnraidNotificationEventData:
+    """Notification event payload emitted to EventEntity listeners."""
+
+    event_type: str
+    notification_id: str
+    title: str
+    subject: str
+    description: str
+    timestamp: str
+    formatted_timestamp: str
+    importance: str
+    link: str
+    notification_type: str
 
 
 @dataclass
@@ -144,6 +166,328 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         self.api_client = api_client
         self._server_name = server_name
         self._previously_unavailable = False
+        self._event_listeners: dict[
+            str, list[Callable[[UnraidNotificationEventData], None]]
+        ] = {}
+        self._seen_notification_store = Store[dict[str, list[str]]](
+            hass,
+            version=1,
+            key=f"{DOMAIN}.{config_entry.entry_id}.notifications",
+        )
+        self._seen_notification_ids: set[str] = set()
+        self._seen_ids_loaded = False
+
+    def async_add_event_listener(
+        self,
+        callback: Callable[[UnraidNotificationEventData], None],
+        target_event_id: str,
+    ) -> Callable[[], None]:
+        """Register an event callback for a specific event type."""
+        listeners = self._event_listeners.setdefault(target_event_id, [])
+        listeners.append(callback)
+
+        def _remove_listener() -> None:
+            if target_event_id not in self._event_listeners:
+                return
+            self._event_listeners[target_event_id] = [
+                listener
+                for listener in self._event_listeners[target_event_id]
+                if listener != callback
+            ]
+            if not self._event_listeners[target_event_id]:
+                self._event_listeners.pop(target_event_id, None)
+
+        return _remove_listener
+
+    def _async_notify_event_listeners(
+        self, event_data: UnraidNotificationEventData
+    ) -> None:
+        """Notify listeners about a newly detected event."""
+        for callback in self._event_listeners.get(event_data.event_type, []):
+            callback(event_data)
+
+    async def _async_load_seen_notification_ids(self) -> None:
+        """Load persisted seen notification IDs once."""
+        if self._seen_ids_loaded:
+            return
+
+        try:
+            stored_data = await self._seen_notification_store.async_load()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to load seen notification IDs for %s: %s",
+                self._server_name,
+                err,
+            )
+            self._seen_ids_loaded = True
+            return
+
+        seen_ids = stored_data.get("seen_ids", []) if stored_data else []
+        self._seen_notification_ids = set(seen_ids[:MAX_SEEN_NOTIFICATION_IDS])
+        _LOGGER.debug(
+            "Loaded %d seen notification IDs for %s",
+            len(self._seen_notification_ids),
+            self._server_name,
+        )
+        self._seen_ids_loaded = True
+
+    async def _async_save_seen_notification_ids(self) -> None:
+        """Persist trimmed seen notification IDs."""
+        sorted_ids = sorted(self._seen_notification_ids)
+        trimmed_ids = sorted_ids[-MAX_SEEN_NOTIFICATION_IDS:]
+        self._seen_notification_ids = set(trimmed_ids)
+        try:
+            await self._seen_notification_store.async_save({"seen_ids": trimmed_ids})
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to save seen notification IDs for %s: %s",
+                self._server_name,
+                err,
+            )
+            return
+
+        _LOGGER.debug(
+            "Saved %d seen notification IDs for %s",
+            len(self._seen_notification_ids),
+            self._server_name,
+        )
+
+    @staticmethod
+    def _normalize_notification_response(response: Any) -> list[Any]:
+        """Normalize notification responses into a list of notification records."""
+        if response is None:
+            return []
+
+        if isinstance(response, dict):
+            return list(response.get("list") or [])
+
+        model_list = getattr(response, "list", None)
+        if model_list is not None:
+            return list(model_list or [])
+
+        if isinstance(response, list):
+            return response
+
+        if isinstance(response, tuple):
+            return list(response)
+
+        _LOGGER.debug(
+            "Ignoring unexpected notification response type: %s",
+            type(response).__name__,
+        )
+        return []
+
+    @staticmethod
+    def _notification_response_shape(response: Any) -> str:
+        """Return a compact response shape string for debug logging."""
+        if isinstance(response, dict):
+            list_value = response.get("list")
+            list_count = len(list_value) if isinstance(list_value, list) else "n/a"
+            return (
+                f"dict(keys={sorted(response.keys())}, "
+                f"list_type={type(list_value).__name__}, list_count={list_count})"
+            )
+
+        if isinstance(response, list):
+            return f"list(len={len(response)})"
+
+        return type(response).__name__
+
+    async def _async_get_unread_notifications(self) -> list[Any]:
+        """Fetch unread notifications via available API wrapper methods."""
+        _LOGGER.debug("Polling unread notifications for %s", self._server_name)
+        try:
+            if hasattr(self.api_client, "typed_get_notifications"):
+                response = await self.api_client.typed_get_notifications(
+                    notification_type="UNREAD",
+                    offset=0,
+                    limit=200,
+                )
+                _LOGGER.debug(
+                    "Unread notifications API path=typed_get_notifications shape=%s for %s",
+                    self._notification_response_shape(response),
+                    self._server_name,
+                )
+                notification_list = self._normalize_notification_response(response)
+                _LOGGER.debug(
+                    "Extracted %d unread notification records for %s via typed API",
+                    len(notification_list),
+                    self._server_name,
+                )
+                return notification_list
+
+            if hasattr(self.api_client, "get_notifications"):
+                response = await self.api_client.get_notifications(
+                    notification_type="UNREAD",
+                    offset=0,
+                    limit=200,
+                )
+                _LOGGER.debug(
+                    "Unread notifications API path=get_notifications shape=%s for %s",
+                    self._notification_response_shape(response),
+                    self._server_name,
+                )
+                notification_list = self._normalize_notification_response(response)
+                _LOGGER.debug(
+                    "Extracted %d unread notification records for %s via API",
+                    len(notification_list),
+                    self._server_name,
+                )
+                return notification_list
+        except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+            _LOGGER.error(
+                "Failed to poll unread notifications for %s: %s",
+                self._server_name,
+                err,
+            )
+            raise
+
+        _LOGGER.debug(
+            "Notification list API is not available on UnraidClient for %s",
+            self._server_name,
+        )
+        return []
+
+    @staticmethod
+    def _notification_field(notification: Any, key: str) -> Any:
+        """Return a notification field from model or dict payloads."""
+        if isinstance(notification, dict):
+            return notification.get(key)
+        return getattr(notification, key, None)
+
+    @staticmethod
+    def _to_notification_event_data(
+        notification: Any,
+    ) -> UnraidNotificationEventData | None:
+        """Convert unread notification payload to event data."""
+        notification_id = UnraidSystemCoordinator._notification_field(
+            notification, "id"
+        )
+        if not notification_id:
+            return None
+
+        timestamp = UnraidSystemCoordinator._notification_field(
+            notification, "timestamp"
+        )
+        if not timestamp:
+            return None
+
+        formatted_timestamp = UnraidSystemCoordinator._notification_field(
+            notification, "formattedTimestamp"
+        )
+        notification_type = UnraidSystemCoordinator._notification_field(
+            notification, "type"
+        )
+
+        return UnraidNotificationEventData(
+            event_type=NOTIFICATION_EVENT_TYPE_CREATED,
+            notification_id=str(notification_id),
+            title=str(
+                UnraidSystemCoordinator._notification_field(notification, "title") or ""
+            ),
+            subject=str(
+                UnraidSystemCoordinator._notification_field(notification, "subject")
+                or ""
+            ),
+            description=str(
+                UnraidSystemCoordinator._notification_field(notification, "description")
+                or ""
+            ),
+            timestamp=str(timestamp or ""),
+            formatted_timestamp=str(formatted_timestamp or ""),
+            importance=str(
+                UnraidSystemCoordinator._notification_field(notification, "importance")
+                or ""
+            ),
+            link=str(
+                UnraidSystemCoordinator._notification_field(notification, "link")
+                or ""
+            ),
+            notification_type=str(notification_type or "UNREAD"),
+        )
+
+    async def _async_process_notification_events(self) -> None:
+        """Detect new unread notifications and notify listeners."""
+        await self._async_load_seen_notification_ids()
+
+        notifications = await self._async_get_unread_notifications()
+        unread_by_id: dict[str, Any] = {}
+        for notification in notifications:
+            notification_id = self._notification_field(notification, "id")
+            notification_type = str(
+                self._notification_field(notification, "type") or ""
+            )
+            if not notification_id:
+                _LOGGER.warning(
+                    "Skipping notification without ID on %s", self._server_name
+                )
+                continue
+
+            if notification_type.upper() != "UNREAD":
+                continue
+
+            timestamp = self._notification_field(notification, "timestamp")
+            if not timestamp:
+                _LOGGER.warning(
+                    "Skipping notification %s without timestamp on %s",
+                    notification_id,
+                    self._server_name,
+                )
+                continue
+            unread_by_id[str(notification_id)] = notification
+
+        unread_ids = set(unread_by_id)
+        if not self._seen_notification_ids:
+            self._seen_notification_ids = set(unread_ids)
+            await self._async_save_seen_notification_ids()
+            return
+
+        unseen_ids = unread_ids - self._seen_notification_ids
+        if not unseen_ids:
+            return
+
+        unseen_notifications = [
+            unread_by_id[notification_id] for notification_id in unseen_ids
+        ]
+        unseen_notifications.sort(
+            key=lambda notification: str(
+                self._notification_field(notification, "timestamp") or ""
+            )
+        )
+
+        emitted_any = False
+        for notification in unseen_notifications:
+            event_data = self._to_notification_event_data(notification)
+            if event_data is None:
+                notification_id = self._notification_field(notification, "id")
+                _LOGGER.warning(
+                    "Skipping invalid notification payload on %s: id=%s",
+                    self._server_name,
+                    notification_id,
+                )
+                continue
+
+            try:
+                self._async_notify_event_listeners(event_data)
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to emit notification event for %s on %s",
+                    event_data.notification_id,
+                    self._server_name,
+                )
+                continue
+
+            _LOGGER.info(
+                "Emitted Unraid notification event %s (%s) at %s",
+                event_data.notification_id,
+                event_data.title,
+                event_data.timestamp,
+            )
+            self._seen_notification_ids.add(event_data.notification_id)
+            emitted_any = True
+
+        if emitted_any:
+            await self._async_save_seen_notification_ids()
 
     async def _query_optional_docker(self) -> list[DockerContainer]:
         """Query Docker containers (fails gracefully if Docker not enabled)."""
@@ -266,6 +610,19 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 self._previously_unavailable = False
 
             _LOGGER.debug("System data update completed successfully")
+
+            try:
+                await self._async_process_notification_events()
+            except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+                _LOGGER.debug(
+                    "Skipping notification event processing due to API issue: %s",
+                    err,
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected notification event processing failure on %s",
+                    self._server_name,
+                )
 
             return UnraidSystemData(
                 info=info,
