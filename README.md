@@ -14,9 +14,9 @@
 
 A Home Assistant custom integration for monitoring and controlling Unraid servers via the official GraphQL API.
 
-> **Note**: This integration requires **Unraid 7.2.0 or later** which includes the GraphQL API.
+> **Note**: This integration requires the **Unraid GraphQL API v4.31.1 or later**. The API can be updated independently of the Unraid OS version by installing the **Unraid Connect** plugin from the Unraid Community Applications store.
 >
-> **Important**: This integration requires the **latest version** of the Unraid GraphQL API. If you encounter issues, install the **Unraid Connect** plugin from the Unraid Community Applications store — it automatically keeps the GraphQL API up to date. Many reported issues are resolved simply by updating to the latest API version.
+> **Important**: If you encounter issues, ensure you have the **latest version** of the Unraid GraphQL API installed via the Unraid Connect plugin. Many reported issues are resolved simply by updating to the latest API version.
 >
 > ⚠️ **Migration Notice**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with **2025.12.0**, this integration has been completely rebuilt to use Unraid's official GraphQL API. **There is no direct migration or upgrade path** from SSH to GraphQL - you will need to remove the old integration and set up fresh with a new API key. Users who prefer the SSH-based integration can continue using [release 2025.06.11](https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.06.11).
 
@@ -81,7 +81,7 @@ I encourage users to check out **[Unraid Management Agent integration](https://w
 ## Requirements
 
 - **Home Assistant**: 2025.12.0 or later
-- **Unraid Server**: 7.2.0 or later with the **latest GraphQL API** (install the [Unraid Connect](https://unraid.net/connect) plugin to stay up to date)
+- **Unraid Server**: With **GraphQL API v4.31.1 or later** (install the [Unraid Connect](https://unraid.net/connect) plugin to stay up to date)
 - **Unraid API Key**: Generated in Unraid settings
 
 ### Manual Installation
@@ -205,7 +205,7 @@ Entities are automatically created when services become available.
 - **Verify API Key**: Ensure the key is valid and has appropriate permissions
 - **Network Access**: Confirm Home Assistant can reach the Unraid server
 - **Firewall**: Ensure HTTPS port (443) is accessible
-- **Unraid Version**: Requires 7.2.0+ with the latest GraphQL API (install Unraid Connect plugin to update)
+- **Unraid API Version**: Requires GraphQL API v4.31.1+ (install the Unraid Connect plugin to update)
 
 ### Missing Entities
 
@@ -241,7 +241,7 @@ If you installed via HACS, you can also uninstall from HACS after removing the i
 
 ## Known Limitations
 
-- **Unraid 7.2+ Required**: This integration uses the GraphQL API which was introduced in Unraid 7.2.0. The latest API version is always required — install the Unraid Connect plugin to keep it updated
+- **GraphQL API Required**: This integration requires the Unraid GraphQL API v4.31.1 or later. The API can be updated independently of the Unraid OS version — install the Unraid Connect plugin to keep it updated
 - **No Network Discovery**: Unraid servers must be manually configured (no SSDP/mDNS discovery)
 - **Disk SMART Data**: SMART queries can be slow on large arrays; storage polling is less frequent to compensate
 - **Container/VM Actions**: Start/stop operations may take up to 60 seconds to complete

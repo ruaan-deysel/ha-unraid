@@ -156,7 +156,7 @@ Key patterns:
 
 - Steps: `user` → `reauth_confirm` → `reconfigure`
 - SSL auto-detection: Try HTTPS first, fall back to HTTP on `UnraidSSLError`
-- Version checking: call `api_client.check_compatibility()` (requires Unraid `7.2.0+` / GraphQL API `v4.21.0+`)
+- Version checking: API version from `get_server_info()` compared against `MIN_API_VERSION` (requires GraphQL API `v4.31.1+`; no Unraid OS version requirement — API upgradeable via Connect plugin)
 - Options flow: `OptionsFlowWithReload` for UPS capacity/power settings
 - Unique ID: server UUID from `api_client.get_server_info()`
 

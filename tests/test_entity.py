@@ -92,7 +92,7 @@ def test_base_entity_creation() -> None:
             "manufacturer": "Lime Technology",
             "model": "Unraid 7.2.0",
             "serial_number": "ABC123",
-            "sw_version": "7.2.0",
+            "sw_version": "7.2.4",
             "hw_version": "1.0",
             "configuration_url": "https://tower.local",
         },
@@ -109,7 +109,7 @@ def test_base_entity_creation() -> None:
     assert device_info["manufacturer"] == "Lime Technology"
     assert device_info["model"] == "Unraid 7.2.0"
     assert device_info["serial_number"] == "ABC123"
-    assert device_info["sw_version"] == "7.2.0"
+    assert device_info["sw_version"] == "7.2.4"
     assert device_info["hw_version"] == "1.0"
     assert device_info["configuration_url"] == "https://tower.local"
 

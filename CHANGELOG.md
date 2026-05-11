@@ -7,7 +7,25 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-## [2026.4.0] - 2026-04-11
+## [2026.4.1] - 2026-04-15
+
+### Changed
+
+- **Updated unraid-api to v1.10.0**: Includes new `get_system_metrics_safe()` method that omits temperature sensor queries to prevent waking sleeping disks ([#50](https://github.com/ruaan-deysel/unraid-api/issues/50))
+- **Removed Unraid OS Version Requirement**: The integration now only checks the GraphQL API version (v4.31.1+), not the Unraid OS version. Users can run any Unraid OS version as long as the API is updated via the Unraid Connect plugin ([#217](https://github.com/ruaan-deysel/ha-unraid/issues/217))
+
+### Fixed
+
+- **Disks Waking from Standby Every 30 Seconds**: Fixed system coordinator polling `metrics.temperature.sensors` via `get_system_metrics()` which triggers smartctl reads and wakes sleeping/standby disks ([#211](https://github.com/ruaan-deysel/ha-unraid/issues/211), [#206](https://github.com/ruaan-deysel/ha-unraid/issues/206)) — now uses `get_system_metrics_safe()` from unraid-api v1.10.0 which omits the temperature block entirely. CPU temperature remains available via `info.cpu.packages.temp`
+- **Misleading "Unsupported Version" Error Message**: Fixed config flow error message showing outdated minimum version requirements (7.2.0 / API v4.21.0) that did not match the actual library-enforced minimums (7.2.4 / API v4.31.1), causing confusion for users on Unraid 7.2.3 or earlier ([#217](https://github.com/ruaan-deysel/ha-unraid/issues/217))
+
+### Removed
+
+- **Array Updates WebSocket Subscription**: Removed `subscribe_array_updates` WebSocket subscription that triggered storage coordinator refreshes on array state changes — these refreshes could wake spun-down disks ([#211](https://github.com/ruaan-deysel/ha-unraid/issues/211))
+- **Parity History WebSocket Subscription**: Removed `subscribe_parity_history` WebSocket subscription that triggered storage coordinator refreshes on parity status changes — parity status is still available via the 5-minute storage coordinator poll
+- **System Temperature Sensors**: Hardware temperature sensors (motherboard, chipset) from `metrics.temperature.sensors` are no longer created — these required smartctl reads that wake sleeping disks. Per-disk temperatures from the storage coordinator (5-minute poll, cached data) remain available
+
+## [2026.4.0] - 2026-04-14
 
 ### Added
 
@@ -300,7 +318,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.0...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.1...HEAD
+[2026.4.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.0...v2026.4.1
 [2026.4.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.2...v2026.4.0
 [2026.3.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.1...v2026.3.2
 [2026.3.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.0...v2026.3.1

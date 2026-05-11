@@ -22,17 +22,17 @@ dependencies = [
     "homeassistant>=2026.4.2",
     "aiohttp>=3.9.0",
     "pydantic>=2.0.0",
-    "unraid-api>=1.9.1",
+    "unraid-api>=1.10.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # Linting and formatting
-    "ruff==0.15.9",
-    "pre-commit>=4.0.0",
+    "ruff==0.15.12",
+    "pre-commit>=4.6.0",
 
     # Testing
-    "pytest>=9.0.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-homeassistant-custom-component>=0.13.322",
@@ -40,7 +40,7 @@ dev = [
     "syrupy>=5.0.0",
 
     # Type checking
-    "mypy>=1.13.0",
+    "mypy>=2.0.0",
 
     # Utilities
     "colorlog>=6.10.0",

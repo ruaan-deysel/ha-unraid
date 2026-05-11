@@ -5010,7 +5010,7 @@ def test_unraidversionsensor_attributes() -> None:
         uuid="test-uuid",
         hostname="tower",
         sw_version="7.2.2",
-        api_version="4.29.2",
+        api_version="4.31.1",
         os_arch="x86_64",
     )
 
@@ -5021,7 +5021,7 @@ def test_unraidversionsensor_attributes() -> None:
     )
 
     attrs = sensor.extra_state_attributes
-    assert attrs["api_version"] == "4.29.2"
+    assert attrs["api_version"] == "4.31.1"
     assert attrs["architecture"] == "x86_64"
 
 

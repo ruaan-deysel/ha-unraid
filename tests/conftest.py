@@ -78,14 +78,14 @@ def make_server_info(**kwargs: Any) -> ServerInfo:
     defaults = {
         "uuid": "test-uuid-123",
         "hostname": "tower",
-        "sw_version": "7.2.0",
-        "api_version": "4.29.2",
+        "sw_version": "7.2.4",
+        "api_version": "4.31.1",
         "manufacturer": "Lime Technology",
         "serial_number": "12345",
         "hw_manufacturer": "ASUS",
         "hw_model": "Pro WS",
         "os_distro": "Unraid",
-        "os_release": "7.2.0",
+        "os_release": "7.2.4",
         "os_arch": "x86_64",
         "license_type": "Pro",
         "cpu_brand": "AMD Ryzen 7",
@@ -310,19 +310,16 @@ def create_mock_unraid_client(
 
     # Version (returns VersionInfo model)
     _api_ver = (
-        server_info.api_version if server_info and server_info.api_version else "4.29.2"
+        server_info.api_version if server_info and server_info.api_version else "4.31.1"
     )
     _unraid_ver = (
-        server_info.sw_version if server_info and server_info.sw_version else "7.2.0"
+        server_info.sw_version if server_info and server_info.sw_version else "7.2.4"
     )
     client.get_version = AsyncMock(
         return_value=VersionInfo(api=_api_ver, unraid=_unraid_ver)
     )
 
-    # Compatibility check (returns VersionInfo model)
-    client.check_compatibility = AsyncMock(
-        return_value=VersionInfo(api=_api_ver, unraid=_unraid_ver)
-    )
+    # Config flow checks API version directly via get_server_info()
 
     # System metrics (returns SystemMetrics model)
     default_metrics = SystemMetrics(
@@ -333,6 +330,9 @@ def create_mock_unraid_client(
         uptime=86400,
     )
     client.get_system_metrics = AsyncMock(
+        return_value=system_metrics or default_metrics
+    )
+    client.get_system_metrics_safe = AsyncMock(
         return_value=system_metrics or default_metrics
     )
 

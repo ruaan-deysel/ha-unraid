@@ -55,8 +55,8 @@ def mock_config_entry(mock_coordinator):
             "name": "tower",
             "manufacturer": "Supermicro",
             "model": "X11SSH-F",
-            "sw_version": "7.2.0",
-            "api_version": "4.29.2",
+            "sw_version": "7.2.4",
+            "api_version": "4.31.1",
             "license_type": "Pro",
         },
     )
@@ -75,8 +75,8 @@ async def test_diagnostics_with_full_data(mock_hass, mock_config_entry):
     assert result["server_info"]["hostname"] == "**REDACTED**"
     assert result["server_info"]["manufacturer"] == "Supermicro"
     assert result["server_info"]["model"] == "X11SSH-F"
-    assert result["server_info"]["sw_version"] == "7.2.0"
-    assert result["server_info"]["api_version"] == "4.29.2"
+    assert result["server_info"]["sw_version"] == "7.2.4"
+    assert result["server_info"]["api_version"] == "4.31.1"
     assert result["server_info"]["license_type"] == "Pro"
     assert result["system_coordinator"]["last_update_success"] is True
     assert result["storage_coordinator"]["last_update_success"] is True
