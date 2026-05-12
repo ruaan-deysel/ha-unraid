@@ -1001,9 +1001,7 @@ async def test_infra_coordinator_fetch_success(
     mock_api_client.typed_get_connect.assert_called_once()
     mock_api_client.typed_get_remote_access.assert_called_once()
     mock_api_client.typed_get_vars.assert_called_once()
-    mock_api_client.query.assert_called_once_with(
-        "query { installedUnraidPlugins }"
-    )
+    mock_api_client.query.assert_called_once_with("query { installedUnraidPlugins }")
     mock_api_client.typed_get_network.assert_called_once()
 
 

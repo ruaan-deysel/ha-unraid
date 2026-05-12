@@ -45,9 +45,7 @@ async def async_get_config_entry_diagnostics(
         entity_counts["has_boot"] = storage_data.boot is not None
     if infra_data:
         entity_counts["plugins"] = (
-            len(infra_data.installed_plugins)
-            if infra_data.installed_plugins
-            else 0
+            len(infra_data.installed_plugins) if infra_data.installed_plugins else 0
         )
 
     # Build diagnostics with redaction of sensitive identifiers
