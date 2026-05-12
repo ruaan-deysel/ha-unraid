@@ -47,7 +47,9 @@ async def test_notifications_event_entity_subscribes_and_unsubscribes(
     await entity.async_added_to_hass()
 
     mock_system_coordinator.async_add_event_listener.assert_called_once()
-    entity.async_on_remove.assert_called_once()
+    # async_on_remove is called twice: once by CoordinatorEntity (parent class)
+    # for the coordinator listener, and once by this entity for the event listener
+    assert entity.async_on_remove.call_count == 2
 
 
 @pytest.mark.asyncio

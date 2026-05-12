@@ -10,7 +10,7 @@
 - **Class prefix**: `Unraid`
 - **Code path**: `custom_components/unraid/`
 - **Test path**: `tests/`
-- **Python**: 3.13+ | **HA**: 2026.4.1+ | **Dep**: `unraid-api>=1.6.0`
+- **Python**: 3.13+ | **HA**: 2026.5.0+ | **Dep**: `unraid-api>=1.10.0`
 - **Platforms**: `sensor`, `binary_sensor`, `switch`, `button`
 - **iot_class**: `local_polling`
 

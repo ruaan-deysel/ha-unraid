@@ -489,14 +489,14 @@ async def test_setup_entry_builds_configuration_url_http_when_ssl_disabled(
     mock_unraid_client_factory: type,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test setup builds configuration URL with http when SSL is disabled."""
+    """Test setup normalizes legacy ssl=False to ssl=True, ignore_ssl=True."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
         data={
             CONF_HOST: "192.168.1.100",
             CONF_API_KEY: "test-api-key",
-            CONF_SSL: False,  # SSL disabled
+            CONF_SSL: False,  # SSL disabled (legacy format)
         },
         unique_id="test-uuid",
     )
@@ -535,8 +535,11 @@ async def test_setup_entry_builds_configuration_url_http_when_ssl_disabled(
         mock_session.return_value = MagicMock()
         await async_setup_entry(hass, entry)
 
-    # Configuration URL should be built from lan_ip with http (ssl=False)
-    assert entry.runtime_data.server_info["configuration_url"] == "http://192.168.1.100"
+    # Legacy ssl=False is normalized to ssl=True with ignore_ssl=True
+    # Configuration URL should use HTTPS
+    assert (
+        entry.runtime_data.server_info["configuration_url"] == "https://192.168.1.100"
+    )
 
 
 async def test_setup_entry_uses_local_url_when_available(

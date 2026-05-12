@@ -1118,18 +1118,17 @@ class InstalledPluginsSensor(UnraidSensorEntity):
     def native_value(self) -> int | None:
         """Return the number of installed plugins."""
         data: UnraidInfraData | None = self.coordinator.data
-        if data is None or data.plugins is None:
+        if data is None:
             return None
-        return len(data.plugins)
+        return len(data.installed_plugins)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return plugin details as extra attributes."""
         data: UnraidInfraData | None = self.coordinator.data
-        if data is None or not data.plugins:
+        if data is None or not data.installed_plugins:
             return {}
-        plugins_list = [{"name": p.name, "version": p.version} for p in data.plugins]
-        return {"plugins": plugins_list}
+        return {"plugins": data.installed_plugins}
 
 
 class NetworkAccessSensor(UnraidSensorEntity):

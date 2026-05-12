@@ -36,7 +36,6 @@ from unraid_api.models import (
     NotificationOverview,
     ParityCheck,
     ParityHistoryEntry,
-    Plugin,
     Registration,
     RemoteAccess,
     Service,
@@ -69,6 +68,7 @@ class UnraidSystemData:
     ups_devices: list[UPSDevice] = field(default_factory=list)
     notification_overview: NotificationOverview | None = None
     notifications_unread: int = 0
+    mover_active: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -176,6 +176,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         )
         self._seen_notification_ids: set[str] = set()
         self._seen_ids_loaded = False
+        self._notification_ids_baselined = False
 
     def async_add_event_listener(
         self,
@@ -304,7 +305,8 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                     limit=200,
                 )
                 _LOGGER.debug(
-                    "Unread notifications API path=typed_get_notifications shape=%s for %s",
+                    "Unread notifications API path=typed_get_notifications shape=%s"
+                    " for %s",
                     self._notification_response_shape(response),
                     self._server_name,
                 )
@@ -400,8 +402,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 or ""
             ),
             link=str(
-                UnraidSystemCoordinator._notification_field(notification, "link")
-                or ""
+                UnraidSystemCoordinator._notification_field(notification, "link") or ""
             ),
             notification_type=str(notification_type or "UNREAD"),
         )
@@ -437,8 +438,9 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             unread_by_id[str(notification_id)] = notification
 
         unread_ids = set(unread_by_id)
-        if not self._seen_notification_ids:
+        if not self._notification_ids_baselined:
             self._seen_notification_ids = set(unread_ids)
+            self._notification_ids_baselined = True
             await self._async_save_seen_notification_ids()
             return
 
@@ -519,6 +521,19 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             _LOGGER.debug("UPS data not available: %s", err)
             return []
 
+    async def _query_optional_mover_status(self) -> bool | None:
+        """Query mover active status (fails gracefully)."""
+        try:
+            vars_data = await self.api_client.typed_get_vars()
+            if vars_data is None:
+                return None
+            return vars_data.share_mover_active
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+            _LOGGER.debug("Mover status data not available: %s", err)
+            return None
+
     # Action wrappers for entity control operations
     async def async_start_container(self, container_id: str) -> None:
         """Start a Docker container."""
@@ -596,10 +611,11 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             )
 
             # Phase 2: Optional services — run concurrently; each fails gracefully
-            containers, vms, ups_devices = await asyncio.gather(
+            containers, vms, ups_devices, mover_active = await asyncio.gather(
                 self._query_optional_docker(),
                 self._query_optional_vms(),
                 self._query_optional_ups(),
+                self._query_optional_mover_status(),
             )
 
             # Log recovery if previously unavailable
@@ -634,6 +650,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 notifications_unread=notifications.unread.total
                 if notifications.unread
                 else 0,
+                mover_active=mover_active,
             )
 
         except UnraidAuthenticationError as err:
@@ -804,7 +821,7 @@ class UnraidInfraData:
     connect: Connect | None = None
     remote_access: RemoteAccess | None = None
     vars: Vars | None = None
-    plugins: list[Plugin] = field(default_factory=list)
+    installed_plugins: list[str] = field(default_factory=list)
     network: Network | None = None
 
 
@@ -904,14 +921,36 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
             _LOGGER.debug("Vars data not available: %s", err)
             return None
 
-    async def _query_optional_plugins(self) -> list[Plugin]:
-        """Query plugins (fails gracefully)."""
+    async def _query_installed_plugins(self) -> list[str]:
+        """Query installed Unraid plugin filenames (fails gracefully)."""
         try:
-            return await self.api_client.typed_get_plugins()
+            result = await self.api_client.query("query { installedUnraidPlugins }")
+
+            payload: dict[str, Any] | None = None
+            if isinstance(result, dict):
+                data = result.get("data")
+                payload = data if isinstance(data, dict) else result
+            else:
+                data_attr = getattr(result, "data", None)
+                if isinstance(data_attr, dict):
+                    payload = data_attr
+
+            if payload is None:
+                return []
+
+            plugins = payload.get("installedUnraidPlugins", [])
+
+            if not isinstance(plugins, list):
+                return []
+
+            return [str(plugin) for plugin in plugins if plugin is not None]
         except UnraidAuthenticationError:
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
-            _LOGGER.debug("Plugins data not available: %s", err)
+            _LOGGER.debug("Installed plugins data not available: %s", err)
+            return []
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Installed plugins query failed: %s", err)
             return []
 
     async def _query_optional_network(self) -> Network | None:
@@ -945,7 +984,7 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
                 connect,
                 remote_access,
                 vars_data,
-                plugins,
+                installed_plugins,
                 network,
             ) = await asyncio.gather(
                 self._query_optional_services(),
@@ -954,9 +993,12 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
                 self._query_optional_connect(),
                 self._query_optional_remote_access(),
                 self._query_optional_vars(),
-                self._query_optional_plugins(),
+                self._query_installed_plugins(),
                 self._query_optional_network(),
             )
+
+            services = services or []
+            installed_plugins = installed_plugins or []
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:
@@ -967,9 +1009,10 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
                 self._previously_unavailable = False
 
             _LOGGER.debug(
-                "Infrastructure data update completed: %d services, %d plugins",
+                "Infrastructure data update completed: %d services, %d installed "
+                "plugins",
                 len(services),
-                len(plugins),
+                len(installed_plugins),
             )
 
             return UnraidInfraData(
@@ -979,7 +1022,7 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
                 connect=connect,
                 remote_access=remote_access,
                 vars=vars_data,
-                plugins=plugins,
+                installed_plugins=installed_plugins,
                 network=network,
             )
 

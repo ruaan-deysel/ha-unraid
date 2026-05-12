@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# script/upgrade: Upgrade all dependencies to their latest versions
+#
+# This script upgrades all project dependencies, ensuring the dev environment
+# always uses the latest versions of Home Assistant, the unraid-api, and other
+# dependencies. It's designed to be called on dev container startup to maintain
+# a fresh development environment.
+#
+# Usage:
+#   ./script/upgrade
+#
+# Examples:
+#   ./script/upgrade
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+# shellcheck source=script/.lib/output.sh
+source "$SCRIPT_DIR/.lib/output.sh"
+
+# Ensure virtual environment is activated
+if [[ -z ${VIRTUAL_ENV:-} ]]; then
+    log_header "Activating virtual environment"
+    # shellcheck source=/dev/null
+    if [[ -f "$HOME/.local/ha-venv/bin/activate" ]]; then
+        source "$HOME/.local/ha-venv/bin/activate"
+    elif [[ -f "$PWD/.local/ha-venv/bin/activate" ]]; then
+        source "$PWD/.local/ha-venv/bin/activate"
+    else
+        log_error "Virtual environment not found"
+        log_info "Run: ./script/setup/bootstrap"
+        exit 1
+    fi
+fi
+
+log_header "Upgrading all dependencies to latest versions"
+log_info "This ensures Home Assistant and other packages are always current"
+
+# Upgrade all core dependencies
+uv pip install --upgrade homeassistant aiohttp pydantic unraid-api
+
+# Upgrade all dev/test dependencies
+uv pip install --upgrade \
+    ruff \
+    pytest pytest-asyncio pytest-cov pytest-homeassistant-custom-component pytest-timeout syrupy \
+    mypy \
+    pre-commit \
+    colorlog
+
+log_success "All dependencies upgraded to latest versions"
+
+# Show updated Home Assistant version
+log_header "Verification"
+HA_VERSION=$(python -c "import importlib.metadata; print(importlib.metadata.version('homeassistant'))")
+log_info "Home Assistant version: $HA_VERSION"
+
+if [[ ! "$HA_VERSION" =~ ^202[6-9] ]]; then
+    log_warning "Warning: Home Assistant version appears to be outdated"
+fi
+
+if [[ ! "$HA_VERSION" =~ ^2026\.[5-9] ]] && [[ ! "$HA_VERSION" =~ ^202[7-9] ]]; then
+    log_warning "Warning: Home Assistant version is below 2026.5.0"
+    log_info "Current version: $HA_VERSION"
+fi

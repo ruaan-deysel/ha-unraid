@@ -18,7 +18,6 @@ from unraid_api.models import (
     NotificationOverviewCounts,
     ParityCheck,
     ParityHistoryEntry,
-    Plugin,
     Registration,
     SensorType,
     Share,
@@ -4606,11 +4605,11 @@ def test_installed_plugins_sensor_value() -> None:
     """Test InstalledPluginsSensor returns plugin count."""
     coordinator = MagicMock(spec=UnraidInfraCoordinator)
     plugins = [
-        Plugin(name="dynamix", version="2024.01.01"),
-        Plugin(name="unassigned.devices", version="2024.02.15"),
-        Plugin(name="compose.manager", version="2024.03.10"),
+        "dynamix.plg",
+        "unassigned.devices.plg",
+        "compose.manager.plg",
     ]
-    coordinator.data = make_infra_data(plugins=plugins)
+    coordinator.data = make_infra_data(installed_plugins=plugins)
     sensor = InstalledPluginsSensor(
         coordinator=coordinator,
         server_uuid="test-uuid",
@@ -4622,7 +4621,7 @@ def test_installed_plugins_sensor_value() -> None:
 def test_installed_plugins_sensor_no_plugins() -> None:
     """Test InstalledPluginsSensor returns 0 when no plugins."""
     coordinator = MagicMock(spec=UnraidInfraCoordinator)
-    coordinator.data = make_infra_data(plugins=[])
+    coordinator.data = make_infra_data(installed_plugins=[])
     sensor = InstalledPluginsSensor(
         coordinator=coordinator,
         server_uuid="test-uuid",
@@ -4647,10 +4646,10 @@ def test_installed_plugins_sensor_extra_attributes() -> None:
     """Test InstalledPluginsSensor extra state attributes."""
     coordinator = MagicMock(spec=UnraidInfraCoordinator)
     plugins = [
-        Plugin(name="dynamix", version="2024.01.01"),
-        Plugin(name="unassigned.devices", version="2024.02.15"),
+        "dynamix.plg",
+        "unassigned.devices.plg",
     ]
-    coordinator.data = make_infra_data(plugins=plugins)
+    coordinator.data = make_infra_data(installed_plugins=plugins)
     sensor = InstalledPluginsSensor(
         coordinator=coordinator,
         server_uuid="test-uuid",
@@ -4658,11 +4657,8 @@ def test_installed_plugins_sensor_extra_attributes() -> None:
     )
     attrs = sensor.extra_state_attributes
     assert len(attrs["plugins"]) == 2
-    assert attrs["plugins"][0] == {"name": "dynamix", "version": "2024.01.01"}
-    assert attrs["plugins"][1] == {
-        "name": "unassigned.devices",
-        "version": "2024.02.15",
-    }
+    assert attrs["plugins"][0] == "dynamix.plg"
+    assert attrs["plugins"][1] == "unassigned.devices.plg"
 
 
 def test_installed_plugins_sensor_extra_attributes_no_data() -> None:
@@ -4680,7 +4676,7 @@ def test_installed_plugins_sensor_extra_attributes_no_data() -> None:
 def test_installed_plugins_sensor_extra_attributes_empty() -> None:
     """Test InstalledPluginsSensor extra attributes when no plugins."""
     coordinator = MagicMock(spec=UnraidInfraCoordinator)
-    coordinator.data = make_infra_data(plugins=[])
+    coordinator.data = make_infra_data(installed_plugins=[])
     sensor = InstalledPluginsSensor(
         coordinator=coordinator,
         server_uuid="test-uuid",

@@ -23,7 +23,6 @@ from unraid_api.models import (
     NotificationOverviewCounts,
     ParityCheck,
     ParityHistoryEntry,
-    Plugin,
     Registration,
     RemoteAccess,
     ServerInfo,
@@ -123,6 +122,7 @@ def make_system_data(
     notifications_unread: int = 0,
     notification_overview: NotificationOverview | None = None,
     temperature: TemperatureMetrics | None = None,
+    mover_active: bool | None = None,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
     from datetime import datetime
@@ -164,6 +164,7 @@ def make_system_data(
         vms=vms or [],
         notification_overview=notification_overview,
         notifications_unread=notifications_unread,
+        mover_active=mover_active,
     )
 
 
@@ -215,7 +216,7 @@ def make_infra_data(
     connect: Connect | None = None,
     remote_access: RemoteAccess | None = None,
     vars_data: Vars | None = None,
-    plugins: list[Plugin] | None = None,
+    installed_plugins: list[str] | None = None,
 ) -> UnraidInfraData:
     """Create a UnraidInfraData instance for testing."""
     return UnraidInfraData(
@@ -225,7 +226,7 @@ def make_infra_data(
         connect=connect,
         remote_access=remote_access,
         vars=vars_data,
-        plugins=plugins or [],
+        installed_plugins=installed_plugins or [],
     )
 
 
@@ -291,7 +292,7 @@ def create_mock_unraid_client(
     connect: Connect | None = None,
     remote_access: RemoteAccess | None = None,
     vars_data: Vars | None = None,
-    plugins: list[Plugin] | None = None,
+    installed_plugins: list[str] | None = None,
 ) -> MagicMock:
     """
     Create a mock UnraidClient with configurable responses.
@@ -389,8 +390,10 @@ def create_mock_unraid_client(
     # Vars (returns Vars model)
     client.typed_get_vars = AsyncMock(return_value=vars_data)
 
-    # Plugins (returns list of Plugin models)
-    client.typed_get_plugins = AsyncMock(return_value=plugins or [])
+    # Installed plugins (returns list of plugin filenames via raw GraphQL query)
+    client.query = AsyncMock(
+        return_value={"installedUnraidPlugins": installed_plugins or []}
+    )
 
     # Network (returns Network model)
     client.typed_get_network = AsyncMock(return_value=None)

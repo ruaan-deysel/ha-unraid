@@ -5,7 +5,7 @@
     "ghcr.io/devcontainers-extra/features/uv:1": {},
     "ghcr.io/devcontainers/features/node:2": {}
   },
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && ./script/setup",
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && ./script/setup && ./script/upgrade",
   "forwardPorts": [8123],
   "customizations": {
     "vscode": {

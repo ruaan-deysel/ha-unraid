@@ -1581,14 +1581,12 @@ def test_container_update_available_attributes():
 # =============================================================================
 
 
-def test_mover_active_init(mock_infra_coordinator):
+def test_mover_active_init(mock_system_coordinator):
     """Test MoverActiveBinarySensor initialization."""
-    mock_infra_coordinator.data = make_infra_data(
-        vars_data=Vars(share_mover_active=False)
-    )
+    mock_system_coordinator.data = make_system_data(mover_active=False)
 
     sensor = MoverActiveBinarySensor(
-        coordinator=mock_infra_coordinator,
+        coordinator=mock_system_coordinator,
         server_uuid="test-uuid",
         server_name="tower",
     )
@@ -1598,14 +1596,12 @@ def test_mover_active_init(mock_infra_coordinator):
     assert sensor._attr_device_class == BinarySensorDeviceClass.RUNNING
 
 
-def test_mover_active_is_on(mock_infra_coordinator):
+def test_mover_active_is_on(mock_system_coordinator):
     """Test is_on returns True when mover is active."""
-    mock_infra_coordinator.data = make_infra_data(
-        vars_data=Vars(share_mover_active=True)
-    )
+    mock_system_coordinator.data = make_system_data(mover_active=True)
 
     sensor = MoverActiveBinarySensor(
-        coordinator=mock_infra_coordinator,
+        coordinator=mock_system_coordinator,
         server_uuid="test-uuid",
         server_name="tower",
     )
@@ -1613,14 +1609,12 @@ def test_mover_active_is_on(mock_infra_coordinator):
     assert sensor.is_on is True
 
 
-def test_mover_active_is_off(mock_infra_coordinator):
+def test_mover_active_is_off(mock_system_coordinator):
     """Test is_on returns False when mover is idle."""
-    mock_infra_coordinator.data = make_infra_data(
-        vars_data=Vars(share_mover_active=False)
-    )
+    mock_system_coordinator.data = make_system_data(mover_active=False)
 
     sensor = MoverActiveBinarySensor(
-        coordinator=mock_infra_coordinator,
+        coordinator=mock_system_coordinator,
         server_uuid="test-uuid",
         server_name="tower",
     )
@@ -1628,12 +1622,12 @@ def test_mover_active_is_off(mock_infra_coordinator):
     assert sensor.is_on is False
 
 
-def test_mover_active_none_data(mock_infra_coordinator):
+def test_mover_active_none_data(mock_system_coordinator):
     """Test is_on returns None when coordinator data is None."""
-    mock_infra_coordinator.data = None
+    mock_system_coordinator.data = None
 
     sensor = MoverActiveBinarySensor(
-        coordinator=mock_infra_coordinator,
+        coordinator=mock_system_coordinator,
         server_uuid="test-uuid",
         server_name="tower",
     )
@@ -1641,12 +1635,12 @@ def test_mover_active_none_data(mock_infra_coordinator):
     assert sensor.is_on is None
 
 
-def test_mover_active_no_vars(mock_infra_coordinator):
-    """Test is_on returns None when vars is None."""
-    mock_infra_coordinator.data = make_infra_data(vars_data=None)
+def test_mover_active_unknown_state(mock_system_coordinator):
+    """Test is_on returns None when mover state is unknown."""
+    mock_system_coordinator.data = make_system_data(mover_active=None)
 
     sensor = MoverActiveBinarySensor(
-        coordinator=mock_infra_coordinator,
+        coordinator=mock_system_coordinator,
         server_uuid="test-uuid",
         server_name="tower",
     )

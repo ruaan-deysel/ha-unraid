@@ -48,6 +48,11 @@ sleep 1  # Give processes time to terminate
 # Uses minimal mode to avoid deleting useful caches
 "$SCRIPT_DIR/clean" --minimal
 
+# Upgrade dependencies to latest versions
+# This ensures Home Assistant and all dependencies are always current
+log_header "Checking for dependency updates"
+"$SCRIPT_DIR/upgrade"
+
 # Create config dir if not present
 if [[ ! -d ${PWD}/config ]]; then
     mkdir -p "${PWD}/config"

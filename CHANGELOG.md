@@ -7,6 +7,18 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.5.0] - 2026-05-12
+
+### Added
+
+- **Unraid Notification Events** ([#232](https://github.com/ruaan-deysel/ha-unraid/pull/232)): New Home Assistant event entity for Unraid notifications. Exposes notification details (title, subject, description, timestamp, importance, type, link, ID) as event attributes. Now you can create Home Assistant automations that trigger on Unraid notifications. Huge thanks to **@DrBlokmeister** for this contribution! 🎉
+
+### Fixed
+
+- **SSL/TLS Certificate Verification for Self-Signed Certificates** ([#223](https://github.com/ruaan-deysel/ha-unraid/pull/223)): Fixed connection issues with Unraid servers using self-signed certificates. Implemented `ignore_ssl` configuration flag to separate HTTPS transport from certificate verification, with automatic fallback when initial certificate validation fails. Maintains backward compatibility with existing configurations. Huge thanks to **@DrBlokmeister** for this contribution! 🎉
+- **Plugin Sensor Count Incorrect** ([#221](https://github.com/ruaan-deysel/ha-unraid/issues/221)): Fixed `sensor.unraid_plugins` reporting only API module plugins (often `1`) instead of total installed Unraid plugins. The sensor now uses `installedUnraidPlugins` from GraphQL and reports the correct installed plugin count.
+- **Mover Status Stale / Incorrect** ([#226](https://github.com/ruaan-deysel/ha-unraid/issues/226)): Fixed `binary_sensor.mover_active` showing stale "not running" state by moving mover-status polling to the 30-second system coordinator cadence (from the 15-minute infrastructure cadence), so Home Assistant status now matches Unraid more closely.
+
 ## [2026.4.1] - 2026-04-15
 
 ### Changed

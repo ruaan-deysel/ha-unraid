@@ -16,6 +16,7 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PORT,
     CONF_SSL,
+    EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -276,6 +277,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
 
     # Start WebSocket subscriptions after platforms are set up
     await websocket_manager.async_start()
+
+    async def _async_stop_websocket_on_hass_stop(_event: object) -> None:
+        """Stop websocket tasks when Home Assistant is stopping."""
+        await websocket_manager.async_stop()
+
+    # Ensure websocket tasks are cleaned up even if entry unload is not invoked.
+    entry.async_on_unload(
+        hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP,
+            _async_stop_websocket_on_hass_stop,
+        )
+    )
 
     _LOGGER.info(
         "Unraid integration setup complete for %s",

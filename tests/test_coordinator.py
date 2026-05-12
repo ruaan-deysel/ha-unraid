@@ -180,7 +180,7 @@ def mock_api_client():
     client.typed_get_connect = AsyncMock(return_value=None)
     client.typed_get_remote_access = AsyncMock(return_value=None)
     client.typed_get_vars = AsyncMock(return_value=None)
-    client.typed_get_plugins = AsyncMock(return_value=[])
+    client.query = AsyncMock(return_value={"installedUnraidPlugins": []})
     client.typed_get_network = AsyncMock(return_value=None)
     client.typed_get_notifications = AsyncMock(return_value=[])
     client.close = AsyncMock()
@@ -335,6 +335,23 @@ async def test_system_coordinator_queries_all_endpoints(
     mock_api_client.typed_get_containers.assert_called_once()
     mock_api_client.typed_get_vms.assert_called_once()
     mock_api_client.typed_get_ups_devices.assert_called_once()
+    mock_api_client.typed_get_vars.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_sets_mover_active_from_vars(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test mover active state is populated from vars in system coordinator."""
+    mock_api_client.typed_get_vars.return_value = MagicMock(share_mover_active=True)
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert data.mover_active is True
 
 
 @pytest.mark.asyncio
@@ -977,14 +994,16 @@ async def test_infra_coordinator_fetch_success(
 
     assert data is not None
     assert data.services == []
-    assert data.plugins == []
+    assert data.installed_plugins == []
     mock_api_client.typed_get_services.assert_called_once()
     mock_api_client.typed_get_registration.assert_called_once()
     mock_api_client.typed_get_cloud.assert_called_once()
     mock_api_client.typed_get_connect.assert_called_once()
     mock_api_client.typed_get_remote_access.assert_called_once()
     mock_api_client.typed_get_vars.assert_called_once()
-    mock_api_client.typed_get_plugins.assert_called_once()
+    mock_api_client.query.assert_called_once_with(
+        "query { installedUnraidPlugins }"
+    )
     mock_api_client.typed_get_network.assert_called_once()
 
 
@@ -1752,8 +1771,6 @@ async def test_notification_events_emit_oldest_first(
     assert ordered_ids == ["older", "newer"]
 
 
-
-
 @pytest.mark.asyncio
 async def test_notification_events_none_response_ignored(
     hass, mock_api_client, mock_config_entry, caplog
@@ -1829,6 +1846,7 @@ async def test_notification_events_model_list_response_supported(
 
     assert listener.call_count == 1
     assert listener.call_args.args[0].notification_id == "new"
+
 
 @pytest.mark.asyncio
 async def test_notification_events_extract_from_dict_response_and_emit(

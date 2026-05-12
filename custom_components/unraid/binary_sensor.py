@@ -714,7 +714,7 @@ class ContainerUpdateAvailableBinarySensor(UnraidBinarySensorEntity):
 
 
 # =============================================================================
-# System Health Binary Sensors (from Vars via InfraCoordinator)
+# System Health Binary Sensors
 # =============================================================================
 
 
@@ -732,7 +732,7 @@ class MoverActiveBinarySensor(UnraidBinarySensorEntity):
 
     def __init__(
         self,
-        coordinator: UnraidInfraCoordinator,
+        coordinator: UnraidSystemCoordinator,
         server_uuid: str,
         server_name: str,
     ) -> None:
@@ -748,10 +748,10 @@ class MoverActiveBinarySensor(UnraidBinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return True if mover is active."""
-        data: UnraidInfraData | None = self.coordinator.data
-        if data is None or data.vars is None:
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
             return None
-        return data.vars.share_mover_active
+        return data.mover_active
 
 
 class DisksDisabledBinarySensor(UnraidBinarySensorEntity):
@@ -1130,10 +1130,14 @@ async def async_setup_entry(
         ]
     )
 
+    # Mover status is polled with the system coordinator for faster updates.
+    entities.append(
+        MoverActiveBinarySensor(system_coordinator, server_uuid, server_name)
+    )
+
     # Remaining system health sensors come from Vars via infrastructure coordinator.
     entities.extend(
         [
-            MoverActiveBinarySensor(infra_coordinator, server_uuid, server_name),
             SafeModeBinarySensor(infra_coordinator, server_uuid, server_name),
             ConfigValidBinarySensor(infra_coordinator, server_uuid, server_name),
             FilesystemsUnmountableBinarySensor(
