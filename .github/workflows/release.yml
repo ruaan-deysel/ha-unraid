@@ -182,11 +182,13 @@ jobs:
             NOTES="Release v$VERSION of the Unraid Home Assistant integration."
           else
             # Extract release notes for this version from CHANGELOG.md
-            # Look for the section between [VERSION] and the next version header
-
-            if grep -q "\[$VERSION\]" CHANGELOG.md; then
-              # Extract the section for this version
-              NOTES=$(awk "/\[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
+            # Look for content after "## [VERSION]" until the next version header.
+            if grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+              NOTES=$(awk -v ver="$VERSION" '
+                $0 ~ "^## \\[" ver "\\]" {in_section=1; next}
+                in_section && $0 ~ /^## \[/ {exit}
+                in_section {print}
+              ' CHANGELOG.md)
 
               if [ -z "$NOTES" ]; then
                 echo "⚠️  No release notes found for version $VERSION in CHANGELOG.md"
@@ -203,9 +205,11 @@ jobs:
           # Save to file (GitHub Actions doesn't handle multiline outputs well)
           echo "$NOTES" > build/RELEASE_NOTES.md
 
-          # Add link to full changelog
-          echo "" >> build/RELEASE_NOTES.md
-          echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> build/RELEASE_NOTES.md
+          # Add link to full changelog if not already present in NOTES
+          if ! grep -q "See \[CHANGELOG.md\](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details\." build/RELEASE_NOTES.md; then
+            echo "" >> build/RELEASE_NOTES.md
+            echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> build/RELEASE_NOTES.md
+          fi
 
           # Add installation instructions
           echo "" >> build/RELEASE_NOTES.md
