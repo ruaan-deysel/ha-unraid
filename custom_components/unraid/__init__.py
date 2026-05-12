@@ -115,11 +115,13 @@ def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dic
     }
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
-    """Set up Unraid from a config entry."""
-    host = entry.data[CONF_HOST]
-    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
-    api_key = entry.data[CONF_API_KEY]
+def _normalize_ssl_config(
+    hass: HomeAssistant,
+    entry: UnraidConfigEntry,
+    host: str,
+    port: int,
+) -> tuple[bool, bool, bool]:
+    """Normalize SSL settings and update legacy entries if needed."""
     use_ssl = entry.data.get(CONF_SSL, True)
     ignore_ssl = entry.data.get(CONF_IGNORE_SSL, False)
 
@@ -137,38 +139,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
             data={**entry.data, CONF_SSL: use_ssl, CONF_IGNORE_SSL: ignore_ssl},
         )
 
-    verify_ssl = not ignore_ssl
-    _LOGGER.debug(
-        "Starting runtime setup for %s:%s (ssl=%s, ignore_ssl=%s)",
-        host,
-        port,
-        use_ssl,
-        ignore_ssl,
-    )
+    return use_ssl, ignore_ssl, not ignore_ssl
 
-    # Get HA's aiohttp session for proper connection pooling
-    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
 
-    # Create API client with injected session (using unraid_api library >=1.5.0).
-    # The library handles SSL detection automatically via HTTP probe.
-    api_client = UnraidClient(
-        host=host,
-        http_port=port,
-        api_key=api_key,
-        verify_ssl=verify_ssl,
-        session=session,
-    )
-
-    # Test connection and get server info using library typed methods
+async def _async_connect_and_get_server_info(
+    hass: HomeAssistant,
+    api_client: UnraidClient,
+    host: str,
+    port: int,
+) -> ServerInfo:
+    """Validate connection and fetch server info with normalized errors."""
     try:
         await api_client.test_connection()
         info = await api_client.get_server_info()
         _LOGGER.debug("Initial connectivity test succeeded for %s:%s", host, port)
-        # Clear any previous auth repair issues on successful connection
         ir.async_delete_issue(hass, DOMAIN, REPAIR_AUTH_FAILED)
+        return info
     except UnraidAuthenticationError as err:
         await api_client.close()
-        # Create repair issue for auth failure
         ir.async_create_issue(
             hass,
             DOMAIN,
@@ -221,33 +209,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         msg = f"Unraid API error connecting to server {host}: {err}"
         raise ConfigEntryNotReady(msg) from err
 
-    # Build server info using helper function
-    server_info = _build_server_info(info, host, use_ssl)
-    server_name = server_info["name"]
 
-    # Create coordinators (use fixed internal intervals per HA Core requirements)
+def _create_coordinators(
+    hass: HomeAssistant,
+    api_client: UnraidClient,
+    server_name: str,
+    entry: UnraidConfigEntry,
+) -> tuple[
+    UnraidSystemCoordinator,
+    UnraidStorageCoordinator,
+    UnraidInfraCoordinator,
+]:
+    """Create integration coordinators."""
     system_coordinator = UnraidSystemCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
         config_entry=entry,
     )
-
     storage_coordinator = UnraidStorageCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
         config_entry=entry,
     )
-
     infra_coordinator = UnraidInfraCoordinator(
         hass=hass,
         api_client=api_client,
         server_name=server_name,
         config_entry=entry,
     )
+    return system_coordinator, storage_coordinator, infra_coordinator
 
-    # Fetch initial data
+
+async def _async_refresh_coordinators(
+    api_client: UnraidClient,
+    system_coordinator: UnraidSystemCoordinator,
+    storage_coordinator: UnraidStorageCoordinator,
+    infra_coordinator: UnraidInfraCoordinator,
+) -> None:
+    """Run initial refresh for all coordinators."""
     try:
         await system_coordinator.async_config_entry_first_refresh()
         await storage_coordinator.async_config_entry_first_refresh()
@@ -255,6 +256,58 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     except (ConfigEntryAuthFailed, ConfigEntryNotReady):
         await api_client.close()
         raise
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
+    """Set up Unraid from a config entry."""
+    host = entry.data[CONF_HOST]
+    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
+    api_key = entry.data[CONF_API_KEY]
+    use_ssl, ignore_ssl, verify_ssl = _normalize_ssl_config(hass, entry, host, port)
+    _LOGGER.debug(
+        "Starting runtime setup for %s:%s (ssl=%s, ignore_ssl=%s)",
+        host,
+        port,
+        use_ssl,
+        ignore_ssl,
+    )
+
+    # Get HA's aiohttp session for proper connection pooling
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
+
+    # Create API client with injected session (using unraid_api library >=1.5.0).
+    # The library handles SSL detection automatically via HTTP probe.
+    api_client = UnraidClient(
+        host=host,
+        http_port=port,
+        api_key=api_key,
+        verify_ssl=verify_ssl,
+        session=session,
+    )
+    info = await _async_connect_and_get_server_info(hass, api_client, host, port)
+
+    # Build server info using helper function
+    server_info = _build_server_info(info, host, use_ssl)
+    server_name = server_info["name"]
+
+    (
+        system_coordinator,
+        storage_coordinator,
+        infra_coordinator,
+    ) = _create_coordinators(
+        hass,
+        api_client,
+        server_name,
+        entry,
+    )
+
+    # Fetch initial data
+    await _async_refresh_coordinators(
+        api_client,
+        system_coordinator,
+        storage_coordinator,
+        infra_coordinator,
+    )
 
     # Store runtime data in config entry (HA 2024.4+ pattern)
     websocket_manager = UnraidWebSocketManager(
