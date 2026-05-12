@@ -23,6 +23,7 @@ from unraid_api.exceptions import (
 )
 
 from .const import (
+    CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_PORT,
@@ -52,7 +53,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._server_uuid: str | None = None
         self._server_hostname: str | None = None
-        self._use_ssl: bool = True  # Track whether SSL connection succeeded
+        self._use_ssl: bool = True  # HTTPS transport usage
+        self._ignore_ssl: bool = False  # TLS certificate verification disabled
 
     @staticmethod
     def async_get_options_flow(
@@ -112,11 +114,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title = self._server_hostname or user_input[CONF_HOST]
 
                 _LOGGER.info(
-                    "Creating config entry for %s (UUID: %s) port=%s ssl=%s",
+                    "Creating config entry for %s (UUID: %s) port=%s ssl=%s "
+                    "ignore_ssl=%s",
                     title,
                     unique_id,
                     user_input.get(CONF_PORT, DEFAULT_PORT),
                     self._use_ssl,
+                    self._ignore_ssl,
                 )
                 return self.async_create_entry(
                     title=title,
@@ -125,6 +129,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PORT: user_input.get(CONF_PORT, DEFAULT_PORT),
                         CONF_API_KEY: user_input[CONF_API_KEY],
                         CONF_SSL: self._use_ssl,
+                        CONF_IGNORE_SSL: self._ignore_ssl,
                     },
                     options={
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
@@ -188,6 +193,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Reset SSL state to default
         self._use_ssl = True
+        self._ignore_ssl = False
+        _LOGGER.debug(
+            "Starting connectivity test for %s:%s (ssl=%s, ignore_ssl=%s)",
+            host,
+            port,
+            self._use_ssl,
+            self._ignore_ssl,
+        )
 
         session = async_get_clientsession(self.hass, verify_ssl=True)
 
@@ -203,10 +216,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             await self._validate_connection(api_client, host)
+            _LOGGER.debug(
+                "Initial connectivity test succeeded for %s:%s "
+                "with TLS verification enabled",
+                host,
+                port,
+            )
         except SSLCertificateError as err:
             _LOGGER.debug(
-                "SSL verification failed for %s, retrying with verify_ssl=False: %s",
+                "Expected certificate verification failure for %s:%s; "
+                "retrying with verify_ssl=False: %s",
                 host,
+                port,
                 err,
             )
             await api_client.close()
@@ -221,14 +242,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await self._validate_connection(fallback_client, host)
                 # Success with SSL verification disabled
-                self._use_ssl = False
+                self._use_ssl = True
+                self._ignore_ssl = True
                 _LOGGER.info(
-                    "Connected to %s with self-signed cert (SSL verify disabled)",
+                    "Connected to %s with TLS verification disabled "
+                    "due to self-signed certificate",
                     host,
                 )
-            except CannotConnectError as fallback_err:
-                # Keep original failure reason if fallback also fails
-                raise err from fallback_err
+            except SSLCertificateError as fallback_err:
+                _LOGGER.debug(
+                    "Fallback retry with verify_ssl=False still failed certificate "
+                    "validation for %s:%s: %s",
+                    host,
+                    port,
+                    fallback_err,
+                )
+                msg = (
+                    f"Cannot connect to {host} - TLS certificate validation failed "
+                    "after fallback retry"
+                )
+                raise CannotConnectError(msg) from fallback_err
+            except (
+                InvalidAuthError,
+                CannotConnectError,
+                UnsupportedVersionError,
+            ) as fallback_err:
+                _LOGGER.debug(
+                    "Fallback retry with verify_ssl=False failed for %s:%s: %s",
+                    host,
+                    port,
+                    fallback_err,
+                )
+                raise fallback_err
             finally:
                 await fallback_client.close()
         except Exception:
@@ -356,7 +401,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 return self.async_update_reload_and_abort(
                     reauth_entry,
-                    data_updates={**user_input, CONF_SSL: self._use_ssl},
+                    data_updates={
+                        **user_input,
+                        CONF_SSL: self._use_ssl,
+                        CONF_IGNORE_SSL: self._ignore_ssl,
+                    },
                     reason="reauth_successful",
                 )
 
@@ -395,7 +444,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                     return self.async_update_reload_and_abort(
                         reconfigure_entry,
-                        data_updates={**user_input, CONF_SSL: self._use_ssl},
+                        data_updates={
+                            **user_input,
+                            CONF_SSL: self._use_ssl,
+                            CONF_IGNORE_SSL: self._ignore_ssl,
+                        },
                     )
 
                 except InvalidAuthError:

@@ -24,6 +24,7 @@ from unraid_api.models import ServerInfo, UPSDevice, VersionInfo
 
 from custom_components.unraid.config_flow import CannotConnectError, SSLCertificateError
 from custom_components.unraid.const import (
+    CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_PORT,
@@ -114,6 +115,7 @@ async def test_successful_connection(
         "port": DEFAULT_PORT,
         "api_key": "valid-api-key",
         "ssl": True,
+        "ignore_ssl": False,
     }
 
 
@@ -142,6 +144,7 @@ async def test_successful_connection_with_custom_port(
         "port": 8080,
         "api_key": "valid-api-key",
         "ssl": True,
+        "ignore_ssl": False,
     }
     mock_client_class.assert_called_with(
         host="unraid.local",
@@ -692,7 +695,8 @@ async def test_ssl_error_retries_with_verify_disabled(
     created_clients[1].close.assert_awaited_once()
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert result2["result"].unique_id == "test-uuid"
-    assert result2["data"]["ssl"] is False  # SSL verification disabled for self-signed
+    assert result2["data"]["ssl"] is True
+    assert result2["data"]["ignore_ssl"] is True
 
 
 async def test_non_ssl_connection_error_does_not_retry_with_verify_disabled(
@@ -724,6 +728,39 @@ async def test_non_ssl_connection_error_does_not_retry_with_verify_disabled(
         )
 
     assert call_count == 1
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"][CONF_HOST] == "cannot_connect"
+
+
+async def test_ssl_error_on_both_attempts_returns_cannot_connect(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test repeated SSL verification failures return cannot_connect (not unknown)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    call_count = 0
+
+    def create_client(**kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        mock_api = MagicMock()
+        mock_api.close = AsyncMock()
+        mock_api.test_connection = AsyncMock(
+            side_effect=SSLCertificateError("SSL certificate verify failed")
+        )
+        return mock_api
+
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient", side_effect=create_client
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "valid-key"},
+        )
+
+    assert call_count == 2
     assert result2["type"] is FlowResultType.FORM
     assert result2["errors"][CONF_HOST] == "cannot_connect"
 
@@ -900,6 +937,7 @@ async def test_reauth_flow_adds_ssl_flag_for_legacy_entries(
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "reauth_successful"
     assert entry.data[CONF_SSL] is True
+    assert entry.data[CONF_IGNORE_SSL] is False
 
 
 async def test_reauth_flow_updates_ssl_flag_when_cert_changes(
@@ -955,8 +993,8 @@ async def test_reauth_flow_updates_ssl_flag_when_cert_changes(
 
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "reauth_successful"
-    # SSL flag should be updated to False since cert verification failed
-    assert entry.data[CONF_SSL] is False
+    assert entry.data[CONF_SSL] is True
+    assert entry.data[CONF_IGNORE_SSL] is True
 
 
 async def test_reauth_flow_invalid_key(
@@ -1367,12 +1405,13 @@ async def test_reconfigure_flow_success(
     assert entry.data[CONF_HOST] == "192.168.1.100"
     assert entry.data[CONF_API_KEY] == "new-key"
     assert entry.data[CONF_SSL] is True
+    assert entry.data[CONF_IGNORE_SSL] is False
 
 
 async def test_reconfigure_flow_updates_ssl_flag_when_cert_changes(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test reconfigure flow clears SSL flag when SSL fallback succeeds."""
+    """Test reconfigure flow sets ignore_ssl when SSL fallback succeeds."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
@@ -1394,7 +1433,7 @@ async def test_reconfigure_flow_updates_ssl_flag_when_cert_changes(
         },
     )
 
-    # Simulate SSL error on first attempt and success on fallback without SSL.
+    # Simulate SSL error on first attempt and success with verify_ssl=False.
     mock_api_client.test_connection = AsyncMock(
         side_effect=[UnraidSSLError("SSL error"), True]
     )
@@ -1412,7 +1451,8 @@ async def test_reconfigure_flow_updates_ssl_flag_when_cert_changes(
     assert result2["reason"] == "reconfigure_successful"
     assert entry.data[CONF_HOST] == "192.168.1.100"
     assert entry.data[CONF_API_KEY] == "new-key"
-    assert entry.data[CONF_SSL] is False
+    assert entry.data[CONF_SSL] is True
+    assert entry.data[CONF_IGNORE_SSL] is True
 
 
 async def test_reconfigure_flow_connection_error(

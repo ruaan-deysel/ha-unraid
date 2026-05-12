@@ -17,7 +17,7 @@ from custom_components.unraid import (
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.unraid.const import DEFAULT_PORT, DOMAIN
+from custom_components.unraid.const import CONF_IGNORE_SSL, DEFAULT_PORT, DOMAIN
 
 # =============================================================================
 # Fixtures
@@ -126,6 +126,53 @@ async def test_setup_entry_connection_error(
         mock_session.return_value = MagicMock()
         with pytest.raises(ConfigEntryNotReady):
             await async_setup_entry(hass, mock_config_entry)
+
+
+async def test_setup_entry_normalizes_legacy_ssl_semantics(
+    hass: HomeAssistant,
+    mock_unraid_client: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test legacy ssl=False entries are normalized to ssl=True/ignore_ssl=True."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={
+            CONF_HOST: "192.168.1.100",
+            CONF_API_KEY: "test-api-key",
+            CONF_PORT: DEFAULT_PORT,
+            CONF_SSL: False,
+        },
+        options={},
+        unique_id="test-uuid-123",
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.unraid.UnraidSystemCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidStorageCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch("custom_components.unraid.async_get_clientsession") as mock_session,
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", return_value=None
+        ),
+    ):
+        mock_session.return_value = MagicMock()
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    assert entry.data[CONF_SSL] is True
+    assert entry.data[CONF_IGNORE_SSL] is True
+    mock_session.assert_called_with(hass, verify_ssl=False)
 
 
 async def test_setup_entry_captures_hardware_info(

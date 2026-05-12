@@ -31,6 +31,7 @@ from unraid_api.exceptions import (
 )
 
 from .const import (
+    CONF_IGNORE_SSL,
     DEFAULT_PORT,
     DOMAIN,
     REPAIR_AUTH_FAILED,
@@ -119,10 +120,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     api_key = entry.data[CONF_API_KEY]
     use_ssl = entry.data.get(CONF_SSL, True)
+    ignore_ssl = entry.data.get(CONF_IGNORE_SSL, False)
+
+    if CONF_IGNORE_SSL not in entry.data and use_ssl is False:
+        use_ssl = True
+        ignore_ssl = True
+        _LOGGER.debug(
+            "Applying legacy SSL compatibility normalization for %s:%s "
+            "(ssl=False without ignore_ssl): normalized to ssl=True, ignore_ssl=True",
+            host,
+            port,
+        )
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_SSL: use_ssl, CONF_IGNORE_SSL: ignore_ssl},
+        )
+
+    verify_ssl = not ignore_ssl
+    _LOGGER.debug(
+        "Starting runtime setup for %s:%s (ssl=%s, ignore_ssl=%s)",
+        host,
+        port,
+        use_ssl,
+        ignore_ssl,
+    )
 
     # Get HA's aiohttp session for proper connection pooling
-    # Use verify_ssl based on whether SSL connection was established
-    session = async_get_clientsession(hass, verify_ssl=use_ssl)
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
 
     # Create API client with injected session (using unraid_api library >=1.5.0).
     # The library handles SSL detection automatically via HTTP probe.
@@ -130,7 +154,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         host=host,
         http_port=port,
         api_key=api_key,
-        verify_ssl=use_ssl,
+        verify_ssl=verify_ssl,
         session=session,
     )
 
@@ -138,6 +162,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     try:
         await api_client.test_connection()
         info = await api_client.get_server_info()
+        _LOGGER.debug("Initial connectivity test succeeded for %s:%s", host, port)
         # Clear any previous auth repair issues on successful connection
         ir.async_delete_issue(hass, DOMAIN, REPAIR_AUTH_FAILED)
     except UnraidAuthenticationError as err:
@@ -153,18 +178,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
             translation_key="auth_failed",
             translation_placeholders={"host": host},
         )
+        _LOGGER.warning(
+            "Authentication failed for Unraid server %s:%s: %s",
+            host,
+            port,
+            err,
+        )
         msg = f"Authentication failed for Unraid server {host}"
         raise ConfigEntryAuthFailed(msg) from err
     except UnraidSSLError as err:
         await api_client.close()
+        _LOGGER.warning(
+            "TLS certificate validation failed for Unraid server %s:%s: %s. "
+            "If this server uses a self-signed certificate, reconfigure "
+            "the integration so certificate verification can be disabled "
+            "and persisted.",
+            host,
+            port,
+            err,
+        )
         msg = f"SSL certificate error connecting to Unraid server {host}: {err}"
         raise ConfigEntryNotReady(msg) from err
     except (UnraidConnectionError, UnraidTimeoutError) as err:
         await api_client.close()
+        _LOGGER.warning(
+            "Connection failed for Unraid server %s:%s: %s",
+            host,
+            port,
+            err,
+        )
         msg = f"Failed to connect to Unraid server: {err}"
         raise ConfigEntryNotReady(msg) from err
     except UnraidAPIError as err:
         await api_client.close()
+        _LOGGER.warning(
+            "API error connecting to Unraid server %s:%s: %s",
+            host,
+            port,
+            err,
+        )
         msg = f"Unraid API error connecting to server {host}: {err}"
         raise ConfigEntryNotReady(msg) from err
 
