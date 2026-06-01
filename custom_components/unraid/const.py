@@ -66,6 +66,7 @@ PLACEHOLDER_UUIDS: Final = frozenset(
 CONF_IGNORE_SSL: Final = "ignore_ssl"
 CONF_UPS_CAPACITY_VA: Final = "ups_capacity_va"
 CONF_UPS_NOMINAL_POWER: Final = "ups_nominal_power"
+CONF_ENABLE_CONTAINER_UPDATES: Final = "enable_container_updates"
 
 # =============================================================================
 # Default Values
@@ -73,14 +74,21 @@ CONF_UPS_NOMINAL_POWER: Final = "ups_nominal_power"
 DEFAULT_PORT: Final = 80  # HTTP port for Unraid GraphQL API
 DEFAULT_UPS_CAPACITY_VA: Final = 0  # 0 = informational only
 DEFAULT_UPS_NOMINAL_POWER: Final = 0  # 0 = disabled, user must set for UPS Power sensor
+DEFAULT_ENABLE_CONTAINER_UPDATES: Final = True  # create container update entities
 
 # =============================================================================
 # Polling Intervals (fixed per HA Core guidelines - not user-configurable)
 # Users can use homeassistant.update_entity service for custom refresh rates
 # =============================================================================
-SYSTEM_POLL_INTERVAL: Final = 30  # seconds - system metrics, Docker, VMs
+SYSTEM_POLL_INTERVAL: Final = 30  # seconds - system metrics, VMs, UPS, notifications
 STORAGE_POLL_INTERVAL: Final = 300  # seconds (5 minutes) - array, disks, SMART
 INFRA_POLL_INTERVAL: Final = 900  # seconds (15 minutes) - services, registration, cloud
+# Docker container listing is comparatively expensive on the Unraid server
+# (image-update checks and writable-layer size computation), so it is polled at
+# a slower cadence than the rest of the 30s system data to reduce periodic CPU
+# spikes on the server. Container control actions still refresh on demand via
+# UnraidSystemCoordinator.async_request_docker_refresh().
+DOCKER_POLL_INTERVAL: Final = 60  # seconds - Docker container list
 
 # =============================================================================
 # WebSocket Subscription Constants

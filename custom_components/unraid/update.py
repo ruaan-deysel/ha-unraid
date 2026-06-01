@@ -11,7 +11,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from unraid_api.exceptions import UnraidAPIError
 from unraid_api.models import DockerContainer
 
-from .const import DOMAIN
+from .const import (
+    CONF_ENABLE_CONTAINER_UPDATES,
+    DEFAULT_ENABLE_CONTAINER_UPDATES,
+    DOMAIN,
+)
 from .entity import UnraidBaseEntity
 
 if TYPE_CHECKING:
@@ -171,8 +175,10 @@ class DockerContainerUpdateEntity(UnraidBaseEntity, UpdateEntity):
         finally:
             self._is_updating = False
 
-        # Refresh coordinator data to pick up the updated container state
-        await self.coordinator.async_request_refresh()
+        # Refresh coordinator data to pick up the updated container state.
+        # Force a Docker re-fetch so the new state is reflected immediately
+        # rather than waiting for the throttled container poll.
+        await self.coordinator.async_request_docker_refresh()
 
 
 async def async_setup_entry(
@@ -182,6 +188,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up update entities."""
     _LOGGER.debug("Setting up Unraid update platform")
+
+    # Allow users to opt out of per-container update entities. The options flow
+    # reloads the entry on change, so toggling this re-runs platform setup.
+    if not entry.options.get(
+        CONF_ENABLE_CONTAINER_UPDATES, DEFAULT_ENABLE_CONTAINER_UPDATES
+    ):
+        _LOGGER.debug("Container update sensors disabled via options")
+        async_add_entities([])
+        return
 
     runtime_data = entry.runtime_data
     system_coordinator = runtime_data.system_coordinator

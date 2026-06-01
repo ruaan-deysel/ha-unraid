@@ -24,6 +24,7 @@ from unraid_api.models import ServerInfo, UPSDevice, VersionInfo
 
 from custom_components.unraid.config_flow import CannotConnectError, SSLCertificateError
 from custom_components.unraid.const import (
+    CONF_ENABLE_CONTAINER_UPDATES,
     CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
@@ -1171,10 +1172,10 @@ async def test_reauth_flow_unknown_error(
 # =============================================================================
 
 
-async def test_options_flow_aborts_without_ups(
+async def test_options_flow_shows_general_options_without_ups(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test options flow aborts when no UPS detected (no configurable options)."""
+    """Test options flow shows general options (toggle) even without a UPS."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
@@ -1186,9 +1187,13 @@ async def test_options_flow_aborts_without_ups(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    # Should abort with "no_options_available" when no UPS is detected
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options_available"
+    # The container-updates toggle is always shown, so the form no longer aborts
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    schema_key_names = [str(k) for k in result["data_schema"].schema]
+    assert CONF_ENABLE_CONTAINER_UPDATES in schema_key_names
+    assert CONF_UPS_CAPACITY_VA not in schema_key_names
+    assert CONF_UPS_NOMINAL_POWER not in schema_key_names
 
 
 async def test_options_flow_shows_ups_options_when_ups_detected(
@@ -1229,10 +1234,10 @@ async def test_options_flow_shows_ups_options_when_ups_detected(
     assert CONF_UPS_NOMINAL_POWER in schema_key_names
 
 
-async def test_options_flow_aborts_without_ups_2(
+async def test_options_flow_toggle_default_without_ups(
     hass: HomeAssistant, mock_setup_entry: None
 ) -> None:
-    """Test options flow aborts with no_options_available when no UPS is present."""
+    """Test the container-updates toggle defaults to enabled when no UPS is present."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="tower",
@@ -1244,9 +1249,14 @@ async def test_options_flow_aborts_without_ups_2(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    # Should abort since no UPS means no configurable options
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options_available"
+    # Form is shown (toggle is always available); toggle defaults to enabled
+    assert result["type"] is FlowResultType.FORM
+    toggle_marker = next(
+        k
+        for k in result["data_schema"].schema
+        if str(k) == CONF_ENABLE_CONTAINER_UPDATES
+    )
+    assert toggle_marker.default() is True
 
 
 async def test_options_flow_saves_ups_values(
@@ -1983,10 +1993,10 @@ async def test_reconfigure_parametrized_errors(
 # =============================================================================
 
 
-async def test_options_flow_aborts_without_ups_from_user_flow(
+async def test_options_flow_shows_general_options_from_user_flow(
     hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
 ) -> None:
-    """Test options flow aborts when no UPS is detected after initial setup."""
+    """Test options flow shows general options without UPS after initial setup."""
     with patch(
         "custom_components.unraid.config_flow.UnraidClient",
         return_value=mock_api_client,
@@ -2000,10 +2010,11 @@ async def test_options_flow_aborts_without_ups_from_user_flow(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     entry = result["result"]
 
-    # Test options flow - should abort without UPS (no configurable options)
+    # Options flow shows the container-updates toggle even without a UPS
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options_available"
+    assert result["type"] is FlowResultType.FORM
+    schema_key_names = [str(k) for k in result["data_schema"].schema]
+    assert CONF_ENABLE_CONTAINER_UPDATES in schema_key_names
 
 
 async def test_version_parsing_failure_rejected(

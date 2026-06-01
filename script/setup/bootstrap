@@ -130,6 +130,15 @@ uv pip install --upgrade homeassistant
 # GITHUB_ACTIONS is always set to "true" in GitHub Actions environments
 if [[ -d ".git" && -z "${GITHUB_ACTIONS:-}" ]]; then
     log_header "Installing pre-commit hooks"
+    # pre-commit refuses to install when core.hooksPath is set (commonly
+    # inherited from a global dotfiles gitconfig). If the configured path does
+    # not exist here, clear it for this repository so hooks install into
+    # .git/hooks instead of being silently ignored.
+    hooks_path="$(git config --get core.hooksPath || true)"
+    if [[ -n "$hooks_path" && ! -d "$hooks_path" ]]; then
+        log_info "Clearing unusable core.hooksPath ($hooks_path) for this repository"
+        git config --local core.hooksPath ""
+    fi
     set +e
     pre-commit install || log_warning "Failed to install pre-commit hooks (pre-commit may not be installed)"
     set -e

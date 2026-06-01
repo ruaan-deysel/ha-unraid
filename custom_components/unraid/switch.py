@@ -192,7 +192,7 @@ class DockerContainerSwitch(UnraidSwitchEntity):
                         "error": str(err),
                     },
                 ) from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_docker_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop container."""
@@ -215,7 +215,7 @@ class DockerContainerSwitch(UnraidSwitchEntity):
                         "error": str(err),
                     },
                 ) from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_docker_refresh()
 
 
 class VirtualMachineSwitch(UnraidSwitchEntity):

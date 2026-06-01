@@ -1,6 +1,6 @@
 [project]
 name = "ha-unraid"
-version = "2026.5.0"
+version = "2026.6.0"
 description = "Home Assistant custom integration for Unraid servers"
 readme = "README.md"
 requires-python = ">=3.13.0"
@@ -26,18 +26,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    # Linting and formatting
-    "ruff==0.15.15",
-    "pre-commit>=4.6.0",
-
-    # Testing
+test = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-homeassistant-custom-component>=0.13.322",
     "pytest-timeout>=2.4.0",
     "syrupy>=5.0.0",
+]
+dev = [
+    # Testing (shared with the `test` extra)
+    "ha-unraid[test]",
+
+    # Linting and formatting
+    "ruff==0.15.15",
+    "pre-commit>=4.6.0",
 
     # Type checking
     "mypy>=2.1.0",

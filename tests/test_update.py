@@ -10,6 +10,7 @@ from unraid_api.exceptions import UnraidAPIError
 from unraid_api.models import DockerContainer
 
 from custom_components.unraid import UnraidRuntimeData
+from custom_components.unraid.const import CONF_ENABLE_CONTAINER_UPDATES
 from custom_components.unraid.coordinator import UnraidSystemCoordinator
 from custom_components.unraid.update import (
     _VERSION_CURRENT,
@@ -37,6 +38,7 @@ def _make_update_entity(
         all_containers = containers or [container]
         coordinator.data = make_system_data(containers=all_containers)
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.async_request_docker_refresh = AsyncMock()
     coordinator.async_update_container = AsyncMock()
     entity = DockerContainerUpdateEntity(
         coordinator=coordinator,
@@ -269,7 +271,7 @@ async def test_install_calls_update_container() -> None:
     await entity.async_install(version=None, backup=False)
 
     entity.coordinator.async_update_container.assert_awaited_once_with("ct:1")
-    entity.coordinator.async_request_refresh.assert_awaited_once()
+    entity.coordinator.async_request_docker_refresh.assert_awaited_once()
 
 
 async def test_install_resolves_current_container_id() -> None:
@@ -377,6 +379,31 @@ async def test_setup_entry_creates_entities_for_containers() -> None:
 
     names = {e._container_name for e in entities}
     assert names == {"web", "db", "redis"}
+
+
+async def test_setup_entry_skips_entities_when_updates_disabled() -> None:
+    """Test no update entities are created when the option is disabled (#243)."""
+    containers = [
+        DockerContainer(id="ct:1", name="/web", state="RUNNING"),
+        DockerContainer(id="ct:2", name="/db", state="RUNNING"),
+    ]
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = make_system_data(containers=containers)
+
+    runtime_data = MagicMock(spec=UnraidRuntimeData)
+    runtime_data.system_coordinator = system_coordinator
+    runtime_data.server_info = {"uuid": "test-uuid", "name": "tower"}
+
+    entry = MagicMock()
+    entry.runtime_data = runtime_data
+    entry.data = {"host": "192.168.1.100"}
+    entry.options = {CONF_ENABLE_CONTAINER_UPDATES: False}
+
+    async_add_entities = MagicMock()
+    await async_setup_entry(MagicMock(), entry, async_add_entities)
+
+    async_add_entities.assert_called_once_with([])
 
 
 async def test_setup_entry_no_containers() -> None:

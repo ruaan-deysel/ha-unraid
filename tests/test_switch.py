@@ -292,7 +292,7 @@ async def test_container_turn_on_success() -> None:
 
     await switch.async_turn_on()
     coordinator.async_start_container.assert_called_once_with("ct:1")
-    coordinator.async_request_refresh.assert_called_once()
+    coordinator.async_request_docker_refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -348,7 +348,7 @@ async def test_container_turn_on_already_started() -> None:
 
     # Should NOT raise — the container is already in the desired state
     await switch.async_turn_on()
-    coordinator.async_request_refresh.assert_called_once()
+    coordinator.async_request_docker_refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -373,7 +373,7 @@ async def test_container_turn_off_success() -> None:
 
     await switch.async_turn_off()
     coordinator.async_stop_container.assert_called_once_with("ct:1")
-    coordinator.async_request_refresh.assert_called_once()
+    coordinator.async_request_docker_refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -427,7 +427,7 @@ async def test_container_turn_off_already_stopped() -> None:
 
     # Should NOT raise — the container is already in the desired state
     await switch.async_turn_off()
-    coordinator.async_request_refresh.assert_called_once()
+    coordinator.async_request_docker_refresh.assert_called_once()
 
 
 # =============================================================================

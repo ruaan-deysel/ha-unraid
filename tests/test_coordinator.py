@@ -31,6 +31,7 @@ from unraid_api.models import (
     VmDomain,
 )
 
+from custom_components.unraid.const import DOCKER_POLL_INTERVAL
 from custom_components.unraid.coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -204,6 +205,7 @@ async def test_system_coordinator_initialization(
         api_client=mock_api_client,
         server_name="tower",
         config_entry=mock_config_entry,
+        server_info=make_server_info(),
     )
 
     assert coordinator.name == "tower System"
@@ -229,6 +231,7 @@ async def test_system_coordinator_fixed_interval(
         api_client=mock_api_client,
         server_name="tower",
         config_entry=mock_config_entry,
+        server_info=make_server_info(),
     )
 
     # Should always be 30 seconds regardless of options
@@ -304,7 +307,7 @@ async def test_system_coordinator_fetch_success(
 ):
     """Test system coordinator successfully fetches data."""
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -314,7 +317,8 @@ async def test_system_coordinator_fetch_success(
     assert data.metrics is not None
     assert data.info.uuid == "abc-123"
     assert data.metrics.cpu_percent == 25.5
-    mock_api_client.get_server_info.assert_called_once()
+    # Server info is captured once at setup and reused, not re-queried per poll.
+    mock_api_client.get_server_info.assert_not_called()
     mock_api_client.get_system_metrics_safe.assert_called_once()
 
 
@@ -324,18 +328,80 @@ async def test_system_coordinator_queries_all_endpoints(
 ):
     """Test system coordinator queries all required endpoints."""
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     await coordinator._async_update_data()
 
-    # Verify all library methods were called
-    mock_api_client.get_server_info.assert_called_once()
+    # Verify all required library methods were called. Server info is captured
+    # once at setup and reused, so it is not queried during a poll.
+    mock_api_client.get_server_info.assert_not_called()
     mock_api_client.get_system_metrics_safe.assert_called_once()
     mock_api_client.get_notification_overview.assert_called_once()
     mock_api_client.typed_get_containers.assert_called_once()
     mock_api_client.typed_get_vms.assert_called_once()
     mock_api_client.typed_get_ups_devices.assert_called_once()
     mock_api_client.typed_get_vars.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_throttles_docker_query(
+    hass, mock_api_client, mock_config_entry, monkeypatch
+):
+    """Docker container list is reused between polls until the interval elapses."""
+    fake_time = {"now": 1000.0}
+    monkeypatch.setattr(
+        "custom_components.unraid.coordinator.time.monotonic",
+        lambda: fake_time["now"],
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
+    )
+
+    # First poll fetches Docker data.
+    await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 1
+
+    # A poll shortly after reuses the cached containers (no new Docker query),
+    # while metrics are still refreshed every poll.
+    fake_time["now"] += 30
+    data = await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 1
+    assert mock_api_client.get_system_metrics_safe.call_count == 2
+    assert data.containers == coordinator._cached_containers
+
+    # Once the Docker interval elapses, the list is fetched again.
+    fake_time["now"] += DOCKER_POLL_INTERVAL
+    await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_force_docker_refresh(
+    hass, mock_api_client, mock_config_entry, monkeypatch
+):
+    """A forced Docker refresh re-fetches containers even within the interval."""
+    monkeypatch.setattr(
+        "custom_components.unraid.coordinator.time.monotonic",
+        lambda: 5000.0,
+    )
+
+    coordinator = UnraidSystemCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
+    )
+
+    await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 1
+
+    # Without forcing, the throttle skips the Docker query at the same timestamp.
+    await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 1
+
+    # Forcing the flag (as container control actions do) re-fetches immediately.
+    coordinator._force_docker_refresh = True
+    await coordinator._async_update_data()
+    assert mock_api_client.typed_get_containers.call_count == 2
+    assert coordinator._force_docker_refresh is False
 
 
 @pytest.mark.asyncio
@@ -346,7 +412,7 @@ async def test_system_coordinator_sets_mover_active_from_vars(
     mock_api_client.typed_get_vars.return_value = MagicMock(share_mover_active=True)
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -365,7 +431,7 @@ async def test_system_coordinator_parses_docker_containers(
     ]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -384,7 +450,7 @@ async def test_system_coordinator_parses_vms(hass, mock_api_client, mock_config_
     ]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -406,7 +472,7 @@ async def test_system_coordinator_parses_ups_devices(
     ]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -425,7 +491,7 @@ async def test_system_coordinator_parses_notifications(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -444,12 +510,12 @@ async def test_coordinator_authentication_error_handling(
     hass, mock_api_client, mock_config_entry
 ):
     """Test coordinator handles authentication errors with ConfigEntryAuthFailed."""
-    mock_api_client.get_server_info.side_effect = UnraidAuthenticationError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidAuthenticationError(
         "Unauthorized"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(ConfigEntryAuthFailed, match="Authentication failed"):
@@ -461,12 +527,12 @@ async def test_coordinator_connection_error_handling(
     hass, mock_api_client, mock_config_entry
 ):
     """Test coordinator handles connection errors with UpdateFailed."""
-    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidConnectionError(
         "Connection refused"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UpdateFailed, match="Connection error"):
@@ -478,10 +544,12 @@ async def test_coordinator_timeout_error_handling(
     hass, mock_api_client, mock_config_entry
 ):
     """Test coordinator handles timeout errors with UpdateFailed."""
-    mock_api_client.get_server_info.side_effect = UnraidTimeoutError("Request timeout")
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidTimeoutError(
+        "Request timeout"
+    )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UpdateFailed, match="Connection error"):
@@ -491,10 +559,12 @@ async def test_coordinator_timeout_error_handling(
 @pytest.mark.asyncio
 async def test_coordinator_api_error_handling(hass, mock_api_client, mock_config_entry):
     """Test coordinator handles API errors with UpdateFailed."""
-    mock_api_client.get_server_info.side_effect = UnraidAPIError("API error occurred")
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidAPIError(
+        "API error occurred"
+    )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UpdateFailed, match="API error"):
@@ -506,10 +576,12 @@ async def test_system_coordinator_http_error_handling(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator handles HTTP errors with UpdateFailed."""
-    mock_api_client.get_server_info.side_effect = UnraidConnectionError("HTTP 500")
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidConnectionError(
+        "HTTP 500"
+    )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UpdateFailed, match="Connection error"):
@@ -531,7 +603,7 @@ async def test_system_coordinator_handles_docker_query_failure(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -549,7 +621,7 @@ async def test_system_coordinator_handles_vms_query_failure(
     mock_api_client.typed_get_vms.side_effect = UnraidAPIError("VMs not enabled")
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -569,7 +641,7 @@ async def test_system_coordinator_handles_ups_query_failure(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -589,7 +661,7 @@ async def test_system_coordinator_optional_docker_auth_error_reraised(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UnraidAuthenticationError):
@@ -606,7 +678,7 @@ async def test_system_coordinator_optional_vms_auth_error_reraised(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UnraidAuthenticationError):
@@ -623,7 +695,7 @@ async def test_system_coordinator_optional_ups_auth_error_reraised(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UnraidAuthenticationError):
@@ -641,12 +713,12 @@ async def test_system_coordinator_connection_recovery(
 ):
     """Test system coordinator logs recovery after previous failure."""
     # First call fails
-    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidConnectionError(
         "Connection refused"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First update fails
@@ -657,8 +729,8 @@ async def test_system_coordinator_connection_recovery(
     assert coordinator._previously_unavailable is True
 
     # Second call succeeds
-    mock_api_client.get_server_info.side_effect = None
-    mock_api_client.get_server_info.return_value = make_server_info()
+    mock_api_client.get_system_metrics_safe.side_effect = None
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics()
 
     # Second update succeeds
     data = await coordinator._async_update_data()
@@ -1108,7 +1180,7 @@ async def test_infra_coordinator_runtime_error_handling(
 async def test_coordinator_data_refresh_cycle(hass, mock_api_client, mock_config_entry):
     """Test coordinator can perform multiple refresh cycles."""
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First refresh
@@ -1157,7 +1229,7 @@ async def test_system_coordinator_handles_none_ups_list(
     mock_api_client.typed_get_ups_devices.return_value = []
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1175,7 +1247,7 @@ async def test_system_coordinator_handles_zero_notifications(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1193,7 +1265,7 @@ async def test_system_coordinator_handles_container_without_names(
     ]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1233,7 +1305,7 @@ async def test_system_coordinator_handles_invalid_container(
     ]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1249,7 +1321,7 @@ async def test_system_coordinator_handles_invalid_vm(
     mock_api_client.typed_get_vms.return_value = [make_vm(state="UNKNOWN_STATE")]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1265,7 +1337,7 @@ async def test_system_coordinator_handles_invalid_ups(
     mock_api_client.typed_get_ups_devices.return_value = [make_ups(status="UNKNOWN")]
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     data = await coordinator._async_update_data()
 
@@ -1356,12 +1428,12 @@ async def test_system_coordinator_recovers_after_connection_error(
 ):
     """Test system coordinator recovers after connection error."""
     # First call raises error
-    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidConnectionError(
         "Connection lost"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First update should fail
@@ -1372,8 +1444,8 @@ async def test_system_coordinator_recovers_after_connection_error(
     assert coordinator._previously_unavailable is True
 
     # Restore mock to return valid data
-    mock_api_client.get_server_info.side_effect = None
-    mock_api_client.get_server_info.return_value = make_server_info()
+    mock_api_client.get_system_metrics_safe.side_effect = None
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics()
 
     # Second update should succeed
     data = await coordinator._async_update_data()
@@ -1387,12 +1459,12 @@ async def test_system_coordinator_recovers_after_timeout(
 ):
     """Test system coordinator recovers after timeout error."""
     # First call raises timeout
-    mock_api_client.get_server_info.side_effect = UnraidTimeoutError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidTimeoutError(
         "Request timed out"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First update should fail
@@ -1402,8 +1474,8 @@ async def test_system_coordinator_recovers_after_timeout(
     assert coordinator._previously_unavailable is True
 
     # Restore and verify recovery
-    mock_api_client.get_server_info.side_effect = None
-    mock_api_client.get_server_info.return_value = make_server_info()
+    mock_api_client.get_system_metrics_safe.side_effect = None
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics()
 
     data = await coordinator._async_update_data()
     assert data is not None
@@ -1416,10 +1488,10 @@ async def test_system_coordinator_recovers_after_api_error(
 ):
     """Test system coordinator recovers after API error."""
     # First call raises API error
-    mock_api_client.get_server_info.side_effect = UnraidAPIError("API error")
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidAPIError("API error")
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First update should fail
@@ -1429,8 +1501,8 @@ async def test_system_coordinator_recovers_after_api_error(
     assert coordinator._previously_unavailable is True
 
     # Restore and verify recovery
-    mock_api_client.get_server_info.side_effect = None
-    mock_api_client.get_server_info.return_value = make_server_info()
+    mock_api_client.get_system_metrics_safe.side_effect = None
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics()
 
     data = await coordinator._async_update_data()
     assert data is not None
@@ -1504,12 +1576,12 @@ async def test_system_coordinator_logs_recovery(
     import logging
 
     # First call raises error
-    mock_api_client.get_server_info.side_effect = UnraidConnectionError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidConnectionError(
         "Connection lost"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # First update should fail
@@ -1517,8 +1589,8 @@ async def test_system_coordinator_logs_recovery(
         await coordinator._async_update_data()
 
     # Restore mock to return valid data
-    mock_api_client.get_server_info.side_effect = None
-    mock_api_client.get_server_info.return_value = make_server_info()
+    mock_api_client.get_system_metrics_safe.side_effect = None
+    mock_api_client.get_system_metrics_safe.return_value = make_system_metrics()
 
     # Second update should succeed and log recovery
     with caplog.at_level(logging.INFO):
@@ -1571,12 +1643,12 @@ async def test_system_coordinator_auth_error_triggers_reauth(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator auth error triggers reauth flow."""
-    mock_api_client.get_server_info.side_effect = UnraidAuthenticationError(
+    mock_api_client.get_system_metrics_safe.side_effect = UnraidAuthenticationError(
         "Invalid API key"
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     # Auth error should raise ConfigEntryAuthFailed
@@ -1611,10 +1683,12 @@ async def test_system_coordinator_runtime_error_handled(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator handles RuntimeError as connection error."""
-    mock_api_client.get_server_info.side_effect = RuntimeError("Session is closed")
+    mock_api_client.get_system_metrics_safe.side_effect = RuntimeError(
+        "Session is closed"
+    )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UpdateFailed, match="Connection error"):
@@ -1679,7 +1753,7 @@ async def test_notification_events_first_run_baselines_without_emitting(
         _make_notification("n2", "2026-04-24T08:02:04.000Z"),
     ]
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     listener = MagicMock()
@@ -1700,7 +1774,7 @@ async def test_notification_events_emit_new_unread_once(
         _make_notification("existing", "2026-04-24T08:01:04.000Z"),
     ]
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1734,7 +1808,7 @@ async def test_notification_events_ignore_archived_notifications(
         )
     ]
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1752,7 +1826,7 @@ async def test_notification_events_emit_oldest_first(
     """Test multiple unseen notifications are emitted oldest-first."""
     mock_api_client.typed_get_notifications.return_value = []
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1776,7 +1850,7 @@ async def test_notification_events_none_response_ignored(
     """Test None notification response yields no events and no invalid-ID warning."""
     mock_api_client.typed_get_notifications.return_value = None
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1794,7 +1868,7 @@ async def test_notification_events_string_response_ignored(
     """Test string notification response is ignored instead of iterated by character."""
     mock_api_client.typed_get_notifications.return_value = "oops"
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator._async_update_data()
@@ -1810,7 +1884,7 @@ async def test_notification_events_scalar_response_ignored(
     """Test numeric notification response is ignored safely."""
     mock_api_client.typed_get_notifications.return_value = 123
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator._async_update_data()
@@ -1827,7 +1901,7 @@ async def test_notification_events_model_list_response_supported(
         [_make_notification("existing", "2026-04-24T08:01:04.000Z")]
     )
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1856,7 +1930,7 @@ async def test_notification_events_extract_from_dict_response_and_emit(
         "list": [_make_notification("existing", "2026-04-24T08:01:04.000Z")],
     }
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1888,7 +1962,7 @@ async def test_notification_events_empty_dict_list_does_not_warn_missing_id(
         "list": [],
     }
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator._async_update_data()
@@ -1905,7 +1979,7 @@ async def test_notification_events_list_response_still_works(
         _make_notification("existing", "2026-04-24T08:01:04.000Z")
     ]
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     listener = MagicMock()
     coordinator.async_add_event_listener(listener, "notification_created")
@@ -1932,7 +2006,7 @@ async def test_notification_response_dict_keys_never_processed_as_items(
         "list": [_make_notification("only", "2026-04-24T08:01:04.000Z")],
     }
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator._async_update_data()
@@ -1952,7 +2026,7 @@ async def test_notification_events_api_failure_keeps_seen_ids(
         _make_notification("seen", "2026-04-24T08:01:04.000Z")
     ]
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
     await coordinator._async_update_data()
 
@@ -1975,7 +2049,7 @@ async def test_archive_all_notifications_calls_library(
 ):
     """Test archive all notifications delegates to library method."""
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator.async_archive_all_notifications()
@@ -1989,7 +2063,7 @@ async def test_delete_all_notifications_calls_library(
 ):
     """Test delete all notifications delegates to library method."""
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     await coordinator.async_delete_all_notifications()
@@ -2007,7 +2081,7 @@ async def test_archive_all_notifications_propagates_error(
     )
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UnraidAPIError, match="Bad Request"):
@@ -2022,7 +2096,7 @@ async def test_delete_all_notifications_propagates_error(
     mock_api_client.delete_all_notifications.side_effect = UnraidAPIError("Bad Request")
 
     coordinator = UnraidSystemCoordinator(
-        hass, mock_api_client, "tower", mock_config_entry
+        hass, mock_api_client, "tower", mock_config_entry, make_server_info()
     )
 
     with pytest.raises(UnraidAPIError, match="Bad Request"):

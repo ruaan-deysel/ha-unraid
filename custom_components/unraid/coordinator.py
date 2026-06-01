@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -46,6 +47,7 @@ from unraid_api.models import (
 )
 
 from .const import (
+    DOCKER_POLL_INTERVAL,
     DOMAIN,
     INFRA_POLL_INTERVAL,
     STORAGE_POLL_INTERVAL,
@@ -145,6 +147,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         api_client: UnraidClient,
         server_name: str,
         config_entry: ConfigEntry,
+        server_info: ServerInfo,
     ) -> None:
         """
         Initialize the system coordinator.
@@ -154,6 +157,9 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             api_client: Unraid API client (from unraid_api library)
             server_name: Server name for logging
             config_entry: The config entry for this coordinator
+            server_info: Server identification data fetched once at setup. This
+                is static (UUID, model, CPU, OS, versions) so it is reused on
+                every poll instead of re-querying it every 30 seconds.
 
         """
         super().__init__(
@@ -166,6 +172,15 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
         self.api_client = api_client
         self._server_name = server_name
         self._previously_unavailable = False
+        # Static server info captured at setup; never re-queried on the hot path.
+        self._server_info = server_info
+        # Docker container list is polled at DOCKER_POLL_INTERVAL rather than on
+        # every system poll. Between fetches the last result is reused so docker
+        # entities stay populated. async_request_docker_refresh() forces an
+        # immediate re-fetch after a container control action.
+        self._cached_containers: list[DockerContainer] = []
+        self._last_docker_refresh: float = 0.0
+        self._force_docker_refresh: bool = False
         self._event_listeners: dict[
             str, list[Callable[[UnraidNotificationEventData], None]]
         ] = {}
@@ -534,6 +549,17 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             _LOGGER.debug("Mover status data not available: %s", err)
             return None
 
+    async def async_request_docker_refresh(self) -> None:
+        """
+        Request a refresh that also re-fetches the Docker container list.
+
+        Docker data is normally throttled to DOCKER_POLL_INTERVAL, but container
+        control actions (start/stop/update) need the new state reflected
+        immediately, so this bypasses the throttle for the next update.
+        """
+        self._force_docker_refresh = True
+        await self.async_request_refresh()
+
     # Action wrappers for entity control operations
     async def async_start_container(self, container_id: str) -> None:
         """Start a Docker container."""
@@ -604,19 +630,38 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             # NOTE: We use get_system_metrics_safe() instead of
             # get_system_metrics() to avoid querying metrics.temperature.sensors
             # which triggers smartctl disk reads and wakes sleeping disks.
-            info, metrics, notifications = await asyncio.gather(
-                self.api_client.get_server_info(),
+            # Server info is static and captured once at setup, so it is not
+            # re-queried here.
+            metrics, notifications = await asyncio.gather(
                 self.api_client.get_system_metrics_safe(),
                 self.api_client.get_notification_overview(),
             )
+            info = self._server_info
 
-            # Phase 2: Optional services — run concurrently; each fails gracefully
-            containers, vms, ups_devices, mover_active = await asyncio.gather(
-                self._query_optional_docker(),
-                self._query_optional_vms(),
-                self._query_optional_ups(),
-                self._query_optional_mover_status(),
+            # Phase 2: Optional services — run concurrently; each fails gracefully.
+            # The Docker container list is the most expensive query on the
+            # Unraid server, so it is throttled to DOCKER_POLL_INTERVAL and the
+            # previous result reused in between to avoid periodic CPU spikes.
+            fetch_docker = self._force_docker_refresh or (
+                time.monotonic() - self._last_docker_refresh >= DOCKER_POLL_INTERVAL
             )
+            if fetch_docker:
+                containers, vms, ups_devices, mover_active = await asyncio.gather(
+                    self._query_optional_docker(),
+                    self._query_optional_vms(),
+                    self._query_optional_ups(),
+                    self._query_optional_mover_status(),
+                )
+                self._cached_containers = containers
+                self._last_docker_refresh = time.monotonic()
+                self._force_docker_refresh = False
+            else:
+                vms, ups_devices, mover_active = await asyncio.gather(
+                    self._query_optional_vms(),
+                    self._query_optional_ups(),
+                    self._query_optional_mover_status(),
+                )
+                containers = self._cached_containers
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:

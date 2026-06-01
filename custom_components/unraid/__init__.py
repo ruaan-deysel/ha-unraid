@@ -215,6 +215,7 @@ def _create_coordinators(
     api_client: UnraidClient,
     server_name: str,
     entry: UnraidConfigEntry,
+    server_info: ServerInfo,
 ) -> tuple[
     UnraidSystemCoordinator,
     UnraidStorageCoordinator,
@@ -226,6 +227,7 @@ def _create_coordinators(
         api_client=api_client,
         server_name=server_name,
         config_entry=entry,
+        server_info=server_info,
     )
     storage_coordinator = UnraidStorageCoordinator(
         hass=hass,
@@ -299,6 +301,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
         api_client,
         server_name,
         entry,
+        info,
     )
 
     # Fetch initial data

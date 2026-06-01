@@ -23,9 +23,11 @@ from unraid_api.exceptions import (
 )
 
 from .const import (
+    CONF_ENABLE_CONTAINER_UPDATES,
     CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
+    DEFAULT_ENABLE_CONTAINER_UPDATES,
     DEFAULT_PORT,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
@@ -132,6 +134,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_IGNORE_SSL: self._ignore_ssl,
                     },
                     options={
+                        CONF_ENABLE_CONTAINER_UPDATES: (
+                            DEFAULT_ENABLE_CONTAINER_UPDATES
+                        ),
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
                         CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
                     },
@@ -486,7 +491,7 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the init step to configure polling and UPS settings."""
+        """Handle the init step to configure integration behaviour and UPS settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -506,6 +511,16 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
         # Note: Polling intervals are not user-configurable per HA Core guidelines
         # Users can use homeassistant.update_entity service for custom refresh rates
         schema_dict: dict[vol.Marker, Any] = {}
+
+        # General behavioural toggles (always shown, independent of hardware)
+        schema_dict[
+            vol.Optional(
+                CONF_ENABLE_CONTAINER_UPDATES,
+                default=options.get(
+                    CONF_ENABLE_CONTAINER_UPDATES, DEFAULT_ENABLE_CONTAINER_UPDATES
+                ),
+            )
+        ] = bool
 
         # UPS options only shown if UPS is detected
         if has_ups:

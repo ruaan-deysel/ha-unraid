@@ -7,6 +7,16 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.6.0] - 2026-06-01
+
+### Added
+
+- **Option to Disable Container Update Sensors** ([#243](https://github.com/ruaan-deysel/ha-unraid/issues/243)): New `enable_container_updates` toggle in the integration's options (Settings → Devices & Services → Unraid → Configure), enabled by default to preserve existing behaviour. Disable it to stop creating the per-container `update` entities — useful if you manage container updates externally or don't need update notifications. Changing the option reloads the integration and adds/removes the entities automatically.
+
+### Fixed
+
+- **CPU Spikes Every 30 Seconds** ([#237](https://github.com/ruaan-deysel/ha-unraid/issues/237), [#206](https://github.com/ruaan-deysel/ha-unraid/issues/206)): Reduced periodic CPU load on the Unraid server caused by the 30-second system poll. Static server information (UUID, model, CPU, OS, versions) is now captured once at setup and reused instead of being re-queried every cycle, and the comparatively expensive Docker container listing (image-update checks and writable-layer size computation) is now polled at a 60-second cadence with its result reused in between. System metrics, VMs, UPS, and notifications continue to update every 30 seconds, and container control actions (start/stop/update) still refresh container state immediately.
+
 ## [2026.5.0] - 2026-05-12
 
 ### Added
