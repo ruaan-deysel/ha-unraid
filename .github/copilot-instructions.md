@@ -4,6 +4,19 @@
 > Path-specific `*.instructions.md` files in `.github/instructions/` auto-load per file type.
 > Reusable task prompts are in `.github/prompts/`.
 
+## ⚠️ Critical Rule: Never Bypass `unraid-api`
+
+All communication with the Unraid server **must** go through the
+[`unraid-api`](https://github.com/ruaan-deysel/unraid-api) library
+(`UnraidClient`). Never add direct GraphQL/HTTP/websocket/SSH I/O, and never
+re-implement or work around the library to land a fix faster — this keeps the
+integration compliant with Home Assistant best practice.
+
+If a fix needs something `unraid-api` does not expose, **STOP**: do not work
+around it here. Open an issue on **https://github.com/ruaan-deysel/unraid-api**
+and direct the user there. Full policy in `AGENTS.md` → "Critical Rule: Never
+Bypass `unraid-api`".
+
 ## Project Identity
 
 - **Domain**: `unraid`

@@ -3,6 +3,19 @@
 > Read **[`AGENTS.md`](AGENTS.md)** for comprehensive project documentation.
 > This file is a thin wrapper for Google Gemini / Gemini Code Assist agents.
 
+## ⚠️ Critical Rule: Never Bypass `unraid-api`
+
+All communication with the Unraid server **must** go through the
+[`unraid-api`](https://github.com/ruaan-deysel/unraid-api) library
+(`UnraidClient`). Never add direct GraphQL/HTTP/websocket/SSH I/O, and never
+re-implement or work around the library to land a fix faster — this keeps the
+integration compliant with Home Assistant best practice.
+
+If a fix needs something `unraid-api` does not expose, **STOP**: do not work
+around it here. Open an issue on **https://github.com/ruaan-deysel/unraid-api**
+and direct the user there. Full policy in [`AGENTS.md`](AGENTS.md) → "Critical
+Rule: Never Bypass `unraid-api`".
+
 ## Quick Reference
 
 - **Domain**: `unraid` | **Prefix**: `Unraid` | **Python**: 3.13+ | **HA**: 2026.5.0+ | **Dep**: `unraid-api>=1.10.0`

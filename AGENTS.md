@@ -3,6 +3,36 @@
 > **Single source of truth** for all AI agents working on this codebase.
 > Agent-specific wrappers (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`) reference this file.
 
+## ⚠️ Critical Rule: Never Bypass `unraid-api`
+
+**This applies to every AI coding agent (Claude Code, Codex, Copilot, Gemini, etc.).**
+
+All communication with the Unraid server **must** go through the
+[`unraid-api`](https://github.com/ruaan-deysel/unraid-api) library. This is a
+hard requirement, not a preference — it keeps the integration compliant with
+Home Assistant best practice (a single, typed, tested API client owns all I/O).
+
+**You must not, under any circumstances:**
+
+- Add direct GraphQL queries, REST/HTTP calls, websockets, SSH, or any other
+  network I/O to the Unraid server from this repository.
+- Re-implement, monkey-patch, vendor, fork, or work around `unraid-api`
+  behaviour to "get a fix in faster."
+- Parse raw server responses outside the library's typed models.
+
+**If a fix appears to require functionality that `unraid-api` does not expose**
+(a missing field, query, mutation, subscription, or a library bug): **STOP.** Do
+not implement a workaround in this repository. Instead:
+
+1. Explain to the user that the change belongs in the `unraid-api` library.
+2. Open (or direct the user to open) an issue on the library repo:
+   **https://github.com/ruaan-deysel/unraid-api**
+3. Once the library ships the capability, consume it here through `UnraidClient`.
+
+The only sanctioned data flow is:
+
+`Entities → Coordinators → UnraidClient (unraid-api) → Unraid server`
+
 ## Project Identity
 
 | Field                | Value                                         |

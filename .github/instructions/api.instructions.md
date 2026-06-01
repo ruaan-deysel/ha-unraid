@@ -19,6 +19,20 @@ Data flow must stay:
 - Coordinators and config flow own API calls and exception mapping.
 - Do not add direct network I/O in entities.
 
+### Never bypass `unraid-api` (mandatory for all AI agents)
+
+All server communication MUST go through the `unraid-api` library
+(`UnraidClient`). Do **not** add direct GraphQL/HTTP/websocket/SSH calls, and do
+**not** re-implement, patch, vendor, or work around the library to land a fix
+faster.
+
+If a fix needs something `unraid-api` does not expose (missing field/query/
+mutation/subscription, or a library bug): **STOP — do not work around it here.**
+Open an issue on the library and direct the user there:
+**https://github.com/ruaan-deysel/unraid-api**. Consume the new capability via
+`UnraidClient` once the library ships it. See `AGENTS.md` → "Critical Rule:
+Never Bypass `unraid-api`".
+
 ## UnraidClient Construction
 
 - Always pass HA's shared session (`async_get_clientsession`).
