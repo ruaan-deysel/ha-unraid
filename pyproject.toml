@@ -142,15 +142,19 @@ environments = ["python_full_version >= '3.14.2'"]
 # - cryptography GHSA-m959-cc7f-wv43 (incomplete DNS name constraint)
 # - cryptography GHSA-p423-j2cm-9vmq (buffer overflow non-contiguous buffers)
 # - uv GHSA-pjjw-68hj-v9mw (arbitrary file deletion through RECORD entries)
-# - zeroconf CVE-2026-47180/47183/47184 (LAN-local DoS / memory exhaustion);
-#   overrides homeassistant's zeroconf==0.148.0 pin
 # - Pygments CVE-2026-4539 / GHSA-5239-wwwm-4pmq (ReDoS in GUID regex)
+#
+# NOT overridden: zeroconf CVE-2026-47180/47183/47184. Home Assistant's
+# `zeroconf` integration manifest hard-pins `zeroconf==0.148.0` and reinstalls
+# it at runtime, so forcing a newer version makes HA fail to start (zeroconf,
+# cloud, and discovery integrations break). This advisory must be fixed upstream
+# by Home Assistant bumping its zeroconf pin; the integration does not use
+# zeroconf directly. Re-add a `zeroconf>=…` override once HA ships a fixed pin.
 override-dependencies = [
     "pyjwt>=2.12.1",
     "pyopenssl>=26.0.0",
     "cryptography>=46.0.7",
     "uv>=0.11.6",
-    "zeroconf>=0.149.7",
     "pygments>=2.20.0",
 ]
 
