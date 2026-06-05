@@ -38,6 +38,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-api-boundary
+        name: "API boundary — no unraid-api bypass"
+        entry: python script/check_api_boundary.py
+        language: system
+        pass_filenames: false
+        files: ^custom_components/unraid/.*\.py$
+
       - id: pip-audit
         name: pip-audit (dependency vulnerability scan)
         language: system

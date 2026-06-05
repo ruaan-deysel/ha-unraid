@@ -1,0 +1,33 @@
+name: API Boundary Check
+
+# Blocks merges that bypass the unraid-api library with direct network I/O.
+# All Unraid server communication MUST go through UnraidClient (unraid-api).
+# Missing library features → open an issue at https://github.com/ruaan-deysel/unraid-api
+
+on:
+  push:
+    paths:
+      - "custom_components/unraid/**/*.py"
+      - "script/check_api_boundary.py"
+  pull_request:
+    paths:
+      - "custom_components/unraid/**/*.py"
+      - "script/check_api_boundary.py"
+
+permissions:
+  contents: read
+
+jobs:
+  api-boundary:
+    name: No unraid-api bypass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check API boundary
+        run: python script/check_api_boundary.py

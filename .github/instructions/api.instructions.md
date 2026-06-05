@@ -33,6 +33,40 @@ Open an issue on the library and direct the user there:
 `UnraidClient` once the library ships it. See `AGENTS.md` → "Critical Rule:
 Never Bypass `unraid-api`".
 
+#### Forbidden patterns (CI will reject these)
+
+```python
+# ❌ NEVER — direct HTTP
+import requests
+import httpx
+session.get("http://unraid-server/...")
+
+# ❌ NEVER — raw aiohttp session creation
+import aiohttp
+session = aiohttp.ClientSession()   # direct construction
+
+# ❌ NEVER — raw GraphQL client
+from gql import gql, Client
+import python_graphql_client
+
+# ❌ NEVER — raw WebSockets
+import websockets
+
+# ❌ NEVER — SSH
+import paramiko
+import asyncssh
+```
+
+```python
+# ✅ CORRECT — all I/O through UnraidClient
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from unraid_api import UnraidClient
+
+session = async_get_clientsession(hass)
+client = UnraidClient(host=host, port=port, api_key=api_key, session=session)
+data = await client.get_system_info()
+```
+
 ## UnraidClient Construction
 
 - Always pass HA's shared session (`async_get_clientsession`).

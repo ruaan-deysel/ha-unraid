@@ -19,6 +19,9 @@ cd "$SCRIPT_DIR/.."
 # shellcheck source=script/.lib/output.sh
 source "$SCRIPT_DIR/.lib/output.sh"
 
+log_header "Checking API boundary (no unraid-api bypass)"
+python "$SCRIPT_DIR/check_api_boundary.py"
+echo ""
 "$SCRIPT_DIR/type-check"
 echo ""
 "$SCRIPT_DIR/lint-check"

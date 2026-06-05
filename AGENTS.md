@@ -273,6 +273,7 @@ pytest --no-cov                  # Skip coverage for speed
 
 ### Never Do
 
+- **Bypass `unraid-api`** — no direct GraphQL/HTTP/WebSocket/SSH/raw-socket I/O to the Unraid server; no re-implementing, monkey-patching, vendoring, or working around `UnraidClient`. CI (`check-api-boundary.yml`) blocks this automatically. If the library is missing a capability, stop and open an issue at **https://github.com/ruaan-deysel/unraid-api**.
 - Make polling intervals user-configurable (HA Core policy)
 - Skip `from __future__ import annotations`
 - Use bare `except:` — always catch specific exceptions

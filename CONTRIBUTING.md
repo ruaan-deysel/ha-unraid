@@ -7,6 +7,30 @@ Contributing to this project should be as easy and transparent as possible, whet
 - Submitting a fix
 - Proposing new features
 
+## ⚠️ Critical Rule: Never Bypass `unraid-api`
+
+**All communication with the Unraid server must go through the
+[`unraid-api`](https://github.com/ruaan-deysel/unraid-api) library (`UnraidClient`).**
+This is a hard architectural requirement — not a preference.
+
+**You must never:**
+- Add direct GraphQL queries, REST/HTTP calls, WebSockets, SSH, or any other network I/O to the Unraid server from this repo.
+- Re-implement, monkey-patch, vendor, or work around `unraid-api` to "get a fix in faster."
+- Use `requests`, `httpx`, `websockets`, `paramiko`, `asyncssh`, raw `gql`, or direct `aiohttp.ClientSession()` in `custom_components/unraid/`.
+
+**If a feature you need is not exposed by `unraid-api`:**
+
+1. **Stop** — do not add a workaround here.
+2. Open an issue on the library repo: **https://github.com/ruaan-deysel/unraid-api**
+3. Wait for the library to ship the capability, then consume it via `UnraidClient`.
+
+This rule is enforced automatically at three levels:
+- **`git commit`** — pre-commit hook (`check-api-boundary`) blocks the commit.
+- **`./script/check`** — runs the boundary check before linting and type-checking.
+- **CI** — `check-api-boundary.yml` workflow blocks the PR from merging.
+
+PRs that bypass the library will be rejected without further review.
+
 ## Before Opening an Issue ⚠️
 
 **Please do the following BEFORE creating a new issue:**

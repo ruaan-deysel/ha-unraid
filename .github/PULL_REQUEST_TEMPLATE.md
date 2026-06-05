@@ -38,6 +38,13 @@ Fixes #(issue number)
 - [ ] Tested in development environment (`./script/develop`)
 - [ ] Manual testing completed
 
+## ⚠️ API Boundary
+
+<!-- MANDATORY — failure to comply blocks merge -->
+
+- [ ] This PR does **not** bypass `unraid-api`: no direct GraphQL, HTTP, WebSocket, or SSH calls to the Unraid server have been added. All Unraid communication goes through `UnraidClient`.
+- [ ] If functionality needed for this PR is missing from `unraid-api`, an issue has been filed at https://github.com/ruaan-deysel/unraid-api and this PR waits for the library to ship it.
+
 ## Checklist
 
 <!-- Ensure all items are completed before submitting -->
