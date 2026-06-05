@@ -59,6 +59,25 @@ ignore = [
     "N806",    # Variable naming (Mock classes can be PascalCase)
     "ARG001",  # Unused function arguments (mock decorators)
 ]
+"script/*.py" = [
+    "T201",    # print() is valid in standalone CLI scripts
+    "D103",    # Docstrings not required in CLI script helpers
+    "INP001",  # Implicit namespace package (scripts aren't packages)
+]
+
+# Banned imports — all Unraid server I/O must go through UnraidClient (unraid-api).
+# If the needed feature is missing, open an issue at https://github.com/ruaan-deysel/unraid-api
+[lint.flake8-tidy-imports.banned-api]
+"requests"              = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"httpx"                 = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"websockets"            = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"paramiko"              = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"asyncssh"              = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"gql"                   = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"python_graphql_client" = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"urllib.request"        = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"urllib3"               = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
+"http.client"           = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
 
 [lint.flake8-pytest-style]
 fixture-parentheses = false

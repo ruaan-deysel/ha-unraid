@@ -7,6 +7,12 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Array State Sensor Not Updating** ([#247](https://github.com/ruaan-deysel/ha-unraid/issues/247)): `sensor.*_array_state` now reflects changes (started → stopped / stopped → started) immediately instead of waiting up to 5 minutes for the next storage coordinator poll. Re-introduces the `subscribe_array_updates` WebSocket subscription that was removed in v2026.4.1. The subscription is event-driven (fires only on explicit array start/stop, not periodically) and is debounced (10 s) to prevent burst refreshes. Because an explicit array start/stop keeps disks active, no unexpected disk wake-ups occur from this trigger.
+
+- **Docker Container CPU / Memory Sensors Becoming Stale After Container Recreate** ([#245](https://github.com/ruaan-deysel/ha-unraid/issues/245)): Container CPU, memory-usage, and memory-percent sensors now resolve the current Docker container ID from coordinator data by name on every state read, instead of using the ID frozen at entity creation time. When a container is recreated its Docker ID changes; the stale ID caused the WebSocket stats lookup to return `None` indefinitely (fixed only by an integration reload). Entities now self-heal without a reload. Aggregate Docker sensors (Total CPU, Total Memory %) are also updated to exclude stats for container IDs that are no longer present in the coordinator's container list, preventing orphaned entries from inflating totals.
+
 ## [2026.6.0] - 2026-06-01
 
 ### Added

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from unraid_api.models import (
         ArrayDisk,
+        DockerContainerStats,
         ParityHistoryEntry,
         Share,
         UPSDevice,
@@ -2213,7 +2214,39 @@ class ShareUsageSensor(UnraidSensorEntity):
 # to these sensor entities.
 
 
-class ContainerCpuSensor(UnraidBaseEntity, SensorEntity):
+class _ContainerStatsMixin:
+    """
+    Shared lookup logic for per-container WebSocket stat sensors.
+
+    Resolves the current Docker container ID dynamically from coordinator
+    data on each call. This handles the case where a container is recreated
+    and receives a new Docker ID — the frozen ID stored at entity creation
+    time would otherwise yield stale (None) stats.
+    """
+
+    _container_name: str
+    _container_id: str
+
+    if TYPE_CHECKING:
+        from .coordinator import UnraidSystemData
+        from .websocket import UnraidWebSocketManager
+
+        coordinator: UnraidSystemCoordinator
+        _ws_manager: UnraidWebSocketManager
+
+    def _get_current_stats(self) -> DockerContainerStats | None:
+        """Resolve stats via a fresh container ID lookup from coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data  # type: ignore[attr-defined]
+        if data is not None:
+            for container in data.containers:
+                if container.name.lstrip("/") == self._container_name:
+                    stats = self._ws_manager.container_stats.stats.get(container.id)  # type: ignore[attr-defined]
+                    if stats is not None:
+                        return stats
+        return self._ws_manager.container_stats.stats.get(self._container_id)  # type: ignore[attr-defined]
+
+
+class ContainerCpuSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
     """Container CPU usage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_cpu"
@@ -2246,10 +2279,26 @@ class ContainerCpuSensor(UnraidBaseEntity, SensorEntity):
             "name": container_name,
         }
 
+    def _get_current_stats(self) -> DockerContainerStats | None:
+        """
+        Resolve stats by looking up the current container ID from coordinator data.
+
+        The Docker container ID changes whenever a container is recreated. Resolving
+        it freshly from coordinator data prevents a stale ID from breaking the lookup.
+        """
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            for container in data.containers:
+                if container.name.lstrip("/") == self._container_name:
+                    stats = self._ws_manager.container_stats.stats.get(container.id)
+                    if stats is not None:
+                        return stats
+        return self._ws_manager.container_stats.stats.get(self._container_id)
+
     @property
     def native_value(self) -> float | None:
         """Return container CPU usage from WebSocket stats."""
-        stats = self._ws_manager.container_stats.stats.get(self._container_id)
+        stats = self._get_current_stats()
         if stats is None:
             return None
         return stats.cpuPercent
@@ -2257,7 +2306,7 @@ class ContainerCpuSensor(UnraidBaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return container stats attributes."""
-        stats = self._ws_manager.container_stats.stats.get(self._container_id)
+        stats = self._get_current_stats()
         if stats is None:
             return {}
         attrs: dict[str, Any] = {}
@@ -2268,7 +2317,7 @@ class ContainerCpuSensor(UnraidBaseEntity, SensorEntity):
         return attrs
 
 
-class ContainerMemoryUsageSensor(UnraidBaseEntity, SensorEntity):
+class ContainerMemoryUsageSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
     """Container memory usage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_memory_usage"
@@ -2301,13 +2350,15 @@ class ContainerMemoryUsageSensor(UnraidBaseEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         """Return container memory usage string."""
-        stats = self._ws_manager.container_stats.stats.get(self._container_id)
+        stats = self._get_current_stats()
         if stats is None:
             return None
         return stats.memUsage
 
 
-class ContainerMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
+class ContainerMemoryPercentSensor(
+    _ContainerStatsMixin, UnraidBaseEntity, SensorEntity
+):
     """Container memory percentage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_memory_percent"
@@ -2343,7 +2394,7 @@ class ContainerMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return container memory percentage."""
-        stats = self._ws_manager.container_stats.stats.get(self._container_id)
+        stats = self._get_current_stats()
         if stats is None:
             return None
         return stats.memPercent
@@ -2381,20 +2432,33 @@ class DockerTotalCpuSensor(UnraidBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return sum of CPU usage across all containers."""
+        """Return sum of CPU usage across currently active containers."""
         all_stats = self._ws_manager.container_stats.stats
         if not all_stats:
             return None
-        total = sum(
-            s.cpuPercent for s in all_stats.values() if s.cpuPercent is not None
-        )
-        return round(total, 2)
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            valid_ids = {c.id for c in data.containers}
+            values = [
+                s.cpuPercent
+                for cid, s in all_stats.items()
+                if cid in valid_ids and s.cpuPercent is not None
+            ]
+        else:
+            values = [
+                s.cpuPercent for s in all_stats.values() if s.cpuPercent is not None
+            ]
+        if not values:
+            return None
+        return round(sum(values), 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return container count as attribute."""
-        all_stats = self._ws_manager.container_stats.stats
-        return {"container_count": len(all_stats)}
+        """Return active container count as attribute."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            return {"container_count": len(data.containers)}
+        return {"container_count": len(self._ws_manager.container_stats.stats)}
 
 
 class DockerTotalMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
@@ -2424,20 +2488,33 @@ class DockerTotalMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return sum of memory percentage across all containers."""
+        """Return sum of memory percentage across currently active containers."""
         all_stats = self._ws_manager.container_stats.stats
         if not all_stats:
             return None
-        total = sum(
-            s.memPercent for s in all_stats.values() if s.memPercent is not None
-        )
-        return round(total, 2)
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            valid_ids = {c.id for c in data.containers}
+            values = [
+                s.memPercent
+                for cid, s in all_stats.items()
+                if cid in valid_ids and s.memPercent is not None
+            ]
+        else:
+            values = [
+                s.memPercent for s in all_stats.values() if s.memPercent is not None
+            ]
+        if not values:
+            return None
+        return round(sum(values), 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return container count as attribute."""
-        all_stats = self._ws_manager.container_stats.stats
-        return {"container_count": len(all_stats)}
+        """Return active container count as attribute."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            return {"container_count": len(data.containers)}
+        return {"container_count": len(self._ws_manager.container_stats.stats)}
 
 
 class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
@@ -2480,16 +2557,21 @@ class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None or data.metrics.memory_total is None:
             return None
+        valid_ids = {c.id for c in data.containers}
         total_pct = sum(
-            s.memPercent for s in all_stats.values() if s.memPercent is not None
+            s.memPercent
+            for cid, s in all_stats.items()
+            if cid in valid_ids and s.memPercent is not None
         )
         return int(total_pct * data.metrics.memory_total / 100)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return container count as attribute."""
-        all_stats = self._ws_manager.container_stats.stats
-        return {"container_count": len(all_stats)}
+        """Return active container count as attribute."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is not None:
+            return {"container_count": len(data.containers)}
+        return {"container_count": len(self._ws_manager.container_stats.stats)}
 
 
 # =============================================================================

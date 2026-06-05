@@ -107,10 +107,11 @@ class TestWebSocketManagerLifecycle:
         api.subscribe_container_stats = AsyncMock(side_effect=asyncio.CancelledError)
         api.subscribe_ups_updates = AsyncMock(side_effect=asyncio.CancelledError)
         api.subscribe_notification_added = AsyncMock(side_effect=asyncio.CancelledError)
+        api.subscribe_array_updates = AsyncMock(side_effect=asyncio.CancelledError)
 
         await manager.async_start()
         assert manager._running is True
-        assert len(manager._tasks) == 3
+        assert len(manager._tasks) == 4
         # Clean up
         await manager.async_stop()
 
@@ -122,10 +123,11 @@ class TestWebSocketManagerLifecycle:
         api.subscribe_container_stats = AsyncMock(side_effect=asyncio.CancelledError)
         api.subscribe_ups_updates = AsyncMock(side_effect=asyncio.CancelledError)
         api.subscribe_notification_added = AsyncMock(side_effect=asyncio.CancelledError)
+        api.subscribe_array_updates = AsyncMock(side_effect=asyncio.CancelledError)
 
         await manager.async_start()
         await manager.async_start()  # Second call should be no-op
-        assert len(manager._tasks) == 3
+        assert len(manager._tasks) == 4
         await manager.async_stop()
 
     @pytest.mark.asyncio

@@ -26,7 +26,7 @@ from .const import (
 if TYPE_CHECKING:
     from unraid_api import UnraidClient
 
-    from .coordinator import UnraidSystemCoordinator
+    from .coordinator import UnraidStorageCoordinator, UnraidSystemCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +52,12 @@ class UnraidWebSocketManager:
         api_client: UnraidClient,
         system_coordinator: UnraidSystemCoordinator,
         server_name: str,
+        storage_coordinator: UnraidStorageCoordinator | None = None,
     ) -> None:
         """Initialize the WebSocket manager."""
         self._api_client = api_client
         self._system_coordinator = system_coordinator
+        self._storage_coordinator = storage_coordinator
         self._server_name = server_name
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
@@ -65,6 +67,7 @@ class UnraidWebSocketManager:
         # within the cooldown window are suppressed)
         self._last_ups_refresh: float = 0.0
         self._last_notification_refresh: float = 0.0
+        self._last_storage_refresh: float = 0.0
 
     async def async_start(self) -> None:
         """Start all WebSocket subscriptions as background tasks."""
@@ -88,6 +91,10 @@ class UnraidWebSocketManager:
                     self._handle_notification_added,
                 ),
                 name=f"unraid_ws_notification_added_{self._server_name}",
+            ),
+            asyncio.create_task(
+                self._run_subscription("array_updates", self._handle_array_updates),
+                name=f"unraid_ws_array_updates_{self._server_name}",
             ),
         ]
 
@@ -214,5 +221,36 @@ class UnraidWebSocketManager:
             else:
                 _LOGGER.debug(
                     "Notification refresh for %s suppressed (debounce cooldown active)",
+                    self._server_name,
+                )
+
+    async def _handle_array_updates(self) -> None:
+        """
+        Process array state subscription and trigger storage refresh.
+
+        This subscription was removed in v2026.4.1 due to concerns about waking
+        spun-down disks. It was re-introduced in v2026.6.x because:
+        - It fires only on explicit array start/stop (event-driven, not periodic).
+        - At that moment the disks are still active (spin-down timeout hasn't elapsed).
+        - The 10-second debounce (WS_REFRESH_DEBOUNCE_SECONDS) prevents burst refreshes.
+        The array state sensor now reflects changes immediately (#247) rather than
+        waiting up to 5 minutes for the next storage coordinator poll.
+        """
+        async for update in self._api_client.subscribe_array_updates():
+            if not self._running:
+                break
+            if self._storage_coordinator is None:
+                continue
+            _LOGGER.debug(
+                "Array update received for %s: state=%s",
+                self._server_name,
+                update.state,
+            )
+            if self._should_trigger_refresh(self._last_storage_refresh):
+                self._last_storage_refresh = time.monotonic()
+                await self._storage_coordinator.async_request_refresh()
+            else:
+                _LOGGER.debug(
+                    "Array update for %s suppressed (debounce cooldown active)",
                     self._server_name,
                 )

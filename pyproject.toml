@@ -69,26 +69,10 @@ select = [
     "C",   # flake8-comprehensions
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
-    "TID", # flake8-tidy-imports — enforces unraid-api boundary (TID251)
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
 ]
-
-# Banned imports — all Unraid server I/O must go through UnraidClient (unraid-api).
-# If a needed feature is missing, open an issue at https://github.com/ruaan-deysel/unraid-api
-# rather than adding a workaround here.
-[tool.ruff.lint.flake8-tidy-imports.banned-api]
-"requests"                = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"httpx"                   = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"websockets"              = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"paramiko"                = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"asyncssh"                = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"gql"                     = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"python_graphql_client"   = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"urllib.request"          = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"urllib3"                 = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
-"http.client"             = { msg = "Use UnraidClient from unraid-api. See AGENTS.md → 'Critical Rule: Never Bypass unraid-api'." }
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py

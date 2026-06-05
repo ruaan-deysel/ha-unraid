@@ -12,6 +12,7 @@ https://github.com/ruaan-deysel/unraid-api — do NOT add a workaround here.
 
 Exit 0 = clean, Exit 1 = violations found.
 """
+
 from __future__ import annotations
 
 import re
@@ -31,8 +32,14 @@ BANNED: list[tuple[str, str]] = [
     (r"\bimport httpx\b", "HTTP via 'httpx' — use UnraidClient"),
     (r"\bfrom httpx\b", "HTTP via 'httpx' — use UnraidClient"),
     # stdlib HTTP modules
-    (r"\bimport urllib\.request\b", "stdlib HTTP via 'urllib.request' — use UnraidClient"),
-    (r"\bfrom urllib\.request\b", "stdlib HTTP via 'urllib.request' — use UnraidClient"),
+    (
+        r"\bimport urllib\.request\b",
+        "stdlib HTTP via 'urllib.request' — use UnraidClient",
+    ),
+    (
+        r"\bfrom urllib\.request\b",
+        "stdlib HTTP via 'urllib.request' — use UnraidClient",
+    ),
     (r"\bimport urllib3\b", "HTTP via 'urllib3' — use UnraidClient"),
     (r"\bfrom urllib3\b", "HTTP via 'urllib3' — use UnraidClient"),
     (r"\bimport http\.client\b", "stdlib HTTP via 'http.client' — use UnraidClient"),
@@ -53,7 +60,7 @@ BANNED: list[tuple[str, str]] = [
     # for direct use bypasses the library.
     (
         r"aiohttp\.ClientSession\s*\(",
-        "direct aiohttp.ClientSession() creation — pass HA's session to UnraidClient instead",
+        "direct aiohttp.ClientSession() — pass HA's session to UnraidClient instead",
     ),
 ]
 

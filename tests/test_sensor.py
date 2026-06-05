@@ -5826,6 +5826,7 @@ def test_docker_total_cpu_sensor_init() -> None:
 def test_docker_total_cpu_sensor_value() -> None:
     """Test DockerTotalCpuSensor sums container CPU usage."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None  # No coordinator data — use all stats as fallback
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "cpuPercent": 25.5},
@@ -5858,6 +5859,7 @@ def test_docker_total_cpu_sensor_empty_stats() -> None:
 def test_docker_total_cpu_sensor_some_none() -> None:
     """Test DockerTotalCpuSensor skips containers with None cpuPercent."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "cpuPercent": 10.0},
@@ -5876,6 +5878,7 @@ def test_docker_total_cpu_sensor_some_none() -> None:
 def test_docker_total_cpu_sensor_extra_attributes() -> None:
     """Test DockerTotalCpuSensor extra attributes include container count."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "cpuPercent": 5.0},
@@ -5911,6 +5914,7 @@ def test_docker_total_memory_percent_sensor_init() -> None:
 def test_docker_total_memory_percent_sensor_value() -> None:
     """Test DockerTotalMemoryPercentSensor sums container memory percentages."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None  # No coordinator data — use all stats as fallback
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "memPercent": 15.2},
@@ -5943,6 +5947,7 @@ def test_docker_total_memory_percent_sensor_empty_stats() -> None:
 def test_docker_total_memory_percent_sensor_some_none() -> None:
     """Test DockerTotalMemoryPercentSensor skips containers with None memPercent."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "memPercent": 12.0},
@@ -5961,6 +5966,7 @@ def test_docker_total_memory_percent_sensor_some_none() -> None:
 def test_docker_total_memory_percent_sensor_extra_attributes() -> None:
     """Test DockerTotalMemoryPercentSensor extra attributes include container count."""
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
     ws = _make_ws_manager(
         stats={
             "c1": {"id": "c1", "memPercent": 5.0},
