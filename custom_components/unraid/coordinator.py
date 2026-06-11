@@ -14,7 +14,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    TimestampDataUpdateCoordinator,
+    UpdateFailed,
+)
 from unraid_api import (
     ServerInfo,
     SystemMetrics,
@@ -34,6 +37,7 @@ from unraid_api.models import (
     Connect,
     DockerContainer,
     Network,
+    NetworkMetrics,
     NotificationOverview,
     ParityCheck,
     ParityHistoryEntry,
@@ -71,6 +75,7 @@ class UnraidSystemData:
     notification_overview: NotificationOverview | None = None
     notifications_unread: int = 0
     mover_active: bool | None = None
+    network_metrics: list[NetworkMetrics] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -138,7 +143,7 @@ class UnraidStorageData:
         return self.array.caches
 
 
-class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
+class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
     """Coordinator for Unraid system data (polls every 30 seconds)."""
 
     def __init__(
@@ -312,9 +317,15 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
     async def _async_get_unread_notifications(self) -> list[Any]:
         """Fetch unread notifications via available API wrapper methods."""
         _LOGGER.debug("Polling unread notifications for %s", self._server_name)
+        # Duck-typed lookup: typed_get_notifications is a future unraid-api
+        # API; current releases expose get_notifications. getattr keeps the
+        # fallback chain explicit for the type checker.
+        typed_get_notifications = getattr(
+            self.api_client, "typed_get_notifications", None
+        )
         try:
-            if hasattr(self.api_client, "typed_get_notifications"):
-                response = await self.api_client.typed_get_notifications(
+            if typed_get_notifications is not None:
+                response = await typed_get_notifications(
                     notification_type="UNREAD",
                     offset=0,
                     limit=200,
@@ -507,9 +518,17 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             await self._async_save_seen_notification_ids()
 
     async def _query_optional_docker(self) -> list[DockerContainer]:
-        """Query Docker containers (fails gracefully if Docker not enabled)."""
+        """
+        Query Docker containers (fails gracefully if Docker not enabled).
+
+        Uses the lightweight typed_get_containers_safe() variant: the full
+        query's sizeRootFs/sizeRw/sizeLog fields make the Docker daemon
+        compute writable-layer sizes on every poll, causing multi-second CPU
+        spikes on the Unraid server (#237). The safe variant returns every
+        field this integration consumes.
+        """
         try:
-            return await self.api_client.typed_get_containers()
+            return await self.api_client.typed_get_containers_safe()
         except UnraidAuthenticationError:
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
@@ -534,6 +553,22 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("UPS data not available: %s", err)
+            return []
+
+    async def _query_optional_network_metrics(self) -> list[NetworkMetrics]:
+        """
+        Query per-interface network metrics (fails gracefully).
+
+        Requires Unraid API 4.35.0+ (metrics.network); older servers raise
+        UnraidAPIError from the library's capability check, which is cheap
+        after the first call because capabilities are cached.
+        """
+        try:
+            return await self.api_client.get_network_metrics()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+            _LOGGER.debug("Network metrics not available: %s", err)
             return []
 
     async def _query_optional_mover_status(self) -> bool | None:
@@ -576,6 +611,14 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
     async def async_update_container(self, container_id: str) -> None:
         """Update a Docker container to its latest image."""
         await self.api_client.update_container(container_id)
+
+    async def async_update_all_containers(self) -> None:
+        """Update every container with a pending image update (API 4.35+)."""
+        await self.api_client.update_all_containers()
+
+    async def async_refresh_docker_digests(self) -> None:
+        """Force a re-check of remote image digests (the WebGUI 'check for updates')."""
+        await self.api_client.refresh_docker_digests()
 
     async def async_start_vm(self, vm_id: str) -> None:
         """Start a virtual machine."""
@@ -646,20 +689,28 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 time.monotonic() - self._last_docker_refresh >= DOCKER_POLL_INTERVAL
             )
             if fetch_docker:
-                containers, vms, ups_devices, mover_active = await asyncio.gather(
+                (
+                    containers,
+                    vms,
+                    ups_devices,
+                    mover_active,
+                    network_metrics,
+                ) = await asyncio.gather(
                     self._query_optional_docker(),
                     self._query_optional_vms(),
                     self._query_optional_ups(),
                     self._query_optional_mover_status(),
+                    self._query_optional_network_metrics(),
                 )
                 self._cached_containers = containers
                 self._last_docker_refresh = time.monotonic()
                 self._force_docker_refresh = False
             else:
-                vms, ups_devices, mover_active = await asyncio.gather(
+                vms, ups_devices, mover_active, network_metrics = await asyncio.gather(
                     self._query_optional_vms(),
                     self._query_optional_ups(),
                     self._query_optional_mover_status(),
+                    self._query_optional_network_metrics(),
                 )
                 containers = self._cached_containers
 
@@ -696,6 +747,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
                 if notifications.unread
                 else 0,
                 mover_active=mover_active,
+                network_metrics=network_metrics,
             )
 
         except UnraidAuthenticationError as err:
@@ -716,7 +768,7 @@ class UnraidSystemCoordinator(DataUpdateCoordinator[UnraidSystemData]):
             raise UpdateFailed(msg) from err
 
 
-class UnraidStorageCoordinator(DataUpdateCoordinator[UnraidStorageData]):
+class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]):
     """Coordinator for Unraid storage data (polls every 5 minutes)."""
 
     def __init__(
@@ -870,7 +922,7 @@ class UnraidInfraData:
     network: Network | None = None
 
 
-class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
+class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
     """
     Coordinator for Unraid infrastructure data (polls every 15 minutes).
 
@@ -1021,25 +1073,25 @@ class UnraidInfraCoordinator(DataUpdateCoordinator[UnraidInfraData]):
         """
         _LOGGER.debug("Starting infrastructure data update")
         try:
-            # All sub-queries are optional — run all concurrently
+            # All sub-queries are optional — run all concurrently.
+            # Nested gathers keep the result tuples fully typed (typeshed's
+            # asyncio.gather overloads only cover up to six awaitables).
             (
-                services,
-                registration,
-                cloud,
-                connect,
-                remote_access,
-                vars_data,
-                installed_plugins,
-                network,
+                (services, registration, cloud, connect),
+                (remote_access, vars_data, installed_plugins, network),
             ) = await asyncio.gather(
-                self._query_optional_services(),
-                self._query_optional_registration(),
-                self._query_optional_cloud(),
-                self._query_optional_connect(),
-                self._query_optional_remote_access(),
-                self._query_optional_vars(),
-                self._query_installed_plugins(),
-                self._query_optional_network(),
+                asyncio.gather(
+                    self._query_optional_services(),
+                    self._query_optional_registration(),
+                    self._query_optional_cloud(),
+                    self._query_optional_connect(),
+                ),
+                asyncio.gather(
+                    self._query_optional_remote_access(),
+                    self._query_optional_vars(),
+                    self._query_installed_plugins(),
+                    self._query_optional_network(),
+                ),
             )
 
             services = services or []

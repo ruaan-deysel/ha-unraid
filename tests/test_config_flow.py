@@ -22,7 +22,11 @@ from unraid_api.exceptions import (
 )
 from unraid_api.models import ServerInfo, UPSDevice, VersionInfo
 
-from custom_components.unraid.config_flow import CannotConnectError, SSLCertificateError
+from custom_components.unraid.config_flow import (
+    CannotConnectError,
+    ConfigFlow,
+    SSLCertificateError,
+)
 from custom_components.unraid.const import (
     CONF_ENABLE_CONTAINER_UPDATES,
     CONF_IGNORE_SSL,
@@ -2139,3 +2143,152 @@ async def test_reconfigure_flow_generic_exception_converted_to_cannot_connect(
     # Generic exceptions are converted to cannot_connect via _handle_generic_error
     assert result2["type"] is FlowResultType.FORM
     assert result2["errors"]["base"] == "cannot_connect"
+
+
+async def test_user_step_truly_unexpected_error(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test an exception escaping _test_connection maps to the unknown error."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch.object(ConfigFlow, "_test_connection", side_effect=RuntimeError("boom")):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "valid-api-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"]["base"] == "unknown"
+
+
+async def test_reauth_flow_truly_unexpected_error(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test reauth maps exceptions escaping _test_connection to unknown."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+
+    with patch.object(ConfigFlow, "_test_connection", side_effect=RuntimeError("boom")):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "new-api-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"]["base"] == "unknown"
+
+
+async def test_reconfigure_flow_truly_unexpected_error(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test reconfigure maps exceptions escaping _test_connection to unknown."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    with patch.object(ConfigFlow, "_test_connection", side_effect=RuntimeError("boom")):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "new-key"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"]["base"] == "unknown"
+
+
+async def test_ssl_fallback_failing_with_auth_error_is_reraised(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test the verify_ssl=False fallback re-raises auth errors."""
+    from custom_components.unraid.config_flow import (
+        InvalidAuthError,
+        SSLCertificateError,
+    )
+
+    flow = ConfigFlow()
+    flow.hass = hass
+
+    attempts = []
+
+    async def fake_validate(client, host) -> None:
+        attempts.append(client)
+        if len(attempts) == 1:
+            msg = "self-signed"
+            raise SSLCertificateError(msg)
+        msg = "bad key"
+        raise InvalidAuthError(msg)
+
+    with (
+        patch.object(ConfigFlow, "_validate_connection", side_effect=fake_validate),
+        patch(
+            "custom_components.unraid.config_flow.UnraidClient",
+            return_value=AsyncMock(),
+        ),
+        pytest.raises(InvalidAuthError),
+    ):
+        await flow._test_connection(
+            {CONF_HOST: "unraid.local", CONF_API_KEY: "key", CONF_PORT: 80}
+        )
+
+    assert len(attempts) == 2
+
+
+async def test_validate_connection_ssl_connector_error(hass: HomeAssistant) -> None:
+    """Test ClientConnectorError with SSL cause maps to SSLCertificateError."""
+    from aiohttp.client_exceptions import ClientConnectorSSLError
+
+    from custom_components.unraid.config_flow import SSLCertificateError
+
+    flow = ConfigFlow()
+    flow.hass = hass
+
+    api_client = AsyncMock()
+    api_client.test_connection = AsyncMock(
+        side_effect=ClientConnectorSSLError(MagicMock(), OSError("cert invalid"))
+    )
+
+    with pytest.raises(SSLCertificateError):
+        await flow._validate_connection(api_client, "unraid.local")
+
+
+async def test_handle_generic_error_maps_http_auth_status(
+    hass: HomeAssistant,
+) -> None:
+    """Test the generic error helper maps 401/403 responses to invalid auth."""
+    from custom_components.unraid.config_flow import InvalidAuthError
+
+    flow = ConfigFlow()
+    flow.hass = hass
+
+    err = aiohttp.ClientResponseError(
+        request_info=None, history=(), status=401, message="Unauthorized"
+    )
+    with pytest.raises(InvalidAuthError):
+        flow._handle_generic_error(err)

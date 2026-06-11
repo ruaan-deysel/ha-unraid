@@ -539,10 +539,6 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
                 )
             ] = vol.All(vol.Coerce(int), vol.Range(min=0, max=100000))
 
-        # If no options available (no UPS detected), show informational message
-        if not schema_dict:
-            return self.async_abort(reason="no_options_available")
-
         data_schema = vol.Schema(schema_dict)
 
         return self.async_show_form(

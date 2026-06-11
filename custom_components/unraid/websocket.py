@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,13 @@ if TYPE_CHECKING:
     from .coordinator import UnraidStorageCoordinator, UnraidSystemCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# The container stats subscription streams raw `docker stats` terminal output;
+# the first row of each sample cycle carries ANSI control sequences (clear
+# screen + cursor home) glued onto the container ID, so that container's stats
+# would otherwise be stored under a corrupted key and never match coordinator
+# data (always the same container, since the output order is stable).
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 @dataclass
@@ -67,7 +75,10 @@ class UnraidWebSocketManager:
         # within the cooldown window are suppressed)
         self._last_ups_refresh: float = 0.0
         self._last_notification_refresh: float = 0.0
-        self._last_storage_refresh: float = 0.0
+        # Last array state seen via the array_updates subscription. Used to
+        # refresh storage data only on actual state transitions (see
+        # _handle_array_updates for why this matters for spun-down disks).
+        self._last_array_state: str | None = None
 
     async def async_start(self) -> None:
         """Start all WebSocket subscriptions as background tasks."""
@@ -183,7 +194,8 @@ class UnraidWebSocketManager:
                 break
             if stats.id is None:
                 continue
-            self.container_stats.stats[stats.id] = stats
+            container_id = _ANSI_ESCAPE_RE.sub("", stats.id)
+            self.container_stats.stats[container_id] = stats
 
     async def _handle_ups_updates(self) -> None:
         """Process UPS state subscription and trigger system refresh."""
@@ -228,29 +240,38 @@ class UnraidWebSocketManager:
         """
         Process array state subscription and trigger storage refresh.
 
-        This subscription was removed in v2026.4.1 due to concerns about waking
-        spun-down disks. It was re-introduced in v2026.6.x because:
-        - It fires only on explicit array start/stop (event-driven, not periodic).
-        - At that moment the disks are still active (spin-down timeout hasn't elapsed).
-        - The 10-second debounce (WS_REFRESH_DEBOUNCE_SECONDS) prevents burst refreshes.
-        The array state sensor now reflects changes immediately (#247) rather than
-        waiting up to 5 minutes for the next storage coordinator poll.
+        This subscription was removed in v2026.4.1 because it triggered
+        storage refreshes every ~30 seconds, waking spun-down disks and
+        loading the CPU (#211, #206). It is re-introduced for #247 with
+        stricter guards:
+
+        - The server emits periodic heartbeat events with ``state=None``
+          (observed every ~30 s on API v4.35 with a stable array). These
+          carry no state change and are ignored entirely.
+        - A refresh is requested only when the reported state differs from
+          the previously seen state (an actual array start/stop), so a
+          stable array never causes WebSocket-driven storage polling. At
+          that moment disks are active anyway, so no unexpected wake-ups.
+        - Rapid transitions (e.g. stopping → stopped) are coalesced by the
+          storage coordinator's built-in request_refresh debouncer, which
+          never drops the trailing event — the final state always lands.
         """
         async for update in self._api_client.subscribe_array_updates():
             if not self._running:
                 break
             if self._storage_coordinator is None:
                 continue
+            # Heartbeat event — no state change, refreshing would spin up disks.
+            if update.state is None:
+                continue
+            if update.state == self._last_array_state:
+                continue
+            previous_state = self._last_array_state
+            self._last_array_state = update.state
             _LOGGER.debug(
-                "Array update received for %s: state=%s",
+                "Array state changed for %s: %s -> %s — refreshing storage data",
                 self._server_name,
+                previous_state,
                 update.state,
             )
-            if self._should_trigger_refresh(self._last_storage_refresh):
-                self._last_storage_refresh = time.monotonic()
-                await self._storage_coordinator.async_request_refresh()
-            else:
-                _LOGGER.debug(
-                    "Array update for %s suppressed (debounce cooldown active)",
-                    self._server_name,
-                )
+            await self._storage_coordinator.async_request_refresh()

@@ -3,23 +3,31 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api.exceptions import UnraidAPIError
 
 from .const import DOMAIN
-from .entity import UnraidBaseEntity
+from .coordinator import (
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
+)
+from .entity import (
+    UnraidBaseEntity,
+    UnraidCoordinator,
+    async_add_dynamic_resource_entities,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from unraid_api.models import DockerContainer, VmDomain
 
     from . import UnraidConfigEntry
-    from .coordinator import UnraidStorageCoordinator, UnraidSystemCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 1
 
 
-class UnraidButtonEntity(UnraidBaseEntity, ButtonEntity):
+class UnraidButtonEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator](
+    UnraidBaseEntity[CoordinatorT], ButtonEntity
+):
     """
     Base class for Unraid button entities.
 
@@ -38,7 +48,7 @@ class UnraidButtonEntity(UnraidBaseEntity, ButtonEntity):
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator | UnraidStorageCoordinator,
+        coordinator: CoordinatorT,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -65,7 +75,7 @@ class UnraidButtonEntity(UnraidBaseEntity, ButtonEntity):
 # - Pause/Resume (for long-running checks)
 
 
-class ParityCheckStartCorrectionButton(UnraidButtonEntity):
+class ParityCheckStartCorrectionButton(UnraidButtonEntity[UnraidStorageCoordinator]):
     """
     Button to start a parity check with corrections enabled.
 
@@ -112,7 +122,7 @@ class ParityCheckStartCorrectionButton(UnraidButtonEntity):
             ) from err
 
 
-class ParityCheckPauseButton(UnraidButtonEntity):
+class ParityCheckPauseButton(UnraidButtonEntity[UnraidStorageCoordinator]):
     """
     Button to pause a running parity check.
 
@@ -155,7 +165,7 @@ class ParityCheckPauseButton(UnraidButtonEntity):
             ) from err
 
 
-class ParityCheckResumeButton(UnraidButtonEntity):
+class ParityCheckResumeButton(UnraidButtonEntity[UnraidStorageCoordinator]):
     """
     Button to resume a paused parity check.
 
@@ -203,7 +213,7 @@ class ParityCheckResumeButton(UnraidButtonEntity):
 # =============================================================================
 
 
-class DockerContainerRestartButton(UnraidButtonEntity):
+class DockerContainerRestartButton(UnraidButtonEntity[UnraidSystemCoordinator]):
     """
     Button to restart a Docker container.
 
@@ -275,12 +285,119 @@ class DockerContainerRestartButton(UnraidButtonEntity):
             ) from err
 
 
+class UpdateAllContainersButton(UnraidButtonEntity[UnraidSystemCoordinator]):
+    """
+    Button to update every Docker container with a pending image update.
+
+    Bulk action equivalent to the WebGUI "Update All" — pulls the latest
+    image for each container that reports an update available.
+    Disabled by default since it affects every container at once.
+    Requires Unraid API 4.35.0+ (docker.updateAllContainers).
+    """
+
+    _attr_translation_key = "update_all_containers"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize update all containers button."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id="update_all_containers",
+            name="Update All Containers",
+            server_info=server_info,
+        )
+
+    async def async_press(self) -> None:
+        """Handle button press to update all containers with pending updates."""
+        _LOGGER.info("Updating all Docker containers on %s", self._server_name)
+        try:
+            await self.coordinator.async_update_all_containers()
+            _LOGGER.debug("Update all containers command sent successfully")
+        except UnraidAPIError as err:
+            _LOGGER.error("Failed to update all containers: %s", err)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="update_all_containers_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+        # Re-fetch the container list immediately so new image IDs and
+        # update-available states are reflected without waiting for the
+        # throttled Docker poll. The update itself succeeded, so a refresh
+        # failure is non-critical — state syncs on the next poll.
+        try:
+            await self.coordinator.async_request_docker_refresh()
+        except UnraidAPIError as err:
+            _LOGGER.debug("Docker refresh after bulk update failed: %s", err)
+
+
+class CheckContainerUpdatesButton(UnraidButtonEntity[UnraidSystemCoordinator]):
+    """
+    Button to force a re-check of remote Docker image digests.
+
+    Unraid caches each container's update-available state; this button
+    triggers the same digest refresh as the WebGUI "Check for Updates"
+    action, so update entities reflect new releases without waiting for
+    Unraid's own periodic check.
+    Requires Unraid API 4.35.0+ (refreshDockerDigests).
+    """
+
+    _attr_translation_key = "check_container_updates"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize check container updates button."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id="check_container_updates",
+            name="Check Container Updates",
+            server_info=server_info,
+        )
+
+    async def async_press(self) -> None:
+        """Handle button press to re-check image digests."""
+        _LOGGER.info("Checking for container updates on %s", self._server_name)
+        try:
+            await self.coordinator.async_refresh_docker_digests()
+            _LOGGER.debug("Container update check triggered successfully")
+        except UnraidAPIError as err:
+            _LOGGER.error("Failed to check for container updates: %s", err)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="check_container_updates_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+        # The digest check runs server-side; re-fetch the container list so
+        # refreshed update-available states land on the next refresh. The
+        # check itself succeeded, so a refresh failure is non-critical.
+        try:
+            await self.coordinator.async_request_docker_refresh()
+        except UnraidAPIError as err:
+            _LOGGER.debug("Docker refresh after update check failed: %s", err)
+
+
 # =============================================================================
 # Virtual Machine Control Buttons
 # =============================================================================
 
 
-class VMButtonBase(UnraidButtonEntity):
+class VMButtonBase(UnraidButtonEntity[UnraidSystemCoordinator]):
     """
     Base class for per-VM button entities.
 
@@ -505,7 +622,7 @@ class VMResetButton(VMButtonBase):
 # =============================================================================
 
 
-class ArchiveAllNotificationsButton(UnraidButtonEntity):
+class ArchiveAllNotificationsButton(UnraidButtonEntity[UnraidSystemCoordinator]):
     """
     Button to archive all unread notifications.
 
@@ -549,7 +666,7 @@ class ArchiveAllNotificationsButton(UnraidButtonEntity):
             ) from err
 
 
-class DeleteAllArchivedNotificationsButton(UnraidButtonEntity):
+class DeleteAllArchivedNotificationsButton(UnraidButtonEntity[UnraidSystemCoordinator]):
     """
     Button to delete all archived notifications.
 
@@ -651,15 +768,40 @@ async def async_setup_entry(
         )
     )
 
-    # Docker container restart buttons (disabled by default)
-    # Users can enable per-container as needed for automation workflows
-    if system_coordinator.data and system_coordinator.data.containers:
-        _LOGGER.debug(
-            "Creating restart buttons for %d Docker container(s)",
-            len(system_coordinator.data.containers),
+    # Server-wide Docker update actions, created unconditionally — gating on
+    # the initial container snapshot would leave them permanently missing
+    # when the integration starts while no containers exist. They require
+    # Unraid API 4.35+; pressing them on older servers raises a translated
+    # error.
+    entities.append(
+        CheckContainerUpdatesButton(
+            system_coordinator, server_uuid, server_name, server_info
         )
-        for container in system_coordinator.data.containers:
-            entities.append(
+    )
+    entities.append(
+        UpdateAllContainersButton(
+            system_coordinator, server_uuid, server_name, server_info
+        )
+    )
+
+    _LOGGER.debug("Adding %d button entities", len(entities))
+    async_add_entities(entities)
+
+    # ==========================================================================
+    # Per-container / per-VM buttons (disabled by default, added dynamically)
+    # ==========================================================================
+    # Containers and VMs created after setup get their buttons on the next
+    # coordinator refresh — no integration reload needed.
+    # Container restart buttons: users enable per-container as needed.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.containers if system_coordinator.data else []
+            ),
+            get_key=lambda container: container.name.lstrip("/"),
+            create_entities=lambda container: [
                 DockerContainerRestartButton(
                     system_coordinator,
                     server_uuid,
@@ -667,41 +809,35 @@ async def async_setup_entry(
                     container,
                     server_info,
                 )
-            )
-
-    # ==========================================================================
-    # VM Control Buttons (disabled by default)
-    # ==========================================================================
-    # These provide actions not available through the VM on/off switch:
-    # - Force Stop: immediate power off (vs graceful shutdown)
-    # - Reboot: restart without full stop/start cycle
-    # - Pause/Resume: freeze/unfreeze VM state
-    # - Reset: hard reset (equivalent to power cycle)
-    if system_coordinator.data and system_coordinator.data.vms:
-        _LOGGER.debug(
-            "Creating control buttons for %d VM(s)",
-            len(system_coordinator.data.vms),
+            ],
         )
-        for vm in system_coordinator.data.vms:
-            entities.extend(
-                [
-                    VMForceStopButton(
-                        system_coordinator, server_uuid, server_name, vm, server_info
-                    ),
-                    VMRebootButton(
-                        system_coordinator, server_uuid, server_name, vm, server_info
-                    ),
-                    VMPauseButton(
-                        system_coordinator, server_uuid, server_name, vm, server_info
-                    ),
-                    VMResumeButton(
-                        system_coordinator, server_uuid, server_name, vm, server_info
-                    ),
-                    VMResetButton(
-                        system_coordinator, server_uuid, server_name, vm, server_info
-                    ),
-                ]
-            )
-
-    _LOGGER.debug("Adding %d button entities", len(entities))
-    async_add_entities(entities)
+    )
+    # VM control buttons provide actions not available through the VM switch:
+    # force stop, reboot, pause/resume, and hard reset.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.vms if system_coordinator.data else []
+            ),
+            get_key=lambda vm: vm.name,
+            create_entities=lambda vm: [
+                VMForceStopButton(
+                    system_coordinator, server_uuid, server_name, vm, server_info
+                ),
+                VMRebootButton(
+                    system_coordinator, server_uuid, server_name, vm, server_info
+                ),
+                VMPauseButton(
+                    system_coordinator, server_uuid, server_name, vm, server_info
+                ),
+                VMResumeButton(
+                    system_coordinator, server_uuid, server_name, vm, server_info
+                ),
+                VMResetButton(
+                    system_coordinator, server_uuid, server_name, vm, server_info
+                ),
+            ],
+        )
+    )

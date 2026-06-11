@@ -11,6 +11,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api.const import (
     DISK_STATUS_DISABLED,
     DISK_STATUS_DSBL_NEW,
@@ -22,7 +23,16 @@ from unraid_api.const import (
 )
 
 from .const import ARRAY_STATE_STARTED
-from .entity import UnraidBaseEntity
+from .coordinator import (
+    UnraidInfraCoordinator,
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
+)
+from .entity import (
+    UnraidBaseEntity,
+    UnraidCoordinator,
+    async_add_dynamic_resource_entities,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -30,11 +40,8 @@ if TYPE_CHECKING:
 
     from . import UnraidConfigEntry
     from .coordinator import (
-        UnraidInfraCoordinator,
         UnraidInfraData,
-        UnraidStorageCoordinator,
         UnraidStorageData,
-        UnraidSystemCoordinator,
         UnraidSystemData,
     )
 
@@ -61,14 +68,14 @@ def _count_storage_disk_statuses(
     return sum(1 for disk in disks if disk.status in statuses)
 
 
-class UnraidBinarySensorEntity(UnraidBaseEntity, BinarySensorEntity):
+class UnraidBinarySensorEntity[
+    CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator
+](UnraidBaseEntity[CoordinatorT], BinarySensorEntity):
     """Base class for Unraid binary sensor entities."""
 
     def __init__(
         self,
-        coordinator: UnraidStorageCoordinator
-        | UnraidSystemCoordinator
-        | UnraidInfraCoordinator,
+        coordinator: CoordinatorT,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -97,7 +104,7 @@ class UnraidBinarySensorEntity(UnraidBaseEntity, BinarySensorEntity):
         )
 
 
-class DiskHealthBinarySensor(UnraidBinarySensorEntity):
+class DiskHealthBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """Disk health binary sensor."""
 
     _attr_translation_key = "disk_health"
@@ -113,7 +120,7 @@ class DiskHealthBinarySensor(UnraidBinarySensorEntity):
     ) -> None:
         """Initialize disk health binary sensor."""
         self._disk_id = disk.id
-        self._disk_name = disk.name
+        self._disk_name = disk.name or disk.id
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -167,7 +174,7 @@ class DiskHealthBinarySensor(UnraidBinarySensorEntity):
         return attrs
 
 
-class ParityStatusBinarySensor(UnraidBinarySensorEntity):
+class ParityStatusBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Parity check status binary sensor.
 
@@ -219,7 +226,7 @@ class ParityStatusBinarySensor(UnraidBinarySensorEntity):
         }
 
 
-class ArrayStartedBinarySensor(UnraidBinarySensorEntity):
+class ArrayStartedBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Binary sensor indicating if the array is started.
 
@@ -255,7 +262,9 @@ class ArrayStartedBinarySensor(UnraidBinarySensorEntity):
         return data.array_state.upper() == ARRAY_STATE_STARTED
 
 
-class ParityCheckRunningBinarySensor(UnraidBinarySensorEntity):
+class ParityCheckRunningBinarySensor(
+    UnraidBinarySensorEntity[UnraidStorageCoordinator]
+):
     """
     Binary sensor indicating if a parity check is currently running.
 
@@ -305,7 +314,7 @@ class ParityCheckRunningBinarySensor(UnraidBinarySensorEntity):
         }
 
 
-class ParityCheckPausedBinarySensor(UnraidBinarySensorEntity):
+class ParityCheckPausedBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """Binary sensor indicating if a parity check is currently paused."""
 
     _attr_translation_key = "parity_check_paused"
@@ -337,7 +346,7 @@ class ParityCheckPausedBinarySensor(UnraidBinarySensorEntity):
         return data.parity_status.paused or False
 
 
-class ParityValidBinarySensor(UnraidBinarySensorEntity):
+class ParityValidBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Binary sensor indicating if parity is valid.
 
@@ -396,7 +405,7 @@ class ParityValidBinarySensor(UnraidBinarySensorEntity):
 # =============================================================================
 
 
-class UnraidSystemBinarySensor(UnraidBinarySensorEntity):
+class UnraidSystemBinarySensor(UnraidBinarySensorEntity[UnraidSystemCoordinator]):
     """Base class for Unraid system binary sensor entities."""
 
     def __init__(
@@ -481,7 +490,7 @@ class UPSConnectedBinarySensor(UnraidSystemBinarySensor):
         }
 
 
-class ServiceBinarySensor(UnraidBinarySensorEntity):
+class ServiceBinarySensor(UnraidBinarySensorEntity[UnraidInfraCoordinator]):
     """Binary sensor for an Unraid system service (SMB, NFS, SSH, etc.)."""
 
     _attr_translation_key = "service"
@@ -540,7 +549,7 @@ class ServiceBinarySensor(UnraidBinarySensorEntity):
         return attrs
 
 
-class CloudConnectedBinarySensor(UnraidBinarySensorEntity):
+class CloudConnectedBinarySensor(UnraidBinarySensorEntity[UnraidInfraCoordinator]):
     """Binary sensor for Unraid cloud connection status."""
 
     _attr_translation_key = "cloud_connected"
@@ -594,7 +603,7 @@ class CloudConnectedBinarySensor(UnraidBinarySensorEntity):
         return attrs
 
 
-class RemoteAccessBinarySensor(UnraidBinarySensorEntity):
+class RemoteAccessBinarySensor(UnraidBinarySensorEntity[UnraidInfraCoordinator]):
     """Binary sensor for Unraid remote access status."""
 
     _attr_translation_key = "remote_access"
@@ -650,7 +659,9 @@ class RemoteAccessBinarySensor(UnraidBinarySensorEntity):
 # =============================================================================
 
 
-class ContainerUpdateAvailableBinarySensor(UnraidBinarySensorEntity):
+class ContainerUpdateAvailableBinarySensor(
+    UnraidBinarySensorEntity[UnraidSystemCoordinator]
+):
     """
     Binary sensor indicating if a container has an update available.
 
@@ -718,7 +729,7 @@ class ContainerUpdateAvailableBinarySensor(UnraidBinarySensorEntity):
 # =============================================================================
 
 
-class MoverActiveBinarySensor(UnraidBinarySensorEntity):
+class MoverActiveBinarySensor(UnraidBinarySensorEntity[UnraidSystemCoordinator]):
     """
     Binary sensor indicating if the mover is currently active.
 
@@ -754,7 +765,7 @@ class MoverActiveBinarySensor(UnraidBinarySensorEntity):
         return data.mover_active
 
 
-class DisksDisabledBinarySensor(UnraidBinarySensorEntity):
+class DisksDisabledBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Binary sensor indicating if any disks are disabled.
 
@@ -800,7 +811,7 @@ class DisksDisabledBinarySensor(UnraidBinarySensorEntity):
         return {"count": count}
 
 
-class DisksMissingBinarySensor(UnraidBinarySensorEntity):
+class DisksMissingBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Binary sensor indicating if any disks are missing.
 
@@ -846,7 +857,7 @@ class DisksMissingBinarySensor(UnraidBinarySensorEntity):
         return {"count": count}
 
 
-class DisksInvalidBinarySensor(UnraidBinarySensorEntity):
+class DisksInvalidBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator]):
     """
     Binary sensor indicating if any disks are invalid.
 
@@ -892,7 +903,7 @@ class DisksInvalidBinarySensor(UnraidBinarySensorEntity):
         return {"count": count}
 
 
-class SafeModeBinarySensor(UnraidBinarySensorEntity):
+class SafeModeBinarySensor(UnraidBinarySensorEntity[UnraidInfraCoordinator]):
     """
     Binary sensor indicating if the server is in safe mode.
 
@@ -928,7 +939,7 @@ class SafeModeBinarySensor(UnraidBinarySensorEntity):
         return data.vars.safe_mode
 
 
-class ConfigValidBinarySensor(UnraidBinarySensorEntity):
+class ConfigValidBinarySensor(UnraidBinarySensorEntity[UnraidInfraCoordinator]):
     """
     Binary sensor indicating if the configuration is invalid.
 
@@ -969,7 +980,9 @@ class ConfigValidBinarySensor(UnraidBinarySensorEntity):
         return not valid
 
 
-class FilesystemsUnmountableBinarySensor(UnraidBinarySensorEntity):
+class FilesystemsUnmountableBinarySensor(
+    UnraidBinarySensorEntity[UnraidInfraCoordinator]
+):
     """
     Binary sensor indicating if any filesystems are unmountable.
 
@@ -1087,15 +1100,6 @@ async def async_setup_entry(
     else:
         _LOGGER.debug("No UPS devices connected, skipping UPS binary sensors")
 
-    # Container update available binary sensors (enabled by default)
-    if system_data and system_data.containers:
-        for container in system_data.containers:
-            entities.append(
-                ContainerUpdateAvailableBinarySensor(
-                    system_coordinator, server_uuid, server_name, container
-                )
-            )
-
     # Service binary sensors from infrastructure coordinator
     infra_data = infra_coordinator.data
     if infra_data and infra_data.services:
@@ -1148,3 +1152,22 @@ async def async_setup_entry(
 
     _LOGGER.debug("Adding %d binary_sensor entities", len(entities))
     async_add_entities(entities)
+
+    # Container update-available binary sensors (enabled by default).
+    # Containers created after setup get sensors on the next coordinator
+    # refresh — no integration reload needed.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.containers if system_coordinator.data else []
+            ),
+            get_key=lambda container: container.name.lstrip("/"),
+            create_entities=lambda container: [
+                ContainerUpdateAvailableBinarySensor(
+                    system_coordinator, server_uuid, server_name, container
+                )
+            ],
+        )
+    )

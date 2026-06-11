@@ -16,13 +16,19 @@ from .const import (
     DEFAULT_ENABLE_CONTAINER_UPDATES,
     DOMAIN,
 )
-from .entity import UnraidBaseEntity
+from .coordinator import (
+    UnraidSystemCoordinator,
+)
+from .entity import (
+    UnraidBaseEntity,
+    async_add_dynamic_resource_entities,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from . import UnraidConfigEntry
-    from .coordinator import UnraidSystemCoordinator, UnraidSystemData
+    from .coordinator import UnraidSystemData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +41,9 @@ _VERSION_CURRENT = "installed"
 _VERSION_UPDATE_AVAILABLE = "update_available"
 
 
-class DockerContainerUpdateEntity(UnraidBaseEntity, UpdateEntity):
+class DockerContainerUpdateEntity(
+    UnraidBaseEntity[UnraidSystemCoordinator], UpdateEntity
+):
     """Represents a Docker container update entity."""
 
     _attr_translation_key = "docker_container_update"
@@ -53,7 +61,10 @@ class DockerContainerUpdateEntity(UnraidBaseEntity, UpdateEntity):
         self._container_name = container.name.lstrip("/")
         self._container_id = container.id
         self._cached_container: DockerContainer | None = None
-        self._cache_data_id: int | None = None
+        # Strong reference to the coordinator data the cache was built from.
+        # Comparing identity against a held object (rather than a stored id())
+        # is safe: the address cannot be reused for new data while we hold it.
+        self._cache_data: UnraidSystemData | None = None
         self._is_updating = False
 
         super().__init__(
@@ -79,13 +90,12 @@ class DockerContainerUpdateEntity(UnraidBaseEntity, UpdateEntity):
         if data is None:
             return None
 
-        data_id = id(data)
-        if self._cache_data_id is not None and data_id == self._cache_data_id:
+        if data is self._cache_data:
             return self._cached_container
 
         container_map = {c.name.lstrip("/"): c for c in data.containers}
         self._cached_container = container_map.get(self._container_name)
-        self._cache_data_id = data_id
+        self._cache_data = data
 
         # Update stored ID if it changed (happens after container update/recreate)
         if self._cached_container is not None:
@@ -205,15 +215,28 @@ async def async_setup_entry(
     server_uuid = server_info.get("uuid", "unknown")
     server_name = server_info.get("name", entry.data.get("host", "Unraid"))
 
-    entities: list[UpdateEntity] = []
-
     if system_coordinator.data and system_coordinator.data.containers:
         _LOGGER.debug(
             "Creating update entities for %d container(s)",
             len(system_coordinator.data.containers),
         )
-        for container in system_coordinator.data.containers:
-            entities.append(
+    else:
+        _LOGGER.debug(
+            "Docker service not running or no containers on %s",
+            server_name,
+        )
+
+    # Containers created after setup get update entities on the next
+    # coordinator refresh — no integration reload needed.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.containers if system_coordinator.data else []
+            ),
+            get_key=lambda container: container.name.lstrip("/"),
+            create_entities=lambda container: [
                 DockerContainerUpdateEntity(
                     system_coordinator,
                     server_uuid,
@@ -221,12 +244,6 @@ async def async_setup_entry(
                     container,
                     server_info,
                 )
-            )
-    else:
-        _LOGGER.debug(
-            "Docker service not running or no containers on %s",
-            server_name,
+            ],
         )
-
-    _LOGGER.debug("Adding %d update entities", len(entities))
-    async_add_entities(entities)
+    )

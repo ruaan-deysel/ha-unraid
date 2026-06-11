@@ -27,6 +27,7 @@ def _make_manager(
     *,
     api_client: AsyncMock | None = None,
     system_coordinator: MagicMock | None = None,
+    storage_coordinator: MagicMock | None = None,
 ) -> UnraidWebSocketManager:
     """Create a WebSocket manager with mocked dependencies."""
     if api_client is None:
@@ -38,6 +39,7 @@ def _make_manager(
         api_client=api_client,
         system_coordinator=system_coordinator,
         server_name="TestServer",
+        storage_coordinator=storage_coordinator,
     )
 
 
@@ -214,6 +216,35 @@ class TestContainerStatsSubscription:
         system_coordinator.async_set_updated_data.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_container_stats_sanitizes_ansi_escape_codes(self) -> None:
+        """
+        ANSI control sequences are stripped from the container ID key.
+
+        The subscription streams raw `docker stats` terminal output; the
+        first row of each sample cycle arrives with clear-screen/cursor-home
+        escapes glued onto the ID, which would otherwise corrupt the dict
+        key for that container permanently (output order is stable).
+        """
+        dirty = _make_container_stats(
+            "server-uuid:\x1b[J\x1b[H25d9c2630a90", cpu_percent=12.5
+        )
+
+        async def mock_subscribe() -> Any:
+            yield dirty
+
+        api_client = AsyncMock()
+        api_client.subscribe_container_stats = mock_subscribe
+
+        manager = _make_manager(api_client=api_client)
+        manager._running = True
+        await manager._handle_container_stats()
+
+        assert "server-uuid:25d9c2630a90" in manager.container_stats.stats
+        assert (
+            manager.container_stats.stats["server-uuid:25d9c2630a90"].cpuPercent == 12.5
+        )
+
+    @pytest.mark.asyncio
     async def test_container_stats_skips_none_id(self) -> None:
         """Test that stats with None id are skipped."""
         stats = _make_container_stats()
@@ -283,6 +314,98 @@ class TestUpsUpdatesSubscription:
         await manager._handle_ups_updates()
 
         system_coordinator.async_request_refresh.assert_called_once()
+
+
+# =============================================================================
+# UnraidWebSocketManager — Array Updates Subscription Tests
+# =============================================================================
+
+
+def _make_array_update(state: str | None) -> MagicMock:
+    """Create a mock ArraySubscriptionUpdate."""
+    update = MagicMock()
+    update.state = state
+    return update
+
+
+class TestArrayUpdatesSubscription:
+    """Tests for array updates WebSocket subscription."""
+
+    @staticmethod
+    def _manager_with_array_events(
+        events: list[MagicMock],
+    ) -> tuple[UnraidWebSocketManager, AsyncMock]:
+        """Create a running manager whose array subscription yields events."""
+
+        async def mock_subscribe() -> Any:
+            for event in events:
+                yield event
+
+        storage_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_array_updates = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client,
+            storage_coordinator=storage_coordinator,
+        )
+        manager._running = True
+        return manager, storage_coordinator
+
+    @pytest.mark.asyncio
+    async def test_heartbeats_do_not_trigger_refresh(self) -> None:
+        """
+        state=None heartbeats (sent ~every 30s) must never refresh storage.
+
+        Refreshing on heartbeats polled storage every 30 seconds and woke
+        spun-down disks — the regression that got this subscription removed
+        in v2026.4.1 (#211, #206).
+        """
+        manager, storage_coordinator = self._manager_with_array_events(
+            [_make_array_update(None) for _ in range(5)],
+        )
+        await manager._handle_array_updates()
+
+        storage_coordinator.async_request_refresh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_state_change_triggers_refresh(self) -> None:
+        """An actual array state change triggers a storage refresh (#247)."""
+        manager, storage_coordinator = self._manager_with_array_events(
+            [_make_array_update("STARTED"), _make_array_update("STOPPED")],
+        )
+        await manager._handle_array_updates()
+
+        assert storage_coordinator.async_request_refresh.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_repeated_state_does_not_retrigger(self) -> None:
+        """Events repeating the already-known state are ignored."""
+        manager, storage_coordinator = self._manager_with_array_events(
+            [
+                _make_array_update("STARTED"),
+                _make_array_update("STARTED"),
+                _make_array_update(None),
+                _make_array_update("STARTED"),
+            ],
+        )
+        await manager._handle_array_updates()
+
+        storage_coordinator.async_request_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_storage_coordinator_is_safe(self) -> None:
+        """Without a storage coordinator, events are consumed without error."""
+
+        async def mock_subscribe() -> Any:
+            yield _make_array_update("STARTED")
+
+        api_client = AsyncMock()
+        api_client.subscribe_array_updates = mock_subscribe
+
+        manager = _make_manager(api_client=api_client)
+        manager._running = True
+        await manager._handle_array_updates()
 
 
 # =============================================================================
@@ -416,3 +539,190 @@ class TestReconnection:
         await manager._run_subscription("test", cancelled_handler)
 
         assert call_count == 1
+
+
+# =============================================================================
+# UnraidWebSocketManager — Notification Subscription Tests
+# =============================================================================
+
+
+class TestNotificationSubscription:
+    """Tests for the notification_added WebSocket subscription."""
+
+    @pytest.mark.asyncio
+    async def test_notification_triggers_refresh(self) -> None:
+        """A notification event triggers a system coordinator refresh."""
+        notification = MagicMock()
+        notification.importance = "WARNING"
+        notification.title = "Test"
+
+        async def mock_subscribe() -> Any:
+            yield notification
+
+        system_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_notification_added = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client, system_coordinator=system_coordinator
+        )
+        manager._running = True
+        await manager._handle_notification_added()
+
+        system_coordinator.async_request_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_notification_rapid_events_debounced(self) -> None:
+        """Notification events within the cooldown window are suppressed."""
+
+        async def mock_subscribe() -> Any:
+            yield MagicMock(importance="INFO", title="a")
+            yield MagicMock(importance="INFO", title="b")
+
+        system_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_notification_added = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client, system_coordinator=system_coordinator
+        )
+        manager._running = True
+
+        with patch(
+            "custom_components.unraid.websocket.time.monotonic",
+            side_effect=[100.0, 100.0, 103.0],
+        ):
+            await manager._handle_notification_added()
+
+        system_coordinator.async_request_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_notification_stops_when_not_running(self) -> None:
+        """Events after stop are not processed."""
+
+        async def mock_subscribe() -> Any:
+            yield MagicMock(importance="INFO", title="a")
+
+        system_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_notification_added = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client, system_coordinator=system_coordinator
+        )
+        manager._running = False
+        await manager._handle_notification_added()
+
+        system_coordinator.async_request_refresh.assert_not_called()
+
+
+# =============================================================================
+# UnraidWebSocketManager — Additional Reconnection / Skip Tests
+# =============================================================================
+
+
+class TestSubscriptionEdgeCases:
+    """Edge case coverage for the subscription runner and handlers."""
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_retries(self) -> None:
+        """Unexpected exceptions are logged and the subscription retries."""
+        calls = 0
+
+        async def flaky_handler() -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                msg = "boom"
+                raise ValueError(msg)
+            raise asyncio.CancelledError
+
+        manager = _make_manager()
+        manager._running = True
+
+        with (
+            patch("custom_components.unraid.websocket.WS_INITIAL_RETRY_DELAY", 0),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            await manager._run_subscription("test", flaky_handler)
+
+        assert calls == 2
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_stops_when_not_running(self) -> None:
+        """Unexpected exception with manager stopped exits the loop."""
+
+        async def failing_handler() -> None:
+            manager._running = False
+            msg = "boom"
+            raise ValueError(msg)
+
+        manager = _make_manager()
+        manager._running = True
+        await manager._run_subscription("test", failing_handler)
+
+    @pytest.mark.asyncio
+    async def test_connection_error_stops_when_not_running(self) -> None:
+        """Connection error with manager stopped exits without retry."""
+
+        async def failing_handler() -> None:
+            manager._running = False
+            raise UnraidConnectionError("gone")
+
+        manager = _make_manager()
+        manager._running = True
+        await manager._run_subscription("test", failing_handler)
+
+    @pytest.mark.asyncio
+    async def test_container_stats_skips_when_not_running(self) -> None:
+        """Container stats events after stop are not stored."""
+
+        async def mock_subscribe() -> Any:
+            yield _make_container_stats("c1")
+
+        api_client = AsyncMock()
+        api_client.subscribe_container_stats = mock_subscribe
+
+        manager = _make_manager(api_client=api_client)
+        manager._running = False
+        await manager._handle_container_stats()
+
+        assert manager.container_stats.stats == {}
+
+    @pytest.mark.asyncio
+    async def test_ups_update_skips_when_not_running(self) -> None:
+        """UPS events after stop are not processed."""
+
+        async def mock_subscribe() -> Any:
+            yield MagicMock()
+
+        system_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_ups_updates = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client, system_coordinator=system_coordinator
+        )
+        manager._running = False
+        await manager._handle_ups_updates()
+
+        system_coordinator.async_request_refresh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_array_updates_skip_when_not_running(self) -> None:
+        """Array events after stop are not processed."""
+
+        async def mock_subscribe() -> Any:
+            yield _make_array_update("STARTED")
+
+        storage_coordinator = AsyncMock()
+        api_client = AsyncMock()
+        api_client.subscribe_array_updates = mock_subscribe
+
+        manager = _make_manager(
+            api_client=api_client, storage_coordinator=storage_coordinator
+        )
+        manager._running = False
+        await manager._handle_array_updates()
+
+        storage_coordinator.async_request_refresh.assert_not_called()

@@ -186,6 +186,12 @@
       },
       "disk_error_count": {
         "default": "mdi:harddisk-remove"
+      },
+      "network_interface_rx": {
+        "default": "mdi:download-network"
+      },
+      "network_interface_tx": {
+        "default": "mdi:upload-network"
       }
     },
     "binary_sensor": {
@@ -294,6 +300,12 @@
       },
       "delete_all_archived_notifications": {
         "default": "mdi:bell-remove"
+      },
+      "update_all_containers": {
+        "default": "mdi:update"
+      },
+      "check_container_updates": {
+        "default": "mdi:package-down"
       }
     },
     "update": {

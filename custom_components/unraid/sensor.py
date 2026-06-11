@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -13,12 +14,15 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     EntityCategory,
+    UnitOfDataRate,
     UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
 )
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api import format_bytes
 
 from .const import (
@@ -27,13 +31,23 @@ from .const import (
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
 )
-from .entity import UnraidBaseEntity
+from .coordinator import (
+    UnraidInfraCoordinator,
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
+)
+from .entity import (
+    UnraidBaseEntity,
+    UnraidCoordinator,
+    async_add_dynamic_resource_entities,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from unraid_api.models import (
         ArrayDisk,
         DockerContainerStats,
+        NetworkMetrics,
         ParityHistoryEntry,
         Share,
         UPSDevice,
@@ -44,11 +58,8 @@ if TYPE_CHECKING:
 
     from . import UnraidConfigEntry
     from .coordinator import (
-        UnraidInfraCoordinator,
         UnraidInfraData,
-        UnraidStorageCoordinator,
         UnraidStorageData,
-        UnraidSystemCoordinator,
         UnraidSystemData,
     )
     from .websocket import UnraidWebSocketManager
@@ -62,14 +73,14 @@ PARALLEL_UPDATES = 0
 BYTES_PER_UNIT = 1024
 
 
-class UnraidSensorEntity(UnraidBaseEntity, SensorEntity):
+class UnraidSensorEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator](
+    UnraidBaseEntity[CoordinatorT], SensorEntity
+):
     """Base class for Unraid sensor entities."""
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator
-        | UnraidStorageCoordinator
-        | UnraidInfraCoordinator,
+        coordinator: CoordinatorT,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -98,7 +109,7 @@ class UnraidSensorEntity(UnraidBaseEntity, SensorEntity):
         )
 
 
-class CpuSensor(UnraidSensorEntity):
+class CpuSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """CPU usage sensor with model and core count attributes."""
 
     _attr_translation_key = "cpu_usage"
@@ -144,7 +155,7 @@ class CpuSensor(UnraidSensorEntity):
         }
 
 
-class RAMUsageSensor(UnraidSensorEntity):
+class RAMUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """RAM usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "ram_usage"
@@ -189,7 +200,7 @@ class RAMUsageSensor(UnraidSensorEntity):
         }
 
 
-class RAMUsedSensor(UnraidSensorEntity):
+class RAMUsedSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """
     RAM used sensor showing active memory consumption.
 
@@ -240,7 +251,7 @@ class RAMUsedSensor(UnraidSensorEntity):
         return total - available
 
 
-class SwapUsageSensor(UnraidSensorEntity):
+class SwapUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Swap usage percentage sensor."""
 
     _attr_translation_key = "swap_usage"
@@ -286,7 +297,7 @@ class SwapUsageSensor(UnraidSensorEntity):
         return attrs
 
 
-class SwapUsedSensor(UnraidSensorEntity):
+class SwapUsedSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Swap used sensor showing swap consumption in bytes."""
 
     _attr_translation_key = "swap_used"
@@ -320,7 +331,7 @@ class SwapUsedSensor(UnraidSensorEntity):
         return data.metrics.swap_used
 
 
-class RAMBuffCacheSensor(UnraidSensorEntity):
+class RAMBuffCacheSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """RAM buffer/cache sensor showing reclaimable memory in bytes."""
 
     _attr_translation_key = "ram_buffcache"
@@ -354,7 +365,7 @@ class RAMBuffCacheSensor(UnraidSensorEntity):
         return data.metrics.memory_buffcache
 
 
-class RAMActiveSensor(UnraidSensorEntity):
+class RAMActiveSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """RAM active memory sensor showing actively used memory in bytes."""
 
     _attr_translation_key = "ram_active"
@@ -388,7 +399,7 @@ class RAMActiveSensor(UnraidSensorEntity):
         return data.metrics.memory_active
 
 
-class SwapFreeSensor(UnraidSensorEntity):
+class SwapFreeSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Swap free sensor showing available swap space in bytes."""
 
     _attr_translation_key = "swap_free"
@@ -422,7 +433,7 @@ class SwapFreeSensor(UnraidSensorEntity):
         return data.metrics.swap_free
 
 
-class TemperatureSensor(UnraidSensorEntity):
+class TemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """CPU temperature sensor."""
 
     _attr_translation_key = "cpu_temperature"
@@ -454,7 +465,7 @@ class TemperatureSensor(UnraidSensorEntity):
         return data.metrics.average_cpu_temperature
 
 
-class SystemTemperatureSensor(UnraidSensorEntity):
+class SystemTemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Dynamic temperature sensor for system hardware (motherboard, chipset, etc.)."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -525,7 +536,7 @@ class SystemTemperatureSensor(UnraidSensorEntity):
         return attrs
 
 
-class TemperatureAverageSensor(UnraidSensorEntity):
+class TemperatureAverageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Average temperature across all sensors."""
 
     _attr_translation_key = "temperature_average"
@@ -593,7 +604,7 @@ class TemperatureAverageSensor(UnraidSensorEntity):
         return attrs
 
 
-class CpuPowerSensor(UnraidSensorEntity):
+class CpuPowerSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """CPU power consumption sensor (requires Unraid API v4.26.0+)."""
 
     _attr_translation_key = "cpu_power"
@@ -625,7 +636,7 @@ class CpuPowerSensor(UnraidSensorEntity):
         return data.metrics.cpu_power
 
 
-class UnraidVersionSensor(UnraidSensorEntity):
+class UnraidVersionSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Sensor showing the Unraid OS version (e.g. 7.2.2)."""
 
     _attr_translation_key = "unraid_version"
@@ -668,7 +679,7 @@ class UnraidVersionSensor(UnraidSensorEntity):
         return attrs
 
 
-class ApiVersionSensor(UnraidSensorEntity):
+class ApiVersionSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Sensor showing the Unraid GraphQL API version."""
 
     _attr_translation_key = "api_version"
@@ -698,7 +709,7 @@ class ApiVersionSensor(UnraidSensorEntity):
         return data.info.api_version
 
 
-class UptimeSensor(UnraidSensorEntity):
+class UptimeSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """
     System uptime sensor using timestamp device class.
 
@@ -739,7 +750,7 @@ class UptimeSensor(UnraidSensorEntity):
         return data.metrics.uptime
 
 
-class ActiveNotificationsSensor(UnraidSensorEntity):
+class ActiveNotificationsSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Active notifications count sensor."""
 
     _attr_translation_key = "active_notifications"
@@ -771,7 +782,7 @@ class ActiveNotificationsSensor(UnraidSensorEntity):
         return data.notifications_unread
 
 
-class NotificationUnreadInfoSensor(UnraidSensorEntity):
+class NotificationUnreadInfoSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Unread info notifications count sensor."""
 
     _attr_translation_key = "notifications_unread_info"
@@ -807,7 +818,7 @@ class NotificationUnreadInfoSensor(UnraidSensorEntity):
         return overview.unread.info
 
 
-class NotificationUnreadWarningSensor(UnraidSensorEntity):
+class NotificationUnreadWarningSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Unread warning notifications count sensor."""
 
     _attr_translation_key = "notifications_unread_warning"
@@ -843,7 +854,7 @@ class NotificationUnreadWarningSensor(UnraidSensorEntity):
         return overview.unread.warning
 
 
-class NotificationUnreadAlertSensor(UnraidSensorEntity):
+class NotificationUnreadAlertSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Unread alert notifications count sensor."""
 
     _attr_translation_key = "notifications_unread_alert"
@@ -879,7 +890,7 @@ class NotificationUnreadAlertSensor(UnraidSensorEntity):
         return overview.unread.alert
 
 
-class NotificationArchivedTotalSensor(UnraidSensorEntity):
+class NotificationArchivedTotalSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Archived notifications total count sensor."""
 
     _attr_translation_key = "notifications_archived_total"
@@ -920,7 +931,7 @@ class NotificationArchivedTotalSensor(UnraidSensorEntity):
 # =============================================================================
 
 
-class ContainerUpdatesCountSensor(UnraidSensorEntity):
+class ContainerUpdatesCountSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Sensor showing count of Docker containers with available updates."""
 
     _attr_translation_key = "container_updates_count"
@@ -967,7 +978,7 @@ class ContainerUpdatesCountSensor(UnraidSensorEntity):
 # =============================================================================
 
 
-class RegistrationTypeSensor(UnraidSensorEntity):
+class RegistrationTypeSensor(UnraidSensorEntity[UnraidInfraCoordinator]):
     """Registration/license type sensor (Basic, Plus, Pro, etc.)."""
 
     _attr_translation_key = "registration_type"
@@ -1014,7 +1025,7 @@ class RegistrationTypeSensor(UnraidSensorEntity):
         return attrs
 
 
-class RegistrationStateSensor(UnraidSensorEntity):
+class RegistrationStateSensor(UnraidSensorEntity[UnraidInfraCoordinator]):
     """Registration state sensor (valid, expired, trial, etc.)."""
 
     _attr_translation_key = "registration_state"
@@ -1045,7 +1056,7 @@ class RegistrationStateSensor(UnraidSensorEntity):
         return data.registration.state
 
 
-class RegistrationExpirationSensor(UnraidSensorEntity):
+class RegistrationExpirationSensor(UnraidSensorEntity[UnraidInfraCoordinator]):
     """Registration license expiration and update expiration sensor."""
 
     _attr_translation_key = "registration_expiration"
@@ -1092,7 +1103,7 @@ class RegistrationExpirationSensor(UnraidSensorEntity):
 # =============================================================================
 
 
-class InstalledPluginsSensor(UnraidSensorEntity):
+class InstalledPluginsSensor(UnraidSensorEntity[UnraidInfraCoordinator]):
     """Sensor showing count of installed plugins."""
 
     _attr_translation_key = "installed_plugins"
@@ -1132,7 +1143,7 @@ class InstalledPluginsSensor(UnraidSensorEntity):
         return {"plugins": data.installed_plugins}
 
 
-class NetworkAccessSensor(UnraidSensorEntity):
+class NetworkAccessSensor(UnraidSensorEntity[UnraidInfraCoordinator]):
     """Sensor showing primary LAN access URL with all access URLs as attributes."""
 
     _attr_translation_key = "network_access"
@@ -1191,7 +1202,7 @@ class NetworkAccessSensor(UnraidSensorEntity):
         return attrs
 
 
-class ArrayStateSensor(UnraidSensorEntity):
+class ArrayStateSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Array state sensor."""
 
     _attr_translation_key = "array_state"
@@ -1221,7 +1232,7 @@ class ArrayStateSensor(UnraidSensorEntity):
         return state.lower() if state else None
 
 
-class ArrayUsageSensor(UnraidSensorEntity):
+class ArrayUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Array usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "array_usage"
@@ -1266,7 +1277,7 @@ class ArrayUsageSensor(UnraidSensorEntity):
         }
 
 
-class ParityProgressSensor(UnraidSensorEntity):
+class ParityProgressSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Parity check progress sensor."""
 
     _attr_translation_key = "parity_progress"
@@ -1297,7 +1308,7 @@ class ParityProgressSensor(UnraidSensorEntity):
         return data.parity_status.progress
 
 
-class LastParityCheckDateSensor(UnraidSensorEntity):
+class LastParityCheckDateSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Last parity check date sensor with history details as attributes."""
 
     _attr_translation_key = "last_parity_check_date"
@@ -1368,7 +1379,7 @@ class LastParityCheckDateSensor(UnraidSensorEntity):
         return attrs
 
 
-class LastParityCheckErrorsSensor(UnraidSensorEntity):
+class LastParityCheckErrorsSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Last parity check errors count sensor."""
 
     _attr_translation_key = "last_parity_check_errors"
@@ -1402,7 +1413,7 @@ class LastParityCheckErrorsSensor(UnraidSensorEntity):
         return entry.errors
 
 
-class DiskTemperatureSensor(UnraidSensorEntity):
+class DiskTemperatureSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Disk temperature sensor."""
 
     _attr_translation_key = "disk_temperature"
@@ -1420,7 +1431,7 @@ class DiskTemperatureSensor(UnraidSensorEntity):
     ) -> None:
         """Initialize disk temperature sensor."""
         self._disk_id = disk.id
-        self._disk_name = disk.name
+        self._disk_name = disk.name or disk.id
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -1469,7 +1480,7 @@ class DiskTemperatureSensor(UnraidSensorEntity):
         return attrs
 
 
-class DiskErrorCountSensor(UnraidSensorEntity):
+class DiskErrorCountSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Disk error count sensor (numErrors from SMART/array)."""
 
     _attr_translation_key = "disk_error_count"
@@ -1487,7 +1498,7 @@ class DiskErrorCountSensor(UnraidSensorEntity):
     ) -> None:
         """Initialize disk error count sensor."""
         self._disk_id = disk.id
-        self._disk_name = disk.name
+        self._disk_name = disk.name or disk.id
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -1560,7 +1571,7 @@ def _compute_disk_used_bytes(disk: ArrayDisk) -> int | None:
     return disk.fs_used_bytes
 
 
-class DiskUsageSensor(UnraidSensorEntity):
+class DiskUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Disk usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "disk_usage"
@@ -1577,7 +1588,7 @@ class DiskUsageSensor(UnraidSensorEntity):
     ) -> None:
         """Initialize disk usage sensor."""
         self._disk_id = disk.id
-        self._disk_name = disk.name
+        self._disk_name = disk.name or disk.id
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -1658,7 +1669,7 @@ class DiskUsageSensor(UnraidSensorEntity):
 # UPS Sensors
 
 
-class UPSBatterySensor(UnraidSensorEntity):
+class UPSBatterySensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS battery charge level sensor."""
 
     _attr_translation_key = "ups_battery"
@@ -1718,7 +1729,7 @@ class UPSBatterySensor(UnraidSensorEntity):
         return attrs
 
 
-class UPSLoadSensor(UnraidSensorEntity):
+class UPSLoadSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS load percentage sensor."""
 
     _attr_translation_key = "ups_load"
@@ -1780,7 +1791,7 @@ class UPSLoadSensor(UnraidSensorEntity):
         return attrs
 
 
-class UPSRuntimeSensor(UnraidSensorEntity):
+class UPSRuntimeSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS estimated runtime sensor showing human-readable duration."""
 
     _attr_translation_key = "ups_runtime"
@@ -1838,7 +1849,7 @@ class UPSRuntimeSensor(UnraidSensorEntity):
         return attrs
 
 
-class UPSPowerSensor(UnraidSensorEntity):
+class UPSPowerSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """
     UPS power consumption sensor for Energy Dashboard.
 
@@ -1963,7 +1974,7 @@ class UPSPowerSensor(UnraidSensorEntity):
         return attrs
 
 
-class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
+class UPSEnergySensor(UnraidSensorEntity[UnraidSystemCoordinator], RestoreEntity):
     """
     UPS energy consumption sensor for Energy Dashboard.
 
@@ -2071,7 +2082,7 @@ class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
         nominal = self._get_effective_nominal_power()
         if nominal <= 0:
             return None
-        return ups.calculate_power_watts(nominal)
+        return ups.calculate_power_watts(int(nominal))
 
     def _update_energy(self) -> None:
         """Update cumulative energy using trapezoidal integration."""
@@ -2136,7 +2147,7 @@ class UPSEnergySensor(UnraidSensorEntity, RestoreEntity):
 # Share Sensors
 
 
-class ShareUsageSensor(UnraidSensorEntity):
+class ShareUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Share usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "share_usage"
@@ -2245,8 +2256,26 @@ class _ContainerStatsMixin:
                         return stats
         return self._ws_manager.container_stats.stats.get(self._container_id)  # type: ignore[attr-defined]
 
+    def _is_container_stopped(self) -> bool:
+        """
+        Return True when coordinator data shows the container is not running.
 
-class ContainerCpuSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
+        Stopped containers never appear in the `docker stats` stream, so
+        without this check their sensors would show "unknown" (never started)
+        or the last value streamed before they stopped (stale).
+        """
+        data: UnraidSystemData | None = self.coordinator.data  # type: ignore[attr-defined]
+        if data is None:
+            return False
+        for container in data.containers:
+            if container.name.lstrip("/") == self._container_name:
+                return not container.is_running
+        return False
+
+
+class ContainerCpuSensor(
+    _ContainerStatsMixin, UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
     """Container CPU usage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_cpu"
@@ -2279,25 +2308,11 @@ class ContainerCpuSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
             "name": container_name,
         }
 
-    def _get_current_stats(self) -> DockerContainerStats | None:
-        """
-        Resolve stats by looking up the current container ID from coordinator data.
-
-        The Docker container ID changes whenever a container is recreated. Resolving
-        it freshly from coordinator data prevents a stale ID from breaking the lookup.
-        """
-        data: UnraidSystemData | None = self.coordinator.data
-        if data is not None:
-            for container in data.containers:
-                if container.name.lstrip("/") == self._container_name:
-                    stats = self._ws_manager.container_stats.stats.get(container.id)
-                    if stats is not None:
-                        return stats
-        return self._ws_manager.container_stats.stats.get(self._container_id)
-
     @property
     def native_value(self) -> float | None:
-        """Return container CPU usage from WebSocket stats."""
+        """Return container CPU usage from WebSocket stats (0 when stopped)."""
+        if self._is_container_stopped():
+            return 0.0
         stats = self._get_current_stats()
         if stats is None:
             return None
@@ -2306,6 +2321,8 @@ class ContainerCpuSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return container stats attributes."""
+        if self._is_container_stopped():
+            return {}
         stats = self._get_current_stats()
         if stats is None:
             return {}
@@ -2317,7 +2334,9 @@ class ContainerCpuSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
         return attrs
 
 
-class ContainerMemoryUsageSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorEntity):
+class ContainerMemoryUsageSensor(
+    _ContainerStatsMixin, UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
     """Container memory usage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_memory_usage"
@@ -2349,7 +2368,9 @@ class ContainerMemoryUsageSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorE
 
     @property
     def native_value(self) -> str | None:
-        """Return container memory usage string."""
+        """Return container memory usage string ("0B / 0B" when stopped)."""
+        if self._is_container_stopped():
+            return "0B / 0B"
         stats = self._get_current_stats()
         if stats is None:
             return None
@@ -2357,7 +2378,7 @@ class ContainerMemoryUsageSensor(_ContainerStatsMixin, UnraidBaseEntity, SensorE
 
 
 class ContainerMemoryPercentSensor(
-    _ContainerStatsMixin, UnraidBaseEntity, SensorEntity
+    _ContainerStatsMixin, UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
 ):
     """Container memory percentage sensor (WebSocket-powered)."""
 
@@ -2393,7 +2414,9 @@ class ContainerMemoryPercentSensor(
 
     @property
     def native_value(self) -> float | None:
-        """Return container memory percentage."""
+        """Return container memory percentage (0 when stopped)."""
+        if self._is_container_stopped():
+            return 0.0
         stats = self._get_current_stats()
         if stats is None:
             return None
@@ -2405,7 +2428,7 @@ class ContainerMemoryPercentSensor(
 # =============================================================================
 
 
-class DockerTotalCpuSensor(UnraidBaseEntity, SensorEntity):
+class DockerTotalCpuSensor(UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity):
     """Total Docker CPU usage sensor (sum of all containers, WebSocket-powered)."""
 
     _attr_translation_key = "docker_total_cpu"
@@ -2438,7 +2461,10 @@ class DockerTotalCpuSensor(UnraidBaseEntity, SensorEntity):
             return None
         data: UnraidSystemData | None = self.coordinator.data
         if data is not None:
-            valid_ids = {c.id for c in data.containers}
+            # Running containers only: stats of stopped containers linger in
+            # the snapshot (the stream stops sending them) and would otherwise
+            # keep counting toward the total forever.
+            valid_ids = {c.id for c in data.containers if c.is_running}
             values = [
                 s.cpuPercent
                 for cid, s in all_stats.items()
@@ -2454,14 +2480,16 @@ class DockerTotalCpuSensor(UnraidBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return active container count as attribute."""
+        """Return running container count as attribute."""
         data: UnraidSystemData | None = self.coordinator.data
         if data is not None:
-            return {"container_count": len(data.containers)}
+            return {"container_count": sum(1 for c in data.containers if c.is_running)}
         return {"container_count": len(self._ws_manager.container_stats.stats)}
 
 
-class DockerTotalMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
+class DockerTotalMemoryPercentSensor(
+    UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
     """Total Docker memory usage sensor (sum of all containers, WebSocket-powered)."""
 
     _attr_translation_key = "docker_total_memory_percent"
@@ -2494,7 +2522,7 @@ class DockerTotalMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
             return None
         data: UnraidSystemData | None = self.coordinator.data
         if data is not None:
-            valid_ids = {c.id for c in data.containers}
+            valid_ids = {c.id for c in data.containers if c.is_running}
             values = [
                 s.memPercent
                 for cid, s in all_stats.items()
@@ -2510,14 +2538,16 @@ class DockerTotalMemoryPercentSensor(UnraidBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return active container count as attribute."""
+        """Return running container count as attribute."""
         data: UnraidSystemData | None = self.coordinator.data
         if data is not None:
-            return {"container_count": len(data.containers)}
+            return {"container_count": sum(1 for c in data.containers if c.is_running)}
         return {"container_count": len(self._ws_manager.container_stats.stats)}
 
 
-class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
+class DockerTotalMemoryBytesSensor(
+    UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
     """Total Docker memory used in bytes (derived from memory % x system RAM)."""
 
     _attr_translation_key = "docker_total_memory_bytes"
@@ -2557,7 +2587,7 @@ class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
         data: UnraidSystemData | None = self.coordinator.data
         if data is None or data.metrics.memory_total is None:
             return None
-        valid_ids = {c.id for c in data.containers}
+        valid_ids = {c.id for c in data.containers if c.is_running}
         total_pct = sum(
             s.memPercent
             for cid, s in all_stats.items()
@@ -2567,11 +2597,177 @@ class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return active container count as attribute."""
+        """Return running container count as attribute."""
         data: UnraidSystemData | None = self.coordinator.data
         if data is not None:
-            return {"container_count": len(data.containers)}
+            return {"container_count": sum(1 for c in data.containers if c.is_running)}
         return {"container_count": len(self._ws_manager.container_stats.stats)}
+
+
+# =============================================================================
+# Network Interface Sensors (metrics.network, Unraid API 4.35+)
+# =============================================================================
+
+# Only physical NICs, bonds, and user-configured bridges get entities —
+# Unraid names these ethN, bondN, brN/wlanN (plus VLAN sub-interfaces like
+# br0.5). Everything else is auto-generated plumbing that churns constantly
+# and carries no dashboard value: per-container veth pairs, VM vnet/tap
+# devices, loopback, and Docker/libvirt-created bridges and shims
+# (br-<hash>, docker0, shim-br0, virbr0).
+_MONITORABLE_INTERFACE_RE = re.compile(r"^(?:eth|bond|br|wlan)\d+(?:\.\d+)?$")
+
+
+def _is_monitorable_interface(name: str | None) -> bool:
+    """Return True if the interface should get sensor entities."""
+    if not name:
+        return False
+    return _MONITORABLE_INTERFACE_RE.match(name) is not None
+
+
+class NetworkInterfaceSensorBase(UnraidSensorEntity[UnraidSystemCoordinator]):
+    """
+    Base class for per-interface network throughput sensors.
+
+    Values come from metrics.network (rxSec/txSec, server-computed bytes per
+    second). HA's data-rate device class renders them in human-readable
+    units (MB/s) via the suggested unit and precision.
+    """
+
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_native_unit_of_measurement = UnitOfDataRate.BYTES_PER_SECOND
+    _attr_suggested_unit_of_measurement = UnitOfDataRate.MEGABYTES_PER_SECOND
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+        direction: str,
+        name: str,
+    ) -> None:
+        """Initialize network interface sensor."""
+        self._interface_name = interface_name
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"network_{interface_name}_{direction}",
+            name=name,
+        )
+        self._attr_translation_placeholders = {"name": interface_name}
+
+    def _get_interface(self) -> NetworkMetrics | None:
+        """Look up this interface in the current coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        for interface in data.network_metrics:
+            if interface.name == self._interface_name:
+                return interface
+        return None
+
+
+class NetworkInterfaceRxSensor(NetworkInterfaceSensorBase):
+    """Inbound throughput sensor for a network interface."""
+
+    _attr_translation_key = "network_interface_rx"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+    ) -> None:
+        """Initialize inbound network sensor."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            interface_name=interface_name,
+            direction="rx",
+            name=f"Network {interface_name} Inbound",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return inbound throughput in bytes per second."""
+        interface = self._get_interface()
+        if interface is None:
+            return None
+        return interface.rxSec
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return interface state and human-readable receive totals."""
+        interface = self._get_interface()
+        if interface is None:
+            return {}
+        attrs: dict[str, Any] = {}
+        if interface.operstate is not None:
+            attrs["interface_state"] = interface.operstate
+        if interface.bytesReceived is not None:
+            attrs["total_received"] = format_bytes(interface.bytesReceived)
+        if interface.packetsReceived is not None:
+            attrs["packets_received"] = interface.packetsReceived
+        if interface.receiveErrors is not None:
+            attrs["receive_errors"] = interface.receiveErrors
+        if interface.receiveDropped is not None:
+            attrs["receive_dropped"] = interface.receiveDropped
+        return attrs
+
+
+class NetworkInterfaceTxSensor(NetworkInterfaceSensorBase):
+    """Outbound throughput sensor for a network interface."""
+
+    _attr_translation_key = "network_interface_tx"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+    ) -> None:
+        """Initialize outbound network sensor."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            interface_name=interface_name,
+            direction="tx",
+            name=f"Network {interface_name} Outbound",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return outbound throughput in bytes per second."""
+        interface = self._get_interface()
+        if interface is None:
+            return None
+        return interface.txSec
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return interface state and human-readable transmit totals."""
+        interface = self._get_interface()
+        if interface is None:
+            return {}
+        attrs: dict[str, Any] = {}
+        if interface.operstate is not None:
+            attrs["interface_state"] = interface.operstate
+        if interface.bytesSent is not None:
+            attrs["total_sent"] = format_bytes(interface.bytesSent)
+        if interface.packetsSent is not None:
+            attrs["packets_sent"] = interface.packetsSent
+        if interface.transmitErrors is not None:
+            attrs["transmit_errors"] = interface.transmitErrors
+        if interface.transmitDropped is not None:
+            attrs["transmit_dropped"] = interface.transmitDropped
+        return attrs
 
 
 # =============================================================================
@@ -2579,7 +2775,7 @@ class DockerTotalMemoryBytesSensor(UnraidBaseEntity, SensorEntity):
 # =============================================================================
 
 
-class ParitySpeedSensor(UnraidSensorEntity):
+class ParitySpeedSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Parity check speed sensor (disabled by default)."""
 
     _attr_translation_key = "parity_speed"
@@ -2637,7 +2833,7 @@ class ParitySpeedSensor(UnraidSensorEntity):
         return attrs
 
 
-class ParityElapsedSensor(UnraidSensorEntity):
+class ParityElapsedSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Parity check elapsed time sensor (seconds)."""
 
     _attr_translation_key = "parity_elapsed"
@@ -2672,7 +2868,7 @@ class ParityElapsedSensor(UnraidSensorEntity):
         return data.parity_status.elapsed or 0
 
 
-class ParityEstimatedSensor(UnraidSensorEntity):
+class ParityEstimatedSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Parity check estimated remaining time sensor (seconds)."""
 
     _attr_translation_key = "parity_estimated"
@@ -2712,7 +2908,7 @@ class ParityEstimatedSensor(UnraidSensorEntity):
 # =============================================================================
 
 
-class UPSInputVoltageSensor(UnraidSensorEntity):
+class UPSInputVoltageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS input voltage sensor."""
 
     _attr_translation_key = "ups_input_voltage"
@@ -2760,7 +2956,7 @@ class UPSInputVoltageSensor(UnraidSensorEntity):
         return ups.power.inputVoltage
 
 
-class UPSOutputVoltageSensor(UnraidSensorEntity):
+class UPSOutputVoltageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS output voltage sensor."""
 
     _attr_translation_key = "ups_output_voltage"
@@ -2808,7 +3004,7 @@ class UPSOutputVoltageSensor(UnraidSensorEntity):
         return ups.power.outputVoltage
 
 
-class UPSBatteryHealthSensor(UnraidSensorEntity):
+class UPSBatteryHealthSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS battery health status sensor."""
 
     _attr_translation_key = "ups_battery_health"
@@ -2852,7 +3048,7 @@ class UPSBatteryHealthSensor(UnraidSensorEntity):
         return ups.battery.health
 
 
-class UPSStatusSensor(UnraidSensorEntity):
+class UPSStatusSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS status sensor (OL, OB, OB LB, OL CHRG, etc.)."""
 
     _attr_translation_key = "ups_status"
@@ -3082,7 +3278,7 @@ def _get_valid_temperature_sensors(
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001
+    hass: HomeAssistant,
     entry: UnraidConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -3181,42 +3377,8 @@ async def async_setup_entry(
         ]
     )
 
-    # Container stats sensors (WebSocket-powered)
-    ws_manager = runtime_data.websocket_manager
-    if system_coordinator.data:
-        for container in system_coordinator.data.containers:
-            c_name = container.name.lstrip("/")
-            c_id = container.id or c_name
-            entities.extend(
-                [
-                    ContainerCpuSensor(
-                        system_coordinator,
-                        server_uuid,
-                        server_name,
-                        c_name,
-                        c_id,
-                        ws_manager,
-                    ),
-                    ContainerMemoryUsageSensor(
-                        system_coordinator,
-                        server_uuid,
-                        server_name,
-                        c_name,
-                        c_id,
-                        ws_manager,
-                    ),
-                    ContainerMemoryPercentSensor(
-                        system_coordinator,
-                        server_uuid,
-                        server_name,
-                        c_name,
-                        c_id,
-                        ws_manager,
-                    ),
-                ]
-            )
-
     # Docker aggregate sensors (total CPU/memory across all containers)
+    ws_manager = runtime_data.websocket_manager
     entities.extend(
         [
             DockerTotalCpuSensor(
@@ -3233,3 +3395,103 @@ async def async_setup_entry(
 
     _LOGGER.debug("Adding %d sensor entities", len(entities))
     async_add_entities(entities)
+
+    # Container stats sensors (WebSocket-powered). Containers created after
+    # setup get sensors on the next coordinator refresh — no reload needed.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.containers if system_coordinator.data else []
+            ),
+            get_key=lambda container: container.name.lstrip("/"),
+            create_entities=lambda container: [
+                ContainerCpuSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container.name.lstrip("/"),
+                    container.id or container.name.lstrip("/"),
+                    ws_manager,
+                ),
+                ContainerMemoryUsageSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container.name.lstrip("/"),
+                    container.id or container.name.lstrip("/"),
+                    ws_manager,
+                ),
+                ContainerMemoryPercentSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container.name.lstrip("/"),
+                    container.id or container.name.lstrip("/"),
+                    ws_manager,
+                ),
+            ],
+        )
+    )
+
+    # Remove registry entries for network interfaces that no longer pass the
+    # monitorable filter (e.g. Docker bridges and shims that earlier versions
+    # created sensors for — they'd otherwise linger as unavailable entities).
+    entity_registry = er.async_get(hass)
+    network_uid_prefix = f"{server_uuid}_network_"
+    for registry_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
+        # Throughput unique_id format: {server_uuid}_network_{interface}_{rx|tx}.
+        # The suffix check keeps other network-prefixed sensors (such as
+        # {server_uuid}_network_access) out of the cleanup.
+        if not registry_entry.unique_id.startswith(
+            network_uid_prefix
+        ) or not registry_entry.unique_id.endswith(("_rx", "_tx")):
+            continue
+        interface_name = registry_entry.unique_id.removeprefix(
+            network_uid_prefix
+        ).rsplit("_", 1)[0]
+        if not _is_monitorable_interface(interface_name):
+            _LOGGER.debug(
+                "Removing sensor for non-monitorable interface %s (%s)",
+                interface_name,
+                registry_entry.entity_id,
+            )
+            entity_registry.async_remove(registry_entry.entity_id)
+
+    # Network interface throughput sensors (Unraid API 4.35+; the list is
+    # empty on older servers, so no entities are created there). Interfaces
+    # appearing later (e.g. a new bridge) also get sensors dynamically.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: [
+                interface
+                for interface in (
+                    system_coordinator.data.network_metrics
+                    if system_coordinator.data
+                    else []
+                )
+                if interface.name is not None
+                and _is_monitorable_interface(interface.name)
+            ],
+            get_key=lambda interface: interface.name or "",
+            create_entities=lambda interface: [
+                NetworkInterfaceRxSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    interface.name or "",
+                ),
+                NetworkInterfaceTxSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    interface.name or "",
+                ),
+            ],
+        )
+    )

@@ -13,7 +13,7 @@
         "data_description": {
           "host": "IP address (for example, 192.168.1.100) or hostname/domain of your Unraid server.",
           "port": "HTTP port number (default: 80). Secure connections are handled automatically.",
-          "api_key": "Generate in Unraid Settings \u2192 Management Access \u2192 API Keys. Requires ADMIN role."
+          "api_key": "Generate in Unraid Settings → Management Access → API Keys. Requires ADMIN role."
         }
       },
       "reauth_confirm": {
@@ -23,7 +23,7 @@
           "api_key": "API key"
         },
         "data_description": {
-          "api_key": "Generate a new API key in Unraid Settings \u2192 Management Access \u2192 API Keys"
+          "api_key": "Generate a new API key in Unraid Settings → Management Access → API Keys"
         }
       },
       "reconfigure": {
@@ -71,7 +71,7 @@
         "data_description": {
           "enable_container_updates": "When enabled, creates an update entity for each Docker container to track available image updates. Disable if you manage container updates externally or don't need update notifications.",
           "ups_capacity_va": "Optional. Your UPS VA rating (e.g., 1000 for a 1000VA UPS). Shown in sensor attributes for reference.",
-          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA \u00d7 0.6."
+          "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA × 0.6."
         }
       }
     },
@@ -158,6 +158,12 @@
     },
     "graphql_query_failed": {
       "message": "GraphQL query failed: {error}"
+    },
+    "update_all_containers_failed": {
+      "message": "Failed to update all containers: {error}"
+    },
+    "check_container_updates_failed": {
+      "message": "Failed to check for container updates: {error}"
     }
   },
   "entity": {
@@ -347,6 +353,12 @@
       },
       "disk_error_count": {
         "name": "Disk {name} errors"
+      },
+      "network_interface_rx": {
+        "name": "Network {name} inbound"
+      },
+      "network_interface_tx": {
+        "name": "Network {name} outbound"
       }
     },
     "binary_sensor": {
@@ -455,6 +467,12 @@
       },
       "delete_all_archived_notifications": {
         "name": "Delete all archived notifications"
+      },
+      "update_all_containers": {
+        "name": "Update all containers"
+      },
+      "check_container_updates": {
+        "name": "Check container updates"
       }
     },
     "update": {

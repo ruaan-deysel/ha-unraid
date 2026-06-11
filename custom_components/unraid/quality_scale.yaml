@@ -106,7 +106,9 @@ rules:
   # Above 95% test coverage for all integration modules
   test-coverage:
     status: done
-    comment: Test coverage is at or above the 95% target.
+    comment: |
+      Every integration module is at or above 95% statement coverage
+      (./script/test prints the per-module table; total 97%).
 
   # ============================================================================
   # 🥇 Gold (Best user experience)
@@ -152,7 +154,15 @@ rules:
   docs-use-cases: done
 
   # Devices added after integration setup
-  dynamic-devices: done
+  dynamic-devices:
+    status: done
+    comment: |
+      Containers, VMs, and network interfaces discovered after setup get
+      entities on the next coordinator refresh via
+      entity.async_add_dynamic_resource_entities (no reload needed). The
+      integration registers a single device per server, so no new devices
+      are created — the same listener pattern covers the per-resource
+      entities instead.
 
   # Entities are assigned an appropriate EntityCategory
   entity-category: done
@@ -203,5 +213,12 @@ rules:
   strict-typing:
     status: done
     comment: |
-      Type checking is scoped to integration modules only (custom_components/unraid).
-      script/type-check reports zero errors for the integration module scope.
+      Pyright over custom_components/unraid reports zero errors and zero
+      warnings (./script/type-check). Entity bases are generic over their
+      coordinator type so coordinator data/methods are precisely typed.
+      reportIncompatibleVariableOverride is disabled in pyrightconfig.json:
+      HA core declares entity state attributes as cached_property/ClassVar
+      and integrations override them with plain @property (the documented
+      core pattern, which core's own mypy accepts), so pyright flags every
+      such override as a structural false positive. Both unraid-api and the
+      integration ship py.typed.

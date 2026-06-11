@@ -169,7 +169,8 @@ def mock_api_client():
     client.get_notification_overview = AsyncMock(
         return_value=make_notification_overview()
     )
-    client.typed_get_containers = AsyncMock(return_value=[])
+    client.typed_get_containers_safe = AsyncMock(return_value=[])
+    client.get_network_metrics = AsyncMock(return_value=[])
     client.typed_get_vms = AsyncMock(return_value=[])
     client.typed_get_ups_devices = AsyncMock(return_value=[])
     client.typed_get_array = AsyncMock(return_value=make_array())
@@ -337,7 +338,7 @@ async def test_system_coordinator_queries_all_endpoints(
     mock_api_client.get_server_info.assert_not_called()
     mock_api_client.get_system_metrics_safe.assert_called_once()
     mock_api_client.get_notification_overview.assert_called_once()
-    mock_api_client.typed_get_containers.assert_called_once()
+    mock_api_client.typed_get_containers_safe.assert_called_once()
     mock_api_client.typed_get_vms.assert_called_once()
     mock_api_client.typed_get_ups_devices.assert_called_once()
     mock_api_client.typed_get_vars.assert_called_once()
@@ -360,20 +361,20 @@ async def test_system_coordinator_throttles_docker_query(
 
     # First poll fetches Docker data.
     await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 1
+    assert mock_api_client.typed_get_containers_safe.call_count == 1
 
     # A poll shortly after reuses the cached containers (no new Docker query),
     # while metrics are still refreshed every poll.
     fake_time["now"] += 30
     data = await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 1
+    assert mock_api_client.typed_get_containers_safe.call_count == 1
     assert mock_api_client.get_system_metrics_safe.call_count == 2
     assert data.containers == coordinator._cached_containers
 
     # Once the Docker interval elapses, the list is fetched again.
     fake_time["now"] += DOCKER_POLL_INTERVAL
     await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 2
+    assert mock_api_client.typed_get_containers_safe.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -391,16 +392,16 @@ async def test_system_coordinator_force_docker_refresh(
     )
 
     await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 1
+    assert mock_api_client.typed_get_containers_safe.call_count == 1
 
     # Without forcing, the throttle skips the Docker query at the same timestamp.
     await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 1
+    assert mock_api_client.typed_get_containers_safe.call_count == 1
 
     # Forcing the flag (as container control actions do) re-fetches immediately.
     coordinator._force_docker_refresh = True
     await coordinator._async_update_data()
-    assert mock_api_client.typed_get_containers.call_count == 2
+    assert mock_api_client.typed_get_containers_safe.call_count == 2
     assert coordinator._force_docker_refresh is False
 
 
@@ -425,7 +426,7 @@ async def test_system_coordinator_parses_docker_containers(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator correctly parses Docker container data."""
-    mock_api_client.typed_get_containers.return_value = [
+    mock_api_client.typed_get_containers_safe.return_value = [
         make_docker_container(id="c1", names=["/plex"], state="RUNNING"),
         make_docker_container(id="c2", names=["/sonarr"], state="EXITED"),
     ]
@@ -598,7 +599,7 @@ async def test_system_coordinator_handles_docker_query_failure(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator handles Docker query failure gracefully."""
-    mock_api_client.typed_get_containers.side_effect = UnraidAPIError(
+    mock_api_client.typed_get_containers_safe.side_effect = UnraidAPIError(
         "Docker not available"
     )
 
@@ -656,7 +657,7 @@ async def test_system_coordinator_optional_docker_auth_error_reraised(
     hass, mock_api_client, mock_config_entry
 ):
     """Test optional Docker query re-raises auth errors."""
-    mock_api_client.typed_get_containers.side_effect = UnraidAuthenticationError(
+    mock_api_client.typed_get_containers_safe.side_effect = UnraidAuthenticationError(
         "Unauthorized"
     )
 
@@ -1260,7 +1261,7 @@ async def test_system_coordinator_handles_container_without_names(
     hass, mock_api_client, mock_config_entry
 ):
     """Test system coordinator handles container with empty names list."""
-    mock_api_client.typed_get_containers.return_value = [
+    mock_api_client.typed_get_containers_safe.return_value = [
         make_docker_container(names=[])
     ]
 
@@ -1300,7 +1301,7 @@ async def test_system_coordinator_handles_invalid_container(
 ):
     """Test system coordinator handles container data."""
     # Library models handle validation, so we just test with valid data
-    mock_api_client.typed_get_containers.return_value = [
+    mock_api_client.typed_get_containers_safe.return_value = [
         make_docker_container(state="UNKNOWN_STATE")
     ]
 
@@ -2101,3 +2102,586 @@ async def test_delete_all_notifications_propagates_error(
 
     with pytest.raises(UnraidAPIError, match="Bad Request"):
         await coordinator.async_delete_all_notifications()
+
+
+# =============================================================================
+# Action Wrapper Tests
+# =============================================================================
+
+
+def _system_coordinator(
+    hass, mock_api_client, mock_config_entry
+) -> UnraidSystemCoordinator:
+    """Build a system coordinator for wrapper tests."""
+    return UnraidSystemCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+        server_info=make_server_info(),
+    )
+
+
+def _storage_coordinator(
+    hass, mock_api_client, mock_config_entry
+) -> UnraidStorageCoordinator:
+    """Build a storage coordinator for wrapper tests."""
+    return UnraidStorageCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("wrapper", "client_method", "args"),
+    [
+        ("async_start_container", "start_container", ("c1",)),
+        ("async_stop_container", "stop_container", ("c1",)),
+        ("async_restart_container", "restart_container", ("c1",)),
+        ("async_update_container", "update_container", ("c1",)),
+        ("async_update_all_containers", "update_all_containers", ()),
+        ("async_refresh_docker_digests", "refresh_docker_digests", ()),
+        ("async_start_vm", "start_vm", ("vm1",)),
+        ("async_stop_vm", "stop_vm", ("vm1",)),
+        ("async_force_stop_vm", "force_stop_vm", ("vm1",)),
+        ("async_reboot_vm", "reboot_vm", ("vm1",)),
+        ("async_pause_vm", "pause_vm", ("vm1",)),
+        ("async_resume_vm", "resume_vm", ("vm1",)),
+        ("async_reset_vm", "reset_vm", ("vm1",)),
+        ("async_archive_all_notifications", "archive_all_notifications", ()),
+        ("async_delete_all_notifications", "delete_all_notifications", ()),
+    ],
+)
+async def test_system_action_wrappers(
+    hass, mock_api_client, mock_config_entry, wrapper, client_method, args
+):
+    """Each system action wrapper delegates to the library client."""
+    setattr(mock_api_client, client_method, AsyncMock())
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    await getattr(coordinator, wrapper)(*args)
+
+    getattr(mock_api_client, client_method).assert_awaited_once_with(*args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("wrapper", "client_method", "args", "kwargs"),
+    [
+        ("async_start_array", "start_array", (), {}),
+        ("async_stop_array", "stop_array", (), {}),
+        ("async_start_parity_check", "start_parity_check", (), {"correct": True}),
+        ("async_cancel_parity_check", "cancel_parity_check", (), {}),
+        ("async_pause_parity_check", "pause_parity_check", (), {}),
+        ("async_resume_parity_check", "resume_parity_check", (), {}),
+        ("async_spin_up_disk", "spin_up_disk", ("disk1",), {}),
+        ("async_spin_down_disk", "spin_down_disk", ("disk1",), {}),
+    ],
+)
+async def test_storage_action_wrappers(
+    hass, mock_api_client, mock_config_entry, wrapper, client_method, args, kwargs
+):
+    """Each storage action wrapper delegates to the library client."""
+    setattr(mock_api_client, client_method, AsyncMock())
+    coordinator = _storage_coordinator(hass, mock_api_client, mock_config_entry)
+
+    await getattr(coordinator, wrapper)(*args, **kwargs)
+
+    getattr(mock_api_client, client_method).assert_awaited_once_with(*args, **kwargs)
+
+
+# =============================================================================
+# Storage Data Properties / Optional Query Error Branches
+# =============================================================================
+
+
+def test_storage_data_boot_fallback() -> None:
+    """Boot falls back to bootDevices[0] and then None."""
+    from unraid_api import UnraidArray
+    from unraid_api.models import ArrayDisk
+
+    from custom_components.unraid.coordinator import UnraidStorageData
+
+    flash = ArrayDisk(id="flash", name="flash")
+    with_devices = UnraidStorageData(
+        array=UnraidArray(state="STARTED", bootDevices=[flash])
+    )
+    assert with_devices.boot is flash
+
+    without_boot = UnraidStorageData(array=UnraidArray(state="STARTED"))
+    assert without_boot.boot is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "client_method", "empty"),
+    [
+        ("_query_optional_docker", "typed_get_containers_safe", []),
+        ("_query_optional_vms", "typed_get_vms", []),
+        ("_query_optional_ups", "typed_get_ups_devices", []),
+        ("_query_optional_mover_status", "typed_get_vars", None),
+        ("_query_optional_network_metrics", "get_network_metrics", []),
+    ],
+)
+async def test_system_optional_queries_fail_gracefully(
+    hass, mock_api_client, mock_config_entry, method, client_method, empty
+):
+    """Optional system queries return empty results on API errors."""
+    setattr(
+        mock_api_client, client_method, AsyncMock(side_effect=UnraidAPIError("nope"))
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert await getattr(coordinator, method)() == empty
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "client_method"),
+    [
+        ("_query_optional_docker", "typed_get_containers_safe"),
+        ("_query_optional_vms", "typed_get_vms"),
+        ("_query_optional_ups", "typed_get_ups_devices"),
+        ("_query_optional_mover_status", "typed_get_vars"),
+        ("_query_optional_network_metrics", "get_network_metrics"),
+    ],
+)
+async def test_system_optional_queries_raise_auth_errors(
+    hass, mock_api_client, mock_config_entry, method, client_method
+):
+    """Auth failures always propagate from optional queries."""
+    setattr(
+        mock_api_client,
+        client_method,
+        AsyncMock(side_effect=UnraidAuthenticationError("denied")),
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UnraidAuthenticationError):
+        await getattr(coordinator, method)()
+
+
+@pytest.mark.asyncio
+async def test_request_docker_refresh_forces_fetch(
+    hass, mock_api_client, mock_config_entry
+):
+    """async_request_docker_refresh sets the force flag and requests refresh."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+
+    await coordinator.async_request_docker_refresh()
+
+    assert coordinator._force_docker_refresh is True
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_system_update_runtime_error_raises_update_failed(
+    hass, mock_api_client, mock_config_entry
+):
+    """RuntimeError (session closed during shutdown) maps to UpdateFailed."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    mock_api_client.get_system_metrics_safe = AsyncMock(
+        side_effect=RuntimeError("Session is closed")
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_storage_optional_shares_auth_error_raises(
+    hass, mock_api_client, mock_config_entry
+):
+    """Auth errors propagate from the optional shares query."""
+    mock_api_client.typed_get_shares = AsyncMock(
+        side_effect=UnraidAuthenticationError("denied")
+    )
+    coordinator = _storage_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_shares()
+
+
+# =============================================================================
+# Infra Coordinator Optional Queries / Error Paths
+# =============================================================================
+
+
+def _infra_coordinator(
+    hass, mock_api_client, mock_config_entry
+) -> UnraidInfraCoordinator:
+    """Build an infra coordinator for tests."""
+    return UnraidInfraCoordinator(
+        hass=hass,
+        api_client=mock_api_client,
+        server_name="tower",
+        config_entry=mock_config_entry,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "client_method", "empty"),
+    [
+        ("_query_optional_services", "typed_get_services", []),
+        ("_query_optional_registration", "typed_get_registration", None),
+        ("_query_optional_cloud", "typed_get_cloud", None),
+        ("_query_optional_connect", "typed_get_connect", None),
+        ("_query_optional_remote_access", "typed_get_remote_access", None),
+        ("_query_optional_vars", "typed_get_vars", None),
+        ("_query_optional_network", "typed_get_network", None),
+    ],
+)
+async def test_infra_optional_queries_fail_gracefully(
+    hass, mock_api_client, mock_config_entry, method, client_method, empty
+):
+    """Optional infra queries return empty results on API errors."""
+    setattr(
+        mock_api_client, client_method, AsyncMock(side_effect=UnraidAPIError("nope"))
+    )
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert await getattr(coordinator, method)() == empty
+
+
+@pytest.mark.asyncio
+async def test_infra_installed_plugins_failure_returns_empty(
+    hass, mock_api_client, mock_config_entry
+):
+    """Installed plugins query swallows all errors."""
+    mock_api_client.query = AsyncMock(side_effect=RuntimeError("boom"))
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert await coordinator._query_installed_plugins() == []
+
+
+@pytest.mark.asyncio
+async def test_infra_update_auth_error_raises_config_entry_auth_failed(
+    hass, mock_api_client, mock_config_entry
+):
+    """Auth errors during infra update raise ConfigEntryAuthFailed."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    mock_api_client.typed_get_services = AsyncMock(
+        side_effect=UnraidAuthenticationError("denied")
+    )
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+# =============================================================================
+# Notification Persistence / Event Listener Edge Cases
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_seen_notification_ids_load_failure_is_tolerated(
+    hass, mock_api_client, mock_config_entry
+):
+    """Storage load failures leave the coordinator functional."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_notification_store.async_load = AsyncMock(
+        side_effect=OSError("disk full")
+    )
+
+    await coordinator._async_load_seen_notification_ids()
+
+    assert coordinator._seen_ids_loaded is True
+    assert coordinator._seen_notification_ids == set()
+
+
+@pytest.mark.asyncio
+async def test_seen_notification_ids_save_failure_is_tolerated(
+    hass, mock_api_client, mock_config_entry
+):
+    """Storage save failures are logged but not raised."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_notification_store.async_save = AsyncMock(
+        side_effect=OSError("disk full")
+    )
+    coordinator._seen_notification_ids = {"n1"}
+
+    await coordinator._async_save_seen_notification_ids()  # must not raise
+
+
+def test_event_listener_remove_is_idempotent(hass, mock_api_client, mock_config_entry):
+    """Removing a listener twice (or after type cleanup) is safe."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    def listener(_event) -> None:
+        pass
+
+    remove = coordinator.async_add_event_listener(listener, "notification_created")
+    assert "notification_created" in coordinator._event_listeners
+    remove()
+    assert "notification_created" not in coordinator._event_listeners
+    remove()  # second removal is a no-op
+
+
+def test_normalize_notification_response_tuple_and_unknown(
+    hass, mock_api_client, mock_config_entry
+):
+    """Tuples are converted to lists; unknown types yield empty lists."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert coordinator._normalize_notification_response(("a", "b")) == ["a", "b"]
+    assert coordinator._normalize_notification_response(42) == []
+
+
+@pytest.mark.asyncio
+async def test_unread_notifications_fallback_to_get_notifications(
+    hass, mock_api_client, mock_config_entry
+):
+    """Without typed_get_notifications the client falls back to get_notifications."""
+    del mock_api_client.typed_get_notifications
+    mock_api_client.get_notifications = AsyncMock(
+        return_value=[{"id": "n1", "type": "UNREAD", "timestamp": "t"}]
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    result = await coordinator._async_get_unread_notifications()
+
+    assert result == [{"id": "n1", "type": "UNREAD", "timestamp": "t"}]
+    mock_api_client.get_notifications.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unread_notifications_no_api_returns_empty(
+    hass, mock_api_client, mock_config_entry
+):
+    """A client without any notification list API yields an empty list."""
+    del mock_api_client.typed_get_notifications
+    del mock_api_client.get_notifications
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert await coordinator._async_get_unread_notifications() == []
+
+
+@pytest.mark.asyncio
+async def test_unread_notifications_api_error_raises(
+    hass, mock_api_client, mock_config_entry
+):
+    """API errors polling notifications propagate to the caller."""
+    mock_api_client.typed_get_notifications = AsyncMock(
+        side_effect=UnraidAPIError("boom")
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UnraidAPIError):
+        await coordinator._async_get_unread_notifications()
+
+
+def test_storage_data_capacity_and_parity_properties() -> None:
+    """parity_status and explicit boot are exposed via properties."""
+    from unraid_api import UnraidArray
+    from unraid_api.models import ArrayDisk, ParityCheck
+
+    from custom_components.unraid.coordinator import UnraidStorageData
+
+    flash = ArrayDisk(id="flash", name="flash")
+    parity = ParityCheck(status="COMPLETED")
+    data = UnraidStorageData(
+        array=UnraidArray(state="STARTED", parityCheckStatus=parity, boot=flash)
+    )
+    assert data.parity_status is parity
+    assert data.boot is flash
+
+
+def test_to_notification_event_data_invalid_payloads(
+    hass, mock_api_client, mock_config_entry
+):
+    """Notifications without id or timestamp yield no event data."""
+    convert = UnraidSystemCoordinator._to_notification_event_data
+
+    assert convert({"id": None, "timestamp": "t"}) is None
+    assert convert({"id": "n1", "timestamp": None}) is None
+    assert convert({"id": "n1", "timestamp": "t", "title": "x"}) is not None
+
+
+@pytest.mark.asyncio
+async def test_notification_processing_skips_invalid_records(
+    hass, mock_api_client, mock_config_entry
+):
+    """Records without id/timestamp or non-UNREAD types are skipped."""
+    mock_api_client.typed_get_notifications = AsyncMock(
+        return_value=[
+            {"id": None, "type": "UNREAD", "timestamp": "t"},
+            {"id": "archived", "type": "ARCHIVE", "timestamp": "t"},
+            {"id": "no-ts", "type": "UNREAD", "timestamp": None},
+        ]
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_ids_loaded = True
+    coordinator._notification_ids_baselined = True
+
+    await coordinator._async_process_notification_events()
+
+    assert coordinator._seen_notification_ids == set()
+
+
+@pytest.mark.asyncio
+async def test_notification_listener_exception_does_not_break_processing(
+    hass, mock_api_client, mock_config_entry
+):
+    """A raising listener is logged; remaining notifications still process."""
+    mock_api_client.typed_get_notifications = AsyncMock(
+        return_value=[
+            {"id": "n1", "type": "UNREAD", "timestamp": "2026-01-01T00:00:00"},
+            {"id": "n2", "type": "UNREAD", "timestamp": "2026-01-02T00:00:00"},
+        ]
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_ids_loaded = True
+    coordinator._notification_ids_baselined = True
+
+    received: list = []
+
+    def listener(event_data) -> None:
+        if event_data.notification_id == "n1":
+            msg = "listener bug"
+            raise RuntimeError(msg)
+        received.append(event_data.notification_id)
+
+    coordinator.async_add_event_listener(listener, "notification_created")
+    await coordinator._async_process_notification_events()
+
+    assert received == ["n2"]
+    # The failing notification stays unseen so it can be retried
+    assert coordinator._seen_notification_ids == {"n2"}
+
+
+@pytest.mark.asyncio
+async def test_system_update_tolerates_notification_processing_api_error(
+    hass, mock_api_client, mock_config_entry
+):
+    """API errors during notification event processing don't fail the update."""
+    mock_api_client.typed_get_notifications = AsyncMock(
+        side_effect=UnraidAPIError("boom")
+    )
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_ids_loaded = True
+
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+
+
+@pytest.mark.asyncio
+async def test_system_update_tolerates_notification_processing_crash(
+    hass, mock_api_client, mock_config_entry
+):
+    """Unexpected notification processing errors don't fail the update."""
+    mock_api_client.typed_get_notifications = AsyncMock(side_effect=RuntimeError("bug"))
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator._seen_ids_loaded = True
+
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+
+
+@pytest.mark.asyncio
+async def test_storage_parity_history_auth_error_raises(
+    hass, mock_api_client, mock_config_entry
+):
+    """Auth errors propagate from the parity history query."""
+    mock_api_client.get_parity_history = AsyncMock(
+        side_effect=UnraidAuthenticationError("denied")
+    )
+    coordinator = _storage_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UnraidAuthenticationError):
+        await coordinator._query_optional_parity_history()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_method",
+    [
+        "typed_get_services",
+        "typed_get_registration",
+        "typed_get_cloud",
+        "typed_get_connect",
+        "typed_get_remote_access",
+        "typed_get_vars",
+        "typed_get_network",
+        "query",
+    ],
+)
+async def test_infra_optional_queries_raise_auth_errors(
+    hass, mock_api_client, mock_config_entry, client_method
+):
+    """Auth failures always propagate from infra optional queries."""
+    method_map = {
+        "typed_get_services": "_query_optional_services",
+        "typed_get_registration": "_query_optional_registration",
+        "typed_get_cloud": "_query_optional_cloud",
+        "typed_get_connect": "_query_optional_connect",
+        "typed_get_remote_access": "_query_optional_remote_access",
+        "typed_get_vars": "_query_optional_vars",
+        "typed_get_network": "_query_optional_network",
+        "query": "_query_installed_plugins",
+    }
+    setattr(
+        mock_api_client,
+        client_method,
+        AsyncMock(side_effect=UnraidAuthenticationError("denied")),
+    )
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UnraidAuthenticationError):
+        await getattr(coordinator, method_map[client_method])()
+
+
+@pytest.mark.asyncio
+async def test_infra_installed_plugins_api_error_returns_empty(
+    hass, mock_api_client, mock_config_entry
+):
+    """Unraid API errors in the plugins query return an empty list."""
+    mock_api_client.query = AsyncMock(side_effect=UnraidAPIError("nope"))
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    assert await coordinator._query_installed_plugins() == []
+
+
+@pytest.mark.asyncio
+async def test_infra_installed_plugins_payload_shapes(
+    hass, mock_api_client, mock_config_entry
+):
+    """Plugins query handles dict payloads, data wrappers, and bad shapes."""
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    mock_api_client.query = AsyncMock(
+        return_value={"data": {"installedUnraidPlugins": ["a", None, "b"]}}
+    )
+    assert await coordinator._query_installed_plugins() == ["a", "b"]
+
+    mock_api_client.query = AsyncMock(return_value={"installedUnraidPlugins": "bad"})
+    assert await coordinator._query_installed_plugins() == []
+
+    mock_api_client.query = AsyncMock(return_value=12345)
+    assert await coordinator._query_installed_plugins() == []
+
+
+@pytest.mark.asyncio
+async def test_infra_update_connection_error_raises_update_failed(
+    hass, mock_api_client, mock_config_entry
+):
+    """Runtime errors (session closed) during infra update raise UpdateFailed."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    mock_api_client.typed_get_services = AsyncMock(
+        side_effect=RuntimeError("Session is closed")
+    )
+    coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()

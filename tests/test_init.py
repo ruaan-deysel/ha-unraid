@@ -9,7 +9,11 @@ from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from unraid_api.exceptions import UnraidAuthenticationError, UnraidConnectionError
+from unraid_api.exceptions import (
+    UnraidAPIError,
+    UnraidAuthenticationError,
+    UnraidConnectionError,
+)
 
 from custom_components.unraid import (
     PLATFORMS,
@@ -704,3 +708,56 @@ async def test_setup_entry_uses_unknown_when_sw_version_missing(
     # Model should show "Unraid Unknown"
     assert entry.runtime_data.server_info["model"] == "Unraid Unknown"
     assert entry.runtime_data.server_info["sw_version"] == "Unknown"
+
+
+async def test_setup_entry_api_error(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_unraid_client: MagicMock,
+) -> None:
+    """Test setup fails with API error and raises ConfigEntryNotReady."""
+    mock_config_entry.add_to_hass(hass)
+    mock_unraid_client.test_connection.side_effect = UnraidAPIError("API broken")
+
+    with patch("custom_components.unraid.async_get_clientsession") as mock_session:
+        mock_session.return_value = MagicMock()
+        with pytest.raises(ConfigEntryNotReady) as exc_info:
+            await async_setup_entry(hass, mock_config_entry)
+
+    assert "API error" in str(exc_info.value)
+    mock_unraid_client.close.assert_called_once()
+
+
+async def test_setup_entry_first_refresh_failure_closes_client(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_unraid_client: MagicMock,
+) -> None:
+    """Test client is closed when the first coordinator refresh fails."""
+    mock_config_entry.add_to_hass(hass)
+
+    failing_coordinator = MagicMock()
+    failing_coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=ConfigEntryNotReady("server gone")
+    )
+
+    with (
+        patch(
+            "custom_components.unraid.UnraidSystemCoordinator",
+            return_value=failing_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidStorageCoordinator",
+            return_value=failing_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=failing_coordinator,
+        ),
+        patch("custom_components.unraid.async_get_clientsession") as mock_session,
+    ):
+        mock_session.return_value = MagicMock()
+        with pytest.raises(ConfigEntryNotReady):
+            await async_setup_entry(hass, mock_config_entry)
+
+    mock_unraid_client.close.assert_called_once()

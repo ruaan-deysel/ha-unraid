@@ -40,6 +40,37 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Manifest version: $VERSION"
 
+      # Only release once the CHANGELOG is ready: the [Unreleased] content
+      # must have been moved under a "## [VERSION]" heading matching the new
+      # manifest version. A manifest bump without that section skips tagging
+      # instead of publishing a release with generic fallback notes. Because
+      # this workflow only triggers on manifest.json changes, the changelog
+      # section must land in the same push as (or before) the manifest bump.
+      - name: Check CHANGELOG has notes for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.manifest.outputs.version }}"
+
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "CHANGELOG.md not found"
+            exit 0
+          fi
+
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" {in_section=1; next}
+            in_section && $0 ~ /^## \[/ {exit}
+            in_section {print}
+          ' CHANGELOG.md)
+
+          if [ -n "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+            echo "Found release notes for $VERSION in CHANGELOG.md"
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "No '## [$VERSION]' section with content found in CHANGELOG.md"
+          fi
+
       - name: Check if tag already exists
         id: check_tag
         run: |
@@ -60,7 +91,9 @@ jobs:
           fi
 
       - name: Create and push tag
-        if: steps.check_tag.outputs.exists == 'false'
+        if: >-
+          steps.check_tag.outputs.exists == 'false' &&
+          steps.changelog.outputs.ready == 'true'
         run: |
           TAG="v${{ steps.manifest.outputs.version }}"
           echo "Creating tag $TAG"
@@ -74,8 +107,13 @@ jobs:
       - name: Summary
         run: |
           TAG="v${{ steps.manifest.outputs.version }}"
+          VERSION="${{ steps.manifest.outputs.version }}"
           if [ "${{ steps.check_tag.outputs.exists }}" = "true" ]; then
             echo "Tag $TAG already existed. No new tag created." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.changelog.outputs.ready }}" != "true" ]; then
+            echo "⚠️ Tag $TAG **not** created: CHANGELOG.md has no \`## [$VERSION]\` section with content." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Move the \`[Unreleased]\` notes under a \`## [$VERSION]\` heading and push the change together with a manifest.json update to trigger the release." >> $GITHUB_STEP_SUMMARY
           else
             echo "Created and pushed tag $TAG from manifest.json version." >> $GITHUB_STEP_SUMMARY
             echo "Release workflow will trigger from the tag push." >> $GITHUB_STEP_SUMMARY

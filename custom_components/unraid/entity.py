@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .coordinator import (
@@ -21,6 +27,12 @@ if TYPE_CHECKING:
         UnraidSystemCoordinator,
         UnraidSystemData,
     )
+
+# Union of all integration coordinators; PEP 695 type aliases are evaluated
+# lazily, so referencing the TYPE_CHECKING-only names here is safe at runtime.
+type UnraidCoordinator = (
+    UnraidSystemCoordinator | UnraidStorageCoordinator | UnraidInfraCoordinator
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -42,13 +54,16 @@ class UnraidEntityDescription(EntityDescription):
     """Function that returns whether entity is supported (used in async_setup_entry)."""
 
 
-class UnraidBaseEntity(
-    CoordinatorEntity[
-        "UnraidSystemCoordinator | UnraidStorageCoordinator | UnraidInfraCoordinator"
-    ]
+class UnraidBaseEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator](
+    CoordinatorEntity[CoordinatorT]
 ):
     """
     Base entity for all Unraid entities.
+
+    Generic over the coordinator type: subclasses parameterize with the
+    specific coordinator they use (e.g. ``UnraidBaseEntity[UnraidSystemCoordinator]``)
+    so ``self.coordinator`` is precisely typed. Unparameterized usage falls
+    back to the union of all three coordinators.
 
     This base class provides:
     - Common DeviceInfo generation
@@ -64,9 +79,7 @@ class UnraidBaseEntity(
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator
-        | UnraidStorageCoordinator
-        | UnraidInfraCoordinator,
+        coordinator: CoordinatorT,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -126,7 +139,9 @@ class UnraidBaseEntity(
         return self.coordinator.last_update_success
 
 
-class UnraidEntity(UnraidBaseEntity):
+class UnraidEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator](
+    UnraidBaseEntity[CoordinatorT]
+):
     """
     Unraid entity with entity description support.
 
@@ -139,9 +154,7 @@ class UnraidEntity(UnraidBaseEntity):
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator
-        | UnraidStorageCoordinator
-        | UnraidInfraCoordinator,
+        coordinator: CoordinatorT,
         entity_description: UnraidEntityDescription,
         server_uuid: str,
         server_name: str,
@@ -185,3 +198,44 @@ class UnraidEntity(UnraidBaseEntity):
         if self.coordinator.data is None:
             return False
         return self.entity_description.available_fn(self.coordinator.data)
+
+
+def async_add_dynamic_resource_entities[ResourceT](
+    *,
+    coordinator: UnraidSystemCoordinator,
+    async_add_entities: Callable[[list[Any]], None],
+    get_resources: Callable[[], list[ResourceT]],
+    get_key: Callable[[ResourceT], str],
+    create_entities: Callable[[ResourceT], list[Any]],
+) -> Callable[[], None]:
+    """
+    Create entities for resources present now and any discovered later.
+
+    Tracks resources by a stable key (e.g. container/VM name) and adds
+    entities for new ones on every coordinator refresh, so resources that
+    appear after setup (a newly created container, VM, or network interface)
+    get entities without an integration reload.
+
+    Returns the listener-removal callable from the coordinator; platform
+    setup should pass it to ``entry.async_on_unload``.
+    """
+    known: set[str] = set()
+
+    def _sync_entities() -> None:
+        # Runs as a coordinator listener on every refresh — a malformed
+        # resource must not break listener notification for the whole update.
+        try:
+            new_entities: list[Any] = []
+            for resource in get_resources():
+                key = get_key(resource)
+                if key in known:
+                    continue
+                known.add(key)
+                new_entities.extend(create_entities(resource))
+            if new_entities:
+                async_add_entities(new_entities)
+        except Exception:
+            _LOGGER.exception("Failed to sync dynamically discovered entities")
+
+    _sync_entities()
+    return coordinator.async_add_listener(_sync_entities)

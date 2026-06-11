@@ -7,11 +7,33 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.6.1] - 2026-06-11
+
+### Added
+
+- **Network Interface Sensors**: New inbound/outbound throughput sensors for physical NICs, bonds, and user-configured bridges (`ethN`, `bondN`, `brN`, `wlanN`, including VLAN sub-interfaces like `br0.5`) from `metrics.network`, updated every 30 seconds and displayed in human-readable units (MB/s). Attributes include the interface state plus human-readable byte totals, packet counts, errors, and drops. Auto-generated plumbing — per-container `veth*`, per-VM `vnet*`/`tap*`, loopback, and Docker/libvirt-created bridges and shims (`br-<hash>`, `docker0`, `shim-br0`, `virbr0`) — gets no entities, and any previously created sensors for such interfaces are removed automatically. Requires Unraid GraphQL API 4.35.0+ — on older servers the sensors are simply not created
+- **Check Container Updates Button**: New `button.*_check_container_updates` entity that forces a re-check of remote Docker image digests (the WebGUI "Check for Updates" action). Unraid caches each container's update-available state, so update entities previously only changed after Unraid's own periodic check — this button (and automations pressing it) refreshes that state on demand ([#245](https://github.com/ruaan-deysel/ha-unraid/issues/245)). Requires Unraid GraphQL API 4.35.0+
+- **Update All Containers Button**: New `button.*_update_all_containers` entity (disabled by default) that updates every Docker container with a pending image update in one action, equivalent to the WebGUI "Update All". Requires Unraid GraphQL API 4.35.0+
+- **Dynamic Entity Addition**: Containers, VMs, and network interfaces created after the integration starts now get their entities (switches, buttons, sensors, update entities) automatically on the next coordinator refresh — previously a manual integration reload was required for new resources to appear
+
+### Changed
+
+- **Updated unraid-api to v1.12.0**: Adds `typed_get_containers_safe()`, network metrics support, bulk container updates, and `refresh_docker_digests()` ([release notes](https://github.com/ruaan-deysel/unraid-api/releases/tag/v1.12.0))
+- **Test Coverage and Strict Typing**: Every integration module is now at or above 95% test coverage (964 tests, 97% total), and pyright type checking reports zero errors and zero warnings — entity base classes are now generic over their coordinator type so coordinator data and action methods are precisely typed throughout
+
 ### Fixed
 
-- **Array State Sensor Not Updating** ([#247](https://github.com/ruaan-deysel/ha-unraid/issues/247)): `sensor.*_array_state` now reflects changes (started → stopped / stopped → started) immediately instead of waiting up to 5 minutes for the next storage coordinator poll. Re-introduces the `subscribe_array_updates` WebSocket subscription that was removed in v2026.4.1. The subscription is event-driven (fires only on explicit array start/stop, not periodically) and is debounced (10 s) to prevent burst refreshes. Because an explicit array start/stop keeps disks active, no unexpected disk wake-ups occur from this trigger.
+- **Diagnostics Download Crash**: Downloading integration diagnostics raised `AttributeError` because the coordinators did not track `last_update_success_time` — they now extend `TimestampDataUpdateCoordinator`, and diagnostics include the real last-success timestamps
+
+- **CPU Spikes from Docker Container Polling** ([#237](https://github.com/ruaan-deysel/ha-unraid/issues/237)): The periodic Docker container poll now uses the lightweight `typed_get_containers_safe()` query from unraid-api v1.12.0 ([unraid-api#69](https://github.com/ruaan-deysel/unraid-api/issues/69)), which omits the writable-layer size computation (`sizeRootFs`/`sizeRw`/`sizeLog`, equivalent to `docker ps --size`) and heavy payload fields (`mounts`, `networkSettings`, `labels`, port/Tailscale subselections) that the integration never used. Measured against a live server with 17 containers, the poll dropped from ~3 s of server-side work to ~0.04 s — eliminating the main remaining source of the periodic CPU spikes. All entity-visible container data (state, update availability, icons, URLs) is unaffected.
+
+- **Array State Sensor Not Updating** ([#247](https://github.com/ruaan-deysel/ha-unraid/issues/247)): `sensor.*_array_state` now reflects changes (started → stopped / stopped → started) within seconds instead of waiting up to 5 minutes for the next storage coordinator poll. Re-introduces the `subscribe_array_updates` WebSocket subscription that was removed in v2026.4.1 — this time with guards against the regression that caused its removal ([#211](https://github.com/ruaan-deysel/ha-unraid/issues/211), [#206](https://github.com/ruaan-deysel/ha-unraid/issues/206)): the server emits periodic heartbeat events with no state (observed every ~30 s on API v4.35), and these are now ignored entirely. A storage refresh is requested only when the reported array state actually changes, so a stable array never triggers WebSocket-driven storage polling and spun-down disks stay asleep. Because an explicit array start/stop keeps disks active, no unexpected disk wake-ups occur from this trigger.
 
 - **Docker Container CPU / Memory Sensors Becoming Stale After Container Recreate** ([#245](https://github.com/ruaan-deysel/ha-unraid/issues/245)): Container CPU, memory-usage, and memory-percent sensors now resolve the current Docker container ID from coordinator data by name on every state read, instead of using the ID frozen at entity creation time. When a container is recreated its Docker ID changes; the stale ID caused the WebSocket stats lookup to return `None` indefinitely (fixed only by an integration reload). Entities now self-heal without a reload. Aggregate Docker sensors (Total CPU, Total Memory %) are also updated to exclude stats for container IDs that are no longer present in the coordinator's container list, preventing orphaned entries from inflating totals.
+
+- **Container CPU / Memory Sensors Stuck on "Unknown"**: The container stats WebSocket subscription streams raw `docker stats` terminal output, and the first row of every sample cycle arrives with ANSI control codes (clear-screen/cursor-home) glued onto the container ID. Because the output order is stable, the same container was affected every cycle — its stats were stored under a corrupted key that never matched, leaving that container's CPU and memory sensors permanently "Unknown". The ID is now sanitized before storing stats.
+
+- **Stopped Containers Reporting "Unknown" or Stale Stats**: Containers that are not running never appear in the `docker stats` stream, so their CPU/memory sensors showed "Unknown" (never started since HA restart) or froze on the last streamed value (stopped while HA was running). Stopped containers now report 0% CPU, 0% memory, and `0B / 0B` memory usage, and the aggregate Docker totals exclude lingering stats from stopped containers.
 
 ## [2026.6.0] - 2026-06-01
 
@@ -346,7 +368,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.1...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.0...HEAD
+[2026.6.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.5.0...v2026.6.0
+[2026.5.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.1...v2026.5.0
 [2026.4.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.0...v2026.4.1
 [2026.4.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.2...v2026.4.0
 [2026.3.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.1...v2026.3.2

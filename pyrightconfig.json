@@ -10,7 +10,10 @@
     "**/.*"
   ],
   "typeCheckingMode": "basic",
-  "reportIncompatibleVariableOverride": "warning",
-  "reportAssignmentType": "warning",
-  "reportAttributeAccessIssue": "warning"
+  // Home Assistant's Entity base classes declare state attributes as
+  // cached_property/ClassVar while integrations override them with plain
+  // @property — the documented HA core pattern (core itself type-checks with
+  // mypy, which accepts it). Pyright flags every such override, producing
+  // structural false positives, so this rule is disabled.
+  "reportIncompatibleVariableOverride": "none"
 }

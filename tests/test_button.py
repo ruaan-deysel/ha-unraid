@@ -8,11 +8,13 @@ from unraid_api.exceptions import UnraidAPIError
 
 from custom_components.unraid.button import (
     ArchiveAllNotificationsButton,
+    CheckContainerUpdatesButton,
     DeleteAllArchivedNotificationsButton,
     DockerContainerRestartButton,
     ParityCheckPauseButton,
     ParityCheckResumeButton,
     ParityCheckStartCorrectionButton,
+    UpdateAllContainersButton,
     VMForceStopButton,
     VMPauseButton,
     VMRebootButton,
@@ -48,6 +50,9 @@ def mock_coordinator():
     coordinator.async_reset_vm = AsyncMock()
     coordinator.async_archive_all_notifications = AsyncMock()
     coordinator.async_delete_all_notifications = AsyncMock()
+    coordinator.async_update_all_containers = AsyncMock()
+    coordinator.async_refresh_docker_digests = AsyncMock()
+    coordinator.async_request_docker_refresh = AsyncMock()
     return coordinator
 
 
@@ -239,8 +244,8 @@ async def test_setup_entry_creates_parity_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should have 3 parity + 2 notification buttons
-    assert len(entities) == 5
+    # 3 parity + 2 notification + 2 server-wide docker update buttons
+    assert len(entities) == 7
     entity_types = [type(e).__name__ for e in entities]
     assert "ParityCheckStartCorrectionButton" in entity_types
     assert "ParityCheckPauseButton" in entity_types
@@ -272,7 +277,7 @@ async def test_setup_entry_with_missing_server_uuid(hass):
     await async_setup_entry(hass, mock_entry, capture_entities)
 
     # Check that entities were created with "unknown" uuid
-    assert len(entities) == 5
+    assert len(entities) == 7
     assert entities[0].unique_id.startswith("unknown_")
 
 
@@ -298,8 +303,8 @@ async def test_setup_entry_uses_host_as_fallback_name(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should still create 3 parity + 2 notification buttons
-    assert len(entities) == 5
+    # Should still create 3 parity + 2 notification + 2 docker update buttons
+    assert len(entities) == 7
 
 
 # =============================================================================
@@ -438,10 +443,12 @@ async def test_setup_entry_creates_container_restart_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should have 3 parity + 2 notification + 2 container restart = 7
-    assert len(entities) == 7
+    # 3 parity + 2 notification + 2 container restart + 2 docker update = 9
+    assert len(entities) == 9
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("DockerContainerRestartButton") == 2
+    assert entity_types.count("CheckContainerUpdatesButton") == 1
+    assert entity_types.count("UpdateAllContainersButton") == 1
 
 
 @pytest.mark.asyncio
@@ -470,8 +477,8 @@ async def test_setup_entry_no_containers(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should only have 3 parity + 2 notification buttons, no container buttons
-    assert len(entities) == 5
+    # 3 parity + 2 notification + 2 docker update buttons, no container buttons
+    assert len(entities) == 7
 
 
 # =============================================================================
@@ -783,8 +790,8 @@ async def test_setup_entry_creates_vm_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 2 VMs * 5 buttons each = 15
-    assert len(entities) == 15
+    # 3 parity + 2 notification + 2 docker update + 2 VMs * 5 buttons each = 17
+    assert len(entities) == 17
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("VMForceStopButton") == 2
     assert entity_types.count("VMRebootButton") == 2
@@ -830,10 +837,13 @@ async def test_setup_entry_creates_container_and_vm_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 1 container restart + 1 VM * 5 buttons = 11
-    assert len(entities) == 11
+    # 3 parity + 2 notification + 1 container restart + 2 docker update
+    # + 1 VM * 5 buttons = 13
+    assert len(entities) == 13
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("DockerContainerRestartButton") == 1
+    assert entity_types.count("CheckContainerUpdatesButton") == 1
+    assert entity_types.count("UpdateAllContainersButton") == 1
     assert entity_types.count("VMForceStopButton") == 1
     assert entity_types.count("VMRebootButton") == 1
     assert entity_types.count("VMPauseButton") == 1
@@ -953,3 +963,109 @@ async def test_delete_all_archived_notifications_button_error(
     with pytest.raises(HomeAssistantError) as exc_info:
         await button.async_press()
     assert exc_info.value.translation_key == "delete_all_archived_notifications_failed"
+
+
+# =============================================================================
+# Docker Update Buttons Tests (UpdateAllContainers / CheckContainerUpdates)
+# =============================================================================
+
+
+def test_update_all_containers_button_creation(mock_coordinator, mock_server_info):
+    """Test update all containers button is created correctly."""
+    button = UpdateAllContainersButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+    assert button.unique_id == "test-uuid_update_all_containers"
+    assert button.translation_key == "update_all_containers"
+    # Bulk action affecting every container — must be opt-in
+    assert button.entity_registry_enabled_default is False
+
+
+@pytest.mark.asyncio
+async def test_update_all_containers_button_press(mock_coordinator, mock_server_info):
+    """Test pressing update all containers triggers mutation and docker refresh."""
+    button = UpdateAllContainersButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    await button.async_press()
+
+    mock_coordinator.async_update_all_containers.assert_called_once()
+    mock_coordinator.async_request_docker_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_all_containers_button_error(mock_coordinator, mock_server_info):
+    """Test update all containers button raises translated error on failure."""
+    mock_coordinator.async_update_all_containers = AsyncMock(
+        side_effect=UnraidAPIError("not supported")
+    )
+
+    button = UpdateAllContainersButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+    assert exc_info.value.translation_key == "update_all_containers_failed"
+    # No docker refresh when the mutation failed
+    mock_coordinator.async_request_docker_refresh.assert_not_called()
+
+
+def test_check_container_updates_button_creation(mock_coordinator, mock_server_info):
+    """Test check container updates button is created correctly."""
+    button = CheckContainerUpdatesButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+    assert button.unique_id == "test-uuid_check_container_updates"
+    assert button.translation_key == "check_container_updates"
+    # Harmless single action, useful for automations — enabled by default
+    assert button.entity_registry_enabled_default is True
+
+
+@pytest.mark.asyncio
+async def test_check_container_updates_button_press(mock_coordinator, mock_server_info):
+    """Test pressing check container updates triggers digest refresh."""
+    button = CheckContainerUpdatesButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    await button.async_press()
+
+    mock_coordinator.async_refresh_docker_digests.assert_called_once()
+    mock_coordinator.async_request_docker_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_check_container_updates_button_error(mock_coordinator, mock_server_info):
+    """Test check container updates button raises translated error on failure."""
+    mock_coordinator.async_refresh_docker_digests = AsyncMock(
+        side_effect=UnraidAPIError("not supported")
+    )
+
+    button = CheckContainerUpdatesButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+    assert exc_info.value.translation_key == "check_container_updates_failed"
+    mock_coordinator.async_request_docker_refresh.assert_not_called()

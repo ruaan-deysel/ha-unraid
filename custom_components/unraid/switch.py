@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api.exceptions import UnraidAPIError
 from unraid_api.models import ArrayDisk, DockerContainer, VmDomain
 
@@ -16,16 +17,22 @@ from .const import (
     ARRAY_STATE_STARTED,
     DOMAIN,
 )
-from .entity import UnraidBaseEntity
+from .coordinator import (
+    UnraidStorageCoordinator,
+    UnraidSystemCoordinator,
+)
+from .entity import (
+    UnraidBaseEntity,
+    UnraidCoordinator,
+    async_add_dynamic_resource_entities,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from . import UnraidConfigEntry
     from .coordinator import (
-        UnraidStorageCoordinator,
         UnraidStorageData,
-        UnraidSystemCoordinator,
         UnraidSystemData,
     )
 
@@ -48,12 +55,14 @@ def _is_already_state_error(err: UnraidAPIError) -> bool:
     return any(keyword in err_str for keyword in _ALREADY_STATE_KEYWORDS)
 
 
-class UnraidSwitchEntity(UnraidBaseEntity, SwitchEntity):
+class UnraidSwitchEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator](
+    UnraidBaseEntity[CoordinatorT], SwitchEntity
+):
     """Base class for Unraid switch entities."""
 
     def __init__(
         self,
-        coordinator: UnraidSystemCoordinator,
+        coordinator: CoordinatorT,
         server_uuid: str,
         server_name: str,
         resource_id: str,
@@ -71,7 +80,7 @@ class UnraidSwitchEntity(UnraidBaseEntity, SwitchEntity):
         )
 
 
-class DockerContainerSwitch(UnraidSwitchEntity):
+class DockerContainerSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]):
     """Docker container control switch."""
 
     _attr_translation_key = "docker_container"
@@ -91,7 +100,10 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         # This will be updated when the container is recreated
         self._container_id = container.id
         self._cached_container: DockerContainer | None = None
-        self._cache_data_id: int | None = None
+        # Strong reference to the coordinator data the cache was built from.
+        # Comparing identity against a held object (rather than a stored id())
+        # is safe: the address cannot be reused for new data while we hold it.
+        self._cache_data: UnraidSystemData | None = None
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -114,18 +126,13 @@ class DockerContainerSwitch(UnraidSwitchEntity):
             return None
 
         # Use cache if data object hasn't changed (same coordinator refresh)
-        data_id = id(data)
-        if (
-            self._cache_data_id is not None
-            and data_id == self._cache_data_id
-            and self._cached_container is not None
-        ):
+        if data is self._cache_data and self._cached_container is not None:
             return self._cached_container
 
         # Build lookup dict by NAME for O(1) access (name is stable, ID is not)
         container_map = {c.name.lstrip("/"): c for c in data.containers}
         self._cached_container = container_map.get(self._container_name)
-        self._cache_data_id = data_id
+        self._cache_data = data
 
         # Update container ID if it changed (after container update/recreate)
         if self._cached_container is not None:
@@ -218,7 +225,7 @@ class DockerContainerSwitch(UnraidSwitchEntity):
         await self.coordinator.async_request_docker_refresh()
 
 
-class VirtualMachineSwitch(UnraidSwitchEntity):
+class VirtualMachineSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]):
     """Virtual machine control switch."""
 
     _attr_translation_key = "virtual_machine"
@@ -237,7 +244,8 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
         # Store the current VM ID for API calls (start/stop)
         self._vm_id = vm.id
         self._cached_vm: VmDomain | None = None
-        self._cache_data_id: int | None = None
+        # Strong reference (not id()) — see DockerContainerSwitch._cache_data.
+        self._cache_data: UnraidSystemData | None = None
         super().__init__(
             coordinator=coordinator,
             server_uuid=server_uuid,
@@ -260,18 +268,13 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
             return None
 
         # Use cache if data object hasn't changed (same coordinator refresh)
-        data_id = id(data)
-        if (
-            self._cache_data_id is not None
-            and data_id == self._cache_data_id
-            and self._cached_vm is not None
-        ):
+        if data is self._cache_data and self._cached_vm is not None:
             return self._cached_vm
 
         # Build lookup dict by NAME for O(1) access (name is stable)
         vm_map = {v.name: v for v in data.vms}
         self._cached_vm = vm_map.get(self._vm_name)
-        self._cache_data_id = data_id
+        self._cache_data = data
 
         # Update the VM ID if it changed
         if self._cached_vm is not None:
@@ -354,7 +357,7 @@ class VirtualMachineSwitch(UnraidSwitchEntity):
 # =============================================================================
 
 
-class ArraySwitch(UnraidBaseEntity, SwitchEntity):
+class ArraySwitch(UnraidBaseEntity[UnraidStorageCoordinator], SwitchEntity):
     """
     Switch to control the Unraid array.
 
@@ -440,7 +443,7 @@ class ArraySwitch(UnraidBaseEntity, SwitchEntity):
 # =============================================================================
 
 
-class ParityCheckSwitch(UnraidBaseEntity, SwitchEntity):
+class ParityCheckSwitch(UnraidBaseEntity[UnraidStorageCoordinator], SwitchEntity):
     """
     Switch to control parity check operations.
 
@@ -532,7 +535,7 @@ class ParityCheckSwitch(UnraidBaseEntity, SwitchEntity):
 # =============================================================================
 
 
-class DiskSpinSwitch(UnraidBaseEntity, SwitchEntity):
+class DiskSpinSwitch(UnraidBaseEntity[UnraidStorageCoordinator], SwitchEntity):
     """
     Switch to control disk spin state.
 
@@ -695,51 +698,52 @@ async def async_setup_entry(
                 )
             )
 
+    _LOGGER.debug("Adding %d switch entities", len(entities))
+    async_add_entities(entities)
+
     # ==========================================================================
-    # Docker Container Switches (always enabled)
+    # Docker Container / VM Switches (always enabled, added dynamically)
     # ==========================================================================
-    if system_coordinator.data and system_coordinator.data.containers:
+    # Containers and VMs created after setup get switches on the next
+    # coordinator refresh — no integration reload needed.
+    if system_coordinator.data:
         _LOGGER.debug(
             "Docker service running with %d container(s), creating switches",
             len(system_coordinator.data.containers),
         )
-        for container in system_coordinator.data.containers:
-            entities.append(
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.containers if system_coordinator.data else []
+            ),
+            get_key=lambda container: container.name.lstrip("/"),
+            create_entities=lambda container: [
                 DockerContainerSwitch(
                     system_coordinator,
                     server_uuid,
                     server_name,
                     container,
                 )
-            )
-    else:
-        _LOGGER.debug(
-            "Docker service not running or no containers on %s",
-            server_name,
+            ],
         )
-
-    # ==========================================================================
-    # VM Switches (always enabled)
-    # ==========================================================================
-    if system_coordinator.data and system_coordinator.data.vms:
-        _LOGGER.debug(
-            "VM service running with %d VM(s), creating switches",
-            len(system_coordinator.data.vms),
-        )
-        for vm in system_coordinator.data.vms:
-            entities.append(
+    )
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.vms if system_coordinator.data else []
+            ),
+            get_key=lambda vm: vm.name,
+            create_entities=lambda vm: [
                 VirtualMachineSwitch(
                     system_coordinator,
                     server_uuid,
                     server_name,
                     vm,
                 )
-            )
-    else:
-        _LOGGER.debug(
-            "VM service not available or no VMs on %s, skipping VM switches",
-            server_name,
+            ],
         )
-
-    _LOGGER.debug("Adding %d switch entities", len(entities))
-    async_add_entities(entities)
+    )

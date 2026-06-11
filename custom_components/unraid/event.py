@@ -9,16 +9,22 @@ from typing import TYPE_CHECKING
 from homeassistant.components.event import EventEntity, EventEntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import NOTIFICATION_EVENT_TYPE_CREATED, UnraidNotificationEventData
+from .coordinator import (
+    NOTIFICATION_EVENT_TYPE_CREATED,
+    UnraidNotificationEventData,
+    UnraidSystemCoordinator,
+)
 from .entity import UnraidBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from . import UnraidConfigEntry
-    from .coordinator import UnraidSystemCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Event entities are push-based (coordinator listeners) — nothing to poll
+PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -33,7 +39,9 @@ NOTIFICATION_EVENT_DESCRIPTION = UnraidEventEntityDescription(
 )
 
 
-class UnraidNotificationsEventEntity(UnraidBaseEntity, EventEntity):
+class UnraidNotificationsEventEntity(
+    UnraidBaseEntity[UnraidSystemCoordinator], EventEntity
+):
     """Event entity that emits newly-discovered Unraid unread notifications."""
 
     entity_description: UnraidEventEntityDescription = NOTIFICATION_EVENT_DESCRIPTION
@@ -55,7 +63,7 @@ class UnraidNotificationsEventEntity(UnraidBaseEntity, EventEntity):
             server_info=server_info,
         )
         self._attr_translation_key = self.entity_description.translation_key
-        self._attr_event_types = self.entity_description.event_types
+        self._attr_event_types = self.entity_description.event_types or []
 
     async def async_added_to_hass(self) -> None:
         """Register coordinator event listener when added to Home Assistant."""

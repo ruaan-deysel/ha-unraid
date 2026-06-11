@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import MagicMock
 
 from custom_components.unraid.const import DOMAIN
@@ -402,3 +403,85 @@ def test_entity_description_supported_fn_filters_entities() -> None:
     )
     data = make_system_data(ups_devices=[ups])
     assert description.supported_fn(data) is True
+
+
+# =============================================================================
+# Dynamic resource entity addition
+# =============================================================================
+
+
+def _make_listener_coordinator() -> tuple[MagicMock, list[Callable[[], None]]]:
+    """Create a coordinator mock that records registered listeners."""
+    coordinator = MagicMock()
+    listeners: list[Callable[[], None]] = []
+
+    def add_listener(callback: Callable[[], None]) -> Callable[[], None]:
+        listeners.append(callback)
+        return lambda: listeners.remove(callback)
+
+    coordinator.async_add_listener = add_listener
+    return coordinator, listeners
+
+
+def test_dynamic_entities_created_for_existing_resources() -> None:
+    """Resources present at setup get entities immediately."""
+    from custom_components.unraid.entity import async_add_dynamic_resource_entities
+
+    coordinator, listeners = _make_listener_coordinator()
+    added: list = []
+
+    async_add_dynamic_resource_entities(
+        coordinator=coordinator,
+        async_add_entities=added.extend,
+        get_resources=lambda: [{"name": "plex"}, {"name": "sonarr"}],
+        get_key=lambda r: r["name"],
+        create_entities=lambda r: [f"entity_{r['name']}"],
+    )
+
+    assert added == ["entity_plex", "entity_sonarr"]
+    assert len(listeners) == 1
+
+
+def test_dynamic_entities_added_for_new_resources_on_refresh() -> None:
+    """Resources appearing after setup get entities via the listener."""
+    from custom_components.unraid.entity import async_add_dynamic_resource_entities
+
+    coordinator, listeners = _make_listener_coordinator()
+    resources: list = [{"name": "plex"}]
+    added: list = []
+
+    async_add_dynamic_resource_entities(
+        coordinator=coordinator,
+        async_add_entities=added.extend,
+        get_resources=lambda: resources,
+        get_key=lambda r: r["name"],
+        create_entities=lambda r: [f"entity_{r['name']}"],
+    )
+    assert added == ["entity_plex"]
+
+    # New container appears — next coordinator refresh adds its entities
+    resources.append({"name": "jellyfin"})
+    listeners[0]()
+    assert added == ["entity_plex", "entity_jellyfin"]
+
+    # Repeated refreshes never duplicate entities
+    listeners[0]()
+    assert added == ["entity_plex", "entity_jellyfin"]
+
+
+def test_dynamic_entities_unsubscribe() -> None:
+    """The returned callable removes the coordinator listener."""
+    from custom_components.unraid.entity import async_add_dynamic_resource_entities
+
+    coordinator, listeners = _make_listener_coordinator()
+
+    remove = async_add_dynamic_resource_entities(
+        coordinator=coordinator,
+        async_add_entities=lambda _: None,
+        get_resources=list,
+        get_key=str,
+        create_entities=lambda r: [r],
+    )
+    assert len(listeners) == 1
+    remove()
+    assert listeners == []

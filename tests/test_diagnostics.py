@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.unraid.diagnostics import async_get_config_entry_diagnostics
+from tests.conftest import make_infra_data, make_storage_data, make_system_data
 
 
 @dataclass
@@ -206,3 +207,47 @@ async def test_diagnostics_does_not_expose_sensitive_data(mock_hass, mock_config
         "storage_coordinator",
         "infra_coordinator",
     }
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_entity_counts_with_data(mock_hass):
+    """Test entity counts are populated from coordinator data."""
+    system_coordinator = MagicMock()
+    system_coordinator.last_update_success = True
+    system_coordinator.last_update_success_time = datetime(2025, 12, 23, 10, 30, 0)
+    system_coordinator.data = make_system_data()
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.last_update_success = True
+    storage_coordinator.last_update_success_time = datetime(2025, 12, 23, 10, 30, 0)
+    storage_coordinator.data = make_storage_data()
+
+    infra_coordinator = MagicMock()
+    infra_coordinator.last_update_success = True
+    infra_coordinator.last_update_success_time = datetime(2025, 12, 23, 10, 30, 0)
+    infra_coordinator.data = make_infra_data()
+
+    entry = MagicMock()
+    entry.entry_id = "test-entry-123"
+    entry.title = "Unraid Tower"
+    entry.version = 1
+    entry.runtime_data = MockRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        infra_coordinator=infra_coordinator,
+        server_info={},
+    )
+
+    result = await async_get_config_entry_diagnostics(mock_hass, entry)
+
+    counts = result["entity_counts"]
+    assert counts["containers"] == len(system_coordinator.data.containers)
+    assert counts["vms"] == len(system_coordinator.data.vms)
+    assert counts["ups_devices"] == len(system_coordinator.data.ups_devices)
+    assert counts["disks"] == len(storage_coordinator.data.disks)
+    assert counts["parities"] == len(storage_coordinator.data.parities)
+    assert counts["caches"] == len(storage_coordinator.data.caches)
+    assert counts["shares"] == len(storage_coordinator.data.shares)
+    assert "has_boot" in counts
+    assert "plugins" in counts

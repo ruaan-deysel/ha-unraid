@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -45,6 +46,9 @@ from custom_components.unraid.sensor import (
     ApiVersionSensor,
     ArrayStateSensor,
     ArrayUsageSensor,
+    ContainerCpuSensor,
+    ContainerMemoryPercentSensor,
+    ContainerMemoryUsageSensor,
     ContainerUpdatesCountSensor,
     CpuPowerSensor,
     CpuSensor,
@@ -56,6 +60,8 @@ from custom_components.unraid.sensor import (
     InstalledPluginsSensor,
     LastParityCheckDateSensor,
     LastParityCheckErrorsSensor,
+    NetworkInterfaceRxSensor,
+    NetworkInterfaceTxSensor,
     NotificationArchivedTotalSensor,
     NotificationUnreadAlertSensor,
     NotificationUnreadInfoSensor,
@@ -92,6 +98,7 @@ from custom_components.unraid.sensor import (
     UptimeSensor,
     _compute_disk_usage_percent,
     _compute_disk_used_bytes,
+    _is_monitorable_interface,
     _is_valid_system_temp_sensor,
     format_bytes,
 )
@@ -3588,6 +3595,59 @@ async def test_asyncsetupentry_creates_system_sensors(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_asyncsetupentry_removes_non_monitorable_network_entities(hass) -> None:
+    """Setup removes registry entries for filtered-out network interfaces."""
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.unraid import UnraidRuntimeData
+    from custom_components.unraid.sensor import async_setup_entry
+
+    entry = MockConfigEntry(domain="unraid", data={"host": "192.168.1.100"})
+    entry.add_to_hass(hass)
+
+    registry = er.async_get(hass)
+    stale = registry.async_get_or_create(
+        "sensor", "unraid", "test-uuid_network_shim-br0_rx", config_entry=entry
+    )
+    docker_bridge = registry.async_get_or_create(
+        "sensor", "unraid", "test-uuid_network_br-3cc0fa14431c_tx", config_entry=entry
+    )
+    kept = registry.async_get_or_create(
+        "sensor", "unraid", "test-uuid_network_br0_rx", config_entry=entry
+    )
+    unrelated = registry.async_get_or_create(
+        "sensor", "unraid", "test-uuid_cpu_usage", config_entry=entry
+    )
+    # Shares the network_ prefix but is not a throughput sensor — must survive
+    network_access = registry.async_get_or_create(
+        "sensor", "unraid", "test-uuid_network_access", config_entry=entry
+    )
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = make_system_data()
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+
+    entry.runtime_data = UnraidRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
+        server_info={"uuid": "test-uuid", "name": "tower"},
+        websocket_manager=MagicMock(),
+    )
+
+    await async_setup_entry(hass, entry, lambda _entities: None)
+
+    assert registry.async_get(stale.entity_id) is None
+    assert registry.async_get(docker_bridge.entity_id) is None
+    assert registry.async_get(kept.entity_id) is not None
+    assert registry.async_get(unrelated.entity_id) is not None
+    assert registry.async_get(network_access.entity_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_asyncsetupentry_creates_ups_sensors(hass) -> None:
     """Test setup creates UPS sensors when UPS devices exist."""
     from custom_components.unraid import UnraidRuntimeData
@@ -6533,3 +6593,722 @@ def test_temperatureaveragesensor_extra_attributes_none() -> None:
     )
 
     assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# Network Interface Sensors
+# =============================================================================
+
+
+def _make_network_metrics(**overrides: Any) -> Any:
+    """Create a NetworkMetrics model for tests."""
+    from unraid_api.models import NetworkMetrics
+
+    defaults: dict[str, Any] = {
+        "id": "metrics:network:br0",
+        "name": "br0",
+        "rxSec": 1_250_000.0,
+        "txSec": 350_000.0,
+        "operstate": "up",
+        "bytesReceived": 5_000_000_000,
+        "bytesSent": 1_000_000_000,
+        "packetsReceived": 400_000,
+        "packetsSent": 300_000,
+        "receiveErrors": 0,
+        "transmitErrors": 1,
+        "receiveDropped": 2,
+        "transmitDropped": 3,
+    }
+    defaults.update(overrides)
+    return NetworkMetrics(**defaults)
+
+
+def _make_network_coordinator(interfaces: list[Any]) -> MagicMock:
+    """Create a mock system coordinator holding network metrics."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = SimpleNamespace(network_metrics=interfaces)
+    return coordinator
+
+
+def test_network_interface_rx_sensor_init() -> None:
+    """Test NetworkInterfaceRxSensor initialization."""
+    coordinator = _make_network_coordinator([_make_network_metrics()])
+    sensor = NetworkInterfaceRxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor._attr_translation_key == "network_interface_rx"
+    assert sensor.unique_id == "test-uuid_network_br0_rx"
+    assert sensor.device_class == SensorDeviceClass.DATA_RATE
+    assert sensor._attr_state_class == SensorStateClass.MEASUREMENT
+
+
+def test_network_interface_rx_sensor_value_and_attributes() -> None:
+    """Test inbound sensor reports rxSec with human-readable totals."""
+    coordinator = _make_network_coordinator([_make_network_metrics()])
+    sensor = NetworkInterfaceRxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor.native_value == 1_250_000.0
+    attrs = sensor.extra_state_attributes
+    assert attrs["interface_state"] == "up"
+    # Byte totals are exposed human-readable, not as raw counters
+    assert attrs["total_received"] == "4.7 GB"
+    assert attrs["packets_received"] == 400_000
+    assert attrs["receive_errors"] == 0
+    assert attrs["receive_dropped"] == 2
+
+
+def test_network_interface_tx_sensor_value_and_attributes() -> None:
+    """Test outbound sensor reports txSec with human-readable totals."""
+    coordinator = _make_network_coordinator([_make_network_metrics()])
+    sensor = NetworkInterfaceTxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor.native_value == 350_000.0
+    attrs = sensor.extra_state_attributes
+    assert attrs["total_sent"] == "953.7 MB"
+    assert attrs["transmit_errors"] == 1
+    assert attrs["transmit_dropped"] == 3
+
+
+def test_network_interface_sensor_missing_interface() -> None:
+    """Test sensor returns None when the interface disappears from data."""
+    coordinator = _make_network_coordinator([_make_network_metrics(name="eth0")])
+    sensor = NetworkInterfaceRxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_network_interface_sensor_no_data() -> None:
+    """Test sensor returns None when coordinator data is missing."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = None
+    sensor = NetworkInterfaceTxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor.native_value is None
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        # Physical NICs, bonds, and user bridges (incl. VLAN sub-interfaces)
+        ("br0", True),
+        ("br1", True),
+        ("br0.5", True),
+        ("eth0", True),
+        ("eth0.10", True),
+        ("bond0", True),
+        ("wlan0", True),
+        # Auto-generated plumbing must not get entities
+        ("lo", False),
+        (None, False),
+        ("", False),
+        ("veth1234ab", False),
+        ("vnet3", False),
+        ("tap101i0", False),
+        ("macvtap0", False),
+        ("docker0", False),
+        ("virbr0", False),
+        ("wg0", False),
+        ("shim-br0", False),
+        ("br-3cc0fa14431c", False),
+        ("tailscale0", False),
+    ],
+)
+def test_is_monitorable_interface(name: str | None, expected: bool) -> None:
+    """Only physical NICs, bonds, and user bridges are monitorable."""
+    assert _is_monitorable_interface(name) is expected
+
+
+# =============================================================================
+# Container Stats Sensors (WebSocket-powered, name-based ID resolution)
+# =============================================================================
+
+
+def _make_docker_container(
+    name: str = "plex", container_id: str = "new-id", state: str = "RUNNING"
+) -> Any:
+    """Create a minimal DockerContainer for stats lookup tests."""
+    return DockerContainer(id=container_id, name=name, names=[f"/{name}"], state=state)
+
+
+def _stats_coordinator(containers: list[Any] | None) -> MagicMock:
+    """Create a system coordinator mock holding the given containers."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.last_update_success = True
+    if containers is None:
+        coordinator.data = None
+    else:
+        coordinator.data = SimpleNamespace(
+            containers=containers,
+            metrics=SimpleNamespace(memory_total=None),
+        )
+    return coordinator
+
+
+def test_container_cpu_sensor_resolves_current_id() -> None:
+    """CPU sensor finds stats via the container's current (new) ID."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "new-id")])
+    ws = _make_ws_manager(
+        stats={"new-id": {"id": "new-id", "cpuPercent": 12.5}},
+    )
+    sensor = ContainerCpuSensor(
+        coordinator, "test-uuid", "tower", "plex", "stale-id", ws
+    )
+
+    assert sensor.native_value == 12.5
+
+
+def test_container_cpu_sensor_falls_back_to_frozen_id() -> None:
+    """Without coordinator data the frozen ID is used as fallback."""
+    coordinator = _stats_coordinator(None)
+    ws = _make_ws_manager(
+        stats={"stale-id": {"id": "stale-id", "cpuPercent": 7.0}},
+    )
+    sensor = ContainerCpuSensor(
+        coordinator, "test-uuid", "tower", "plex", "stale-id", ws
+    )
+
+    assert sensor.native_value == 7.0
+
+
+def test_container_cpu_sensor_attributes() -> None:
+    """CPU sensor exposes block/net IO attributes when present."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(
+        stats={
+            "c1": {
+                "id": "c1",
+                "cpuPercent": 1.0,
+                "blockIO": "10MB / 5MB",
+                "netIO": "1GB / 500MB",
+            }
+        },
+    )
+    sensor = ContainerCpuSensor(coordinator, "test-uuid", "tower", "plex", "c1", ws)
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["block_io"] == "10MB / 5MB"
+    assert attrs["net_io"] == "1GB / 500MB"
+
+
+def test_container_cpu_sensor_no_stats() -> None:
+    """Missing stats yield None value and empty attributes."""
+    coordinator = _stats_coordinator([])
+    ws = _make_ws_manager()
+    sensor = ContainerCpuSensor(coordinator, "test-uuid", "tower", "plex", "c1", ws)
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_container_memory_usage_sensor_value() -> None:
+    """Memory usage sensor reports the human-readable usage string."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "memUsage": "512MiB / 16GiB"}},
+    )
+    sensor = ContainerMemoryUsageSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.native_value == "512MiB / 16GiB"
+
+
+def test_container_memory_usage_sensor_no_stats() -> None:
+    """Memory usage sensor yields None when no stats exist."""
+    coordinator = _stats_coordinator(None)
+    ws = _make_ws_manager()
+    sensor = ContainerMemoryUsageSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.native_value is None
+
+
+def test_container_memory_percent_sensor_value() -> None:
+    """Memory percent sensor resolves stats by container name."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c-new")])
+    ws = _make_ws_manager(
+        stats={"c-new": {"id": "c-new", "memPercent": 3.2}},
+    )
+    sensor = ContainerMemoryPercentSensor(
+        coordinator, "test-uuid", "tower", "plex", "old-id", ws
+    )
+
+    assert sensor.native_value == 3.2
+
+
+def test_container_memory_percent_sensor_no_stats() -> None:
+    """Memory percent sensor yields None when stats are missing."""
+    coordinator = _stats_coordinator([])
+    ws = _make_ws_manager()
+    sensor = ContainerMemoryPercentSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.native_value is None
+
+
+def test_container_cpu_sensor_zero_when_stopped() -> None:
+    """A stopped container reports 0% CPU, even with stale stats lingering."""
+    coordinator = _stats_coordinator(
+        [_make_docker_container("plex", "c1", state="EXITED")]
+    )
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "cpuPercent": 42.0, "blockIO": "10MB / 5MB"}},
+    )
+    sensor = ContainerCpuSensor(coordinator, "test-uuid", "tower", "plex", "c1", ws)
+
+    assert sensor.native_value == 0.0
+    assert sensor.extra_state_attributes == {}
+
+
+def test_container_memory_usage_sensor_zero_when_stopped() -> None:
+    """A stopped container reports zero memory usage instead of unknown."""
+    coordinator = _stats_coordinator(
+        [_make_docker_container("plex", "c1", state="EXITED")]
+    )
+    ws = _make_ws_manager()
+    sensor = ContainerMemoryUsageSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.native_value == "0B / 0B"
+
+
+def test_container_memory_percent_sensor_zero_when_stopped() -> None:
+    """A stopped container reports 0% memory, even with stale stats lingering."""
+    coordinator = _stats_coordinator(
+        [_make_docker_container("plex", "c1", state="EXITED")]
+    )
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "memPercent": 12.0}},
+    )
+    sensor = ContainerMemoryPercentSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.native_value == 0.0
+
+
+# =============================================================================
+# Docker Aggregate Sensors — stale ID filtering with coordinator data
+# =============================================================================
+
+
+def test_docker_total_cpu_filters_stale_ids() -> None:
+    """Aggregate CPU sum excludes stats for removed containers."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "live")])
+    ws = _make_ws_manager(
+        stats={
+            "live": {"id": "live", "cpuPercent": 10.0},
+            "stale": {"id": "stale", "cpuPercent": 90.0},
+        },
+    )
+    sensor = DockerTotalCpuSensor(coordinator, "test-uuid", "tower", ws)
+
+    assert sensor.native_value == 10.0
+    assert sensor.extra_state_attributes == {"container_count": 1}
+
+
+def test_docker_total_cpu_excludes_stopped_containers() -> None:
+    """Stats lingering from a stopped container don't count toward the total."""
+    coordinator = _stats_coordinator(
+        [
+            _make_docker_container("plex", "live"),
+            _make_docker_container("code-server", "stopped", state="EXITED"),
+        ]
+    )
+    ws = _make_ws_manager(
+        stats={
+            "live": {"id": "live", "cpuPercent": 10.0},
+            "stopped": {"id": "stopped", "cpuPercent": 90.0},
+        },
+    )
+    sensor = DockerTotalCpuSensor(coordinator, "test-uuid", "tower", ws)
+
+    assert sensor.native_value == 10.0
+    assert sensor.extra_state_attributes == {"container_count": 1}
+
+
+def test_docker_total_memory_percent_filters_stale_ids() -> None:
+    """Aggregate memory % excludes stats for removed containers."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "live")])
+    ws = _make_ws_manager(
+        stats={
+            "live": {"id": "live", "memPercent": 5.0},
+            "stale": {"id": "stale", "memPercent": 50.0},
+        },
+    )
+    sensor = DockerTotalMemoryPercentSensor(coordinator, "test-uuid", "tower", ws)
+
+    assert sensor.native_value == 5.0
+    assert sensor.extra_state_attributes == {"container_count": 1}
+
+
+def test_docker_total_memory_bytes_computes_from_percent() -> None:
+    """Total memory bytes derives from summed percent x system RAM."""
+    from custom_components.unraid.sensor import DockerTotalMemoryBytesSensor
+
+    coordinator = _stats_coordinator([_make_docker_container("plex", "live")])
+    coordinator.data.metrics.memory_total = 1000
+    ws = _make_ws_manager(
+        stats={
+            "live": {"id": "live", "memPercent": 10.0},
+            "stale": {"id": "stale", "memPercent": 50.0},
+        },
+    )
+    sensor = DockerTotalMemoryBytesSensor(coordinator, "test-uuid", "tower", ws)
+
+    assert sensor.native_value == 100
+    assert sensor.extra_state_attributes == {"container_count": 1}
+
+
+def test_docker_total_memory_bytes_none_without_memory_total() -> None:
+    """No system memory info means no derived byte value."""
+    from custom_components.unraid.sensor import DockerTotalMemoryBytesSensor
+
+    coordinator = _stats_coordinator([])
+    coordinator.data.metrics.memory_total = None
+    ws = _make_ws_manager(stats={"c": {"id": "c", "memPercent": 10.0}})
+    sensor = DockerTotalMemoryBytesSensor(coordinator, "test-uuid", "tower", ws)
+
+    assert sensor.native_value is None
+
+
+# =============================================================================
+# NetworkAccessSensor / Parity Date Parsing
+# =============================================================================
+
+
+def _infra_coordinator_with_network(urls: list | None) -> MagicMock:
+    """Create an infra coordinator mock with the given access URLs."""
+    from unraid_api.models import Network
+
+    coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = SimpleNamespace(
+        network=None if urls is None else Network(accessUrls=urls)
+    )
+    return coordinator
+
+
+def test_network_access_sensor_prefers_lan_ipv4() -> None:
+    """The LAN IPv4 URL wins over other URL types."""
+    from unraid_api.models import AccessUrl
+
+    from custom_components.unraid.sensor import NetworkAccessSensor
+
+    coordinator = _infra_coordinator_with_network(
+        [
+            AccessUrl(type="WAN", name="wan", ipv4="http://1.2.3.4"),
+            AccessUrl(type="LAN", name="lan", ipv4="http://192.168.1.2"),
+        ]
+    )
+    sensor = NetworkAccessSensor(coordinator, "test-uuid", "tower")
+
+    assert sensor.native_value == "http://192.168.1.2"
+    attrs = sensor.extra_state_attributes
+    assert attrs["wan_ipv4"] == "http://1.2.3.4"
+    assert attrs["lan_ipv4"] == "http://192.168.1.2"
+
+
+def test_network_access_sensor_falls_back_to_any_ipv4() -> None:
+    """Without a LAN URL the first IPv4 URL is used."""
+    from unraid_api.models import AccessUrl
+
+    from custom_components.unraid.sensor import NetworkAccessSensor
+
+    coordinator = _infra_coordinator_with_network(
+        [
+            AccessUrl(type="WIREGUARD", name=None, ipv6="http://[::1]"),
+            AccessUrl(type="WAN", name="wan", ipv4="http://1.2.3.4"),
+        ]
+    )
+    sensor = NetworkAccessSensor(coordinator, "test-uuid", "tower")
+
+    assert sensor.native_value == "http://1.2.3.4"
+    # Unnamed URLs fall back to their type for the attribute key
+    assert sensor.extra_state_attributes["WIREGUARD_ipv6"] == "http://[::1]"
+
+
+def test_network_access_sensor_no_urls() -> None:
+    """No network data or empty URLs yield None / empty attributes."""
+    from custom_components.unraid.sensor import NetworkAccessSensor
+
+    no_network = _infra_coordinator_with_network(None)
+    sensor = NetworkAccessSensor(no_network, "test-uuid", "tower")
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    empty = _infra_coordinator_with_network([])
+    sensor2 = NetworkAccessSensor(empty, "test-uuid", "tower")
+    assert sensor2.native_value is None
+    assert sensor2.extra_state_attributes == {}
+
+
+def test_last_parity_check_date_parsing_variants() -> None:
+    """Date strings, datetimes, epochs, and junk are handled."""
+    from datetime import UTC, datetime
+
+    def make_sensor(date_val) -> LastParityCheckDateSensor:
+        # Use a mock entry so raw (uncoerced) date values reach the sensor,
+        # as happens with permissive API payloads.
+        coordinator = MagicMock(spec=UnraidStorageCoordinator)
+        coordinator.last_update_success = True
+        entry = MagicMock()
+        entry.date = date_val
+        coordinator.data = MagicMock()
+        coordinator.data.parity_history = [entry]
+        return LastParityCheckDateSensor(coordinator, "test-uuid", "tower")
+
+    aware = datetime(2026, 1, 1, tzinfo=UTC)
+    assert make_sensor(aware).native_value == aware
+
+    parsed = make_sensor("2026-01-01T00:00:00").native_value
+    assert parsed == aware
+
+    assert make_sensor("not-a-date").native_value is None
+
+    epoch = make_sensor(1767225600).native_value
+    assert epoch == datetime.fromtimestamp(1767225600, tz=UTC)
+
+
+# =============================================================================
+# Final branch coverage — small helpers and edge paths
+# =============================================================================
+
+
+def test_network_access_sensor_no_ipv4_anywhere() -> None:
+    """URLs without any IPv4 yield None state."""
+    from unraid_api.models import AccessUrl
+
+    from custom_components.unraid.sensor import NetworkAccessSensor
+
+    coordinator = _infra_coordinator_with_network(
+        [AccessUrl(type="WIREGUARD", name="wg", ipv6="http://[::1]")]
+    )
+    sensor = NetworkAccessSensor(coordinator, "test-uuid", "tower")
+
+    assert sensor.native_value is None
+
+
+def test_last_parity_check_date_unsupported_type() -> None:
+    """Unsupported date payload types yield None."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.last_update_success = True
+    entry = MagicMock()
+    entry.date = ["weird"]
+    coordinator.data = MagicMock()
+    coordinator.data.parity_history = [entry]
+    sensor = LastParityCheckDateSensor(coordinator, "test-uuid", "tower")
+
+    assert sensor.native_value is None
+
+
+def test_disk_temperature_sensor_threshold_attributes() -> None:
+    """Warning/critical temperature thresholds are exposed as attributes."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="disk1",
+        temp=38,
+        warning=50,
+        critical=60,
+        isSpinning=True,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = make_storage_data(disks=[disk])
+    sensor = DiskTemperatureSensor(coordinator, "test-uuid", "tower", disk)
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["warning_temp"] == 50
+    assert attrs["critical_temp"] == 60
+
+
+def test_disk_usage_percent_fallback_from_fs_free() -> None:
+    """Usage falls back to (fsSize - fsFree) / fsSize when fsUsed is zero."""
+    disk = ArrayDisk(
+        id="disk1",
+        name="disk1",
+        fsSize=1000,
+        fsFree=250,
+        fsUsed=0,
+    )
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = make_storage_data(disks=[disk])
+    sensor = DiskUsageSensor(coordinator, "test-uuid", "tower", disk)
+
+    assert sensor.native_value == 75.0
+
+
+def _ups_coordinator(ups_devices: list) -> MagicMock:
+    """System coordinator mock with the given UPS devices."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = SimpleNamespace(ups_devices=ups_devices)
+    return coordinator
+
+
+def _make_ups(
+    ups_id: str = "ups1",
+    *,
+    current_power: float | None = None,
+    nominal_power: int | None = None,
+    load_percent: float | None = 50.0,
+) -> UPSDevice:
+    """Create a UPS device for power tests."""
+    return UPSDevice(
+        id=ups_id,
+        name="APC",
+        status="ONLINE",
+        battery=UPSBattery(chargeLevel=100, estimatedRuntime=600),
+        power=UPSPower(
+            currentPower=current_power,
+            nominalPower=nominal_power,
+            loadPercentage=load_percent,
+        ),
+    )
+
+
+def test_ups_power_sensor_prefers_direct_reading() -> None:
+    """Direct currentPower readings win over derived values."""
+    ups = _make_ups(current_power=123.45)
+    coordinator = _ups_coordinator([ups])
+    sensor = UPSPowerSensor(coordinator, "test-uuid", "tower", ups)
+
+    assert sensor.native_value == 123.5
+
+
+def test_ups_power_sensor_zero_nominal_yields_none() -> None:
+    """Nominal power of zero produces no derived wattage."""
+    ups = _make_ups()
+    coordinator = _ups_coordinator([ups])
+    sensor = UPSPowerSensor(coordinator, "test-uuid", "tower", ups, ups_nominal_power=0)
+
+    assert sensor.native_value is None
+
+
+def test_ups_power_sensor_unknown_ups_yields_none() -> None:
+    """A UPS that disappeared from data yields None."""
+    ups = _make_ups()
+    coordinator = _ups_coordinator([])
+    sensor = UPSPowerSensor(coordinator, "test-uuid", "tower", ups)
+
+    assert sensor.native_value is None
+
+
+def test_ups_energy_sensor_accumulates_on_update() -> None:
+    """Energy integrates power over coordinator updates."""
+    ups = _make_ups(current_power=100.0)
+    coordinator = _ups_coordinator([ups])
+    sensor = UPSEnergySensor(
+        coordinator, "test-uuid", "tower", ups, ups_nominal_power=500
+    )
+    sensor.async_write_ha_state = MagicMock()
+
+    sensor._handle_coordinator_update()
+    baseline = sensor.native_value
+    # Backdate the last update so the second integration step covers a full
+    # hour and produces a measurable energy increase.
+    sensor._last_update_time = datetime.now(UTC) - timedelta(hours=1)
+    sensor._handle_coordinator_update()
+
+    assert baseline is not None
+    assert sensor.native_value is not None
+    assert sensor.native_value > baseline
+
+
+def test_ups_energy_sensor_zero_nominal_yields_none() -> None:
+    """Energy is unavailable without nominal power configuration."""
+    ups = _make_ups()
+    coordinator = _ups_coordinator([ups])
+    sensor = UPSEnergySensor(
+        coordinator, "test-uuid", "tower", ups, ups_nominal_power=0
+    )
+
+    assert sensor.native_value is None
+
+
+def test_docker_aggregates_with_only_none_values() -> None:
+    """Stats entries whose values are all None yield None aggregates."""
+    from custom_components.unraid.sensor import DockerTotalMemoryBytesSensor
+
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    coordinator.data.metrics.memory_total = 1000
+    ws = _make_ws_manager(stats={"c1": {"id": "c1"}})
+
+    assert DockerTotalCpuSensor(coordinator, "u", "t", ws).native_value is None
+    assert (
+        DockerTotalMemoryPercentSensor(coordinator, "u", "t", ws).native_value is None
+    )
+    assert DockerTotalMemoryBytesSensor(coordinator, "u", "t", ws).native_value == 0
+
+
+def test_network_interface_tx_sensor_missing_interface() -> None:
+    """TX sensor returns empty attributes when the interface is gone."""
+    coordinator = _make_network_coordinator([])
+    sensor = NetworkInterfaceTxSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        interface_name="br0",
+    )
+
+    assert sensor.extra_state_attributes == {}
+
+
+def test_parity_speed_sensor_non_numeric_speed() -> None:
+    """Garbage speed strings produce None."""
+    from unraid_api.models import ParityCheck
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.last_update_success = True
+    coordinator.data = make_storage_data(
+        parity_status=ParityCheck(status="RUNNING", speed="fast-ish")
+    )
+    sensor = ParitySpeedSensor(coordinator, "test-uuid", "tower")
+
+    assert sensor.native_value is None
+
+
+def test_ups_voltage_and_status_sensors_unknown_ups() -> None:
+    """Voltage/status sensors yield None when the UPS is missing."""
+    ups = _make_ups()
+    coordinator = _ups_coordinator([])
+
+    assert UPSInputVoltageSensor(coordinator, "u", "t", ups).native_value is None
+    assert UPSOutputVoltageSensor(coordinator, "u", "t", ups).native_value is None
+    assert UPSStatusSensor(coordinator, "u", "t", ups).native_value is None
+
+
+def test_is_valid_system_temp_sensor_filters() -> None:
+    """Disk/NVMe types, noise names, and bogus readings are filtered out."""
+    from custom_components.unraid.sensor import _is_valid_system_temp_sensor
+
+    assert _is_valid_system_temp_sensor(_make_temp_sensor()) is True
+    assert _is_valid_system_temp_sensor(_make_temp_sensor(sensor_type="DISK")) is False
+    assert _is_valid_system_temp_sensor(_make_temp_sensor(name="AUXTIN3")) is False
+    assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=0.5)) is False
+    assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=180.0)) is False

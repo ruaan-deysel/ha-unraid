@@ -111,3 +111,31 @@ async def test_notifications_event_entity_triggers_event_on_callback(
         },
     )
     entity.async_write_ha_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_setup_entry_creates_entity() -> None:
+    """Test async_setup_entry creates the notifications event entity."""
+    from custom_components.unraid.event import (
+        UnraidNotificationsEventEntity,
+        async_setup_entry,
+    )
+
+    system_coordinator = MagicMock()
+    system_coordinator.last_update_success = True
+
+    runtime_data = MagicMock()
+    runtime_data.system_coordinator = system_coordinator
+    runtime_data.server_info = {"uuid": "test-uuid", "name": "tower"}
+
+    entry = MagicMock()
+    entry.runtime_data = runtime_data
+    entry.entry_id = "entry-1"
+    entry.title = "Unraid"
+
+    entities: list = []
+    await async_setup_entry(MagicMock(), entry, entities.extend)
+
+    assert len(entities) == 1
+    assert isinstance(entities[0], UnraidNotificationsEventEntity)
+    assert entities[0].unique_id == "test-uuid_notifications"

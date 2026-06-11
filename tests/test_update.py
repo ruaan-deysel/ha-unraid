@@ -422,9 +422,10 @@ async def test_setup_entry_no_containers() -> None:
     async_add_entities = MagicMock()
     await async_setup_entry(MagicMock(), entry, async_add_entities)
 
-    async_add_entities.assert_called_once()
-    entities = async_add_entities.call_args[0][0]
-    assert len(entities) == 0
+    # Dynamic entity addition only invokes the callback when there is
+    # something to add, and registers a listener for later discoveries.
+    async_add_entities.assert_not_called()
+    system_coordinator.async_add_listener.assert_called_once()
 
 
 async def test_setup_entry_no_data() -> None:
@@ -443,6 +444,7 @@ async def test_setup_entry_no_data() -> None:
     async_add_entities = MagicMock()
     await async_setup_entry(MagicMock(), entry, async_add_entities)
 
-    async_add_entities.assert_called_once()
-    entities = async_add_entities.call_args[0][0]
-    assert len(entities) == 0
+    # Dynamic entity addition only invokes the callback when there is
+    # something to add, and registers a listener for later discoveries.
+    async_add_entities.assert_not_called()
+    system_coordinator.async_add_listener.assert_called_once()
