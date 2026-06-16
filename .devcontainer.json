@@ -3,7 +3,7 @@
   "image": "mcr.microsoft.com/devcontainers/python:3.14",
   "features": {
     "ghcr.io/devcontainers-extra/features/uv:1": {},
-    "ghcr.io/devcontainers/features/node:2": {}
+    "ghcr.io/devcontainers/features/node:": {}
   },
   "postCreateCommand": "npm install -g @anthropic-ai/claude-code && ./script/setup && ./script/upgrade",
   "forwardPorts": [8123],
