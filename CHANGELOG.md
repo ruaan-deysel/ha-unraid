@@ -7,6 +7,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.6.2] - 2026-06-20
+
 ### Added
 
 - **Automatic Stale Entity Cleanup** ([#257](https://github.com/ruaan-deysel/ha-unraid/issues/257)): When a Docker container, VM, disk, share, UPS device, network interface, or temperature sensor is removed from the Unraid server, all its Home Assistant entities are now pruned automatically after the next coordinator refresh. Cleanup is guarded against transient API errors — entities are only removed when the coordinator update succeeds, so a momentary network outage never causes accidental entity loss. Empty devices are also removed from the device registry. `async_remove_config_entry_device` is now implemented, enabling the "Delete" button in the device UI for orphaned devices.
