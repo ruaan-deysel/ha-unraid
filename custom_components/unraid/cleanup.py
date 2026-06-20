@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -52,7 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 # "share_" covers all share usage sensors.
 # "ups_" covers all UPS sensor/binary_sensor entities.
 # "temp_" covers per-hardware-temperature-sensor entities (not "temperature_average").
-_DYNAMIC_RESOURCE_ID_PREFIXES: tuple[str, ...] = (
+_DYNAMIC_RESOURCE_ID_PREFIXES: Final[tuple[str, ...]] = (
     "container_switch_",  # per-container switch
     "container_restart_",  # per-container restart button
     "container_update_",  # per-container update entity (update platform)
@@ -69,19 +69,17 @@ _DYNAMIC_RESOURCE_ID_PREFIXES: tuple[str, ...] = (
 )
 
 # Static resource ids that start with "container_" (and must not be cleaned up)
-_STATIC_CONTAINER_RESOURCE_IDS: frozenset[str] = frozenset({"container_updates_count"})
+_STATIC_CONTAINER_RESOURCE_IDS: Final[frozenset[str]] = frozenset(
+    {"container_updates_count"}
+)
 
 # Static resource ids that start with "network_" (and must not be cleaned up)
-_STATIC_NETWORK_RESOURCE_IDS: frozenset[str] = frozenset({"network_access"})
+_STATIC_NETWORK_RESOURCE_IDS: Final[frozenset[str]] = frozenset({"network_access"})
 
 # Network-interface sensors use resource_id = "network_{name}_{rx|tx}".
 # This pattern distinguishes them from the static "network_access" sensor.
-_NETWORK_INTERFACE_RESOURCE_ID_RE = re.compile(r"^network_(?P<name>.+?)_(?:rx|tx)$")
-
-# VM button actions — all virtual machine button resource_ids use these
-# action tokens, allowing precise detection without hard-coding all combinations.
-_VM_BUTTON_ACTIONS: frozenset[str] = frozenset(
-    {"force_stop", "reboot", "pause", "resume", "reset"}
+_NETWORK_INTERFACE_RESOURCE_ID_RE: Final = re.compile(
+    r"^network_(?P<name>.+?)_(?:rx|tx)$"
 )
 
 

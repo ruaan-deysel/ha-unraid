@@ -307,8 +307,6 @@ class TestBuildExpectedDynamicUniqueIds:
         assert not any("disk_" in uid for uid in result)
 
     def test_network_interface_ids(self) -> None:
-        from unittest.mock import MagicMock
-
         iface = MagicMock()
         iface.name = "eth0"
 
