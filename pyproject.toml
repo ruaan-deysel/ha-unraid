@@ -136,11 +136,14 @@ disallow_untyped_defs = false
 [tool.uv]
 environments = ["python_full_version >= '3.14.2'"]
 # Override homeassistant's exact pins to fix Dependabot security alerts:
-# - PyJWT CVE (unknown crit header extensions)
+# - aiohttp CVE-2026-34993 / multiple 2026 GHSA advisories fixed in 3.14.1
+# - PyJWT 2026 advisory set fixed in 2.13.0
 # - pyOpenSSL CVE-2026-27459 (DTLS cookie buffer overflow)
 # - pyOpenSSL CVE-2026-27448 (TLS connection bypass)
 # - cryptography GHSA-m959-cc7f-wv43 (incomplete DNS name constraint)
 # - cryptography GHSA-p423-j2cm-9vmq (buffer overflow non-contiguous buffers)
+# - cryptography GHSA-537c-gmf6-5ccf (vulnerable OpenSSL in wheels)
+# - pip PYSEC-2026-196
 # - uv GHSA-pjjw-68hj-v9mw (arbitrary file deletion through RECORD entries)
 # - Pygments CVE-2026-4539 / GHSA-5239-wwwm-4pmq (ReDoS in GUID regex)
 #
@@ -151,9 +154,11 @@ environments = ["python_full_version >= '3.14.2'"]
 # by Home Assistant bumping its zeroconf pin; the integration does not use
 # zeroconf directly. Re-add a `zeroconf>=…` override once HA ships a fixed pin.
 override-dependencies = [
-    "pyjwt>=2.12.1",
+    "aiohttp>=3.14.1",
+    "pyjwt>=2.13.0",
     "pyopenssl>=26.0.0",
-    "cryptography>=46.0.7",
+    "cryptography>=48.0.1",
+    "pip>=26.1.2",
     "uv>=0.11.6",
     "pygments>=2.20.0",
 ]
