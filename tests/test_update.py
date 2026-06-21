@@ -13,9 +13,9 @@ from custom_components.unraid import UnraidRuntimeData
 from custom_components.unraid.const import CONF_ENABLE_CONTAINER_UPDATES
 from custom_components.unraid.coordinator import UnraidSystemCoordinator
 from custom_components.unraid.update import (
-    _VERSION_CURRENT,
     _VERSION_UPDATE_AVAILABLE,
     DockerContainerUpdateEntity,
+    _parse_image_tag,
     async_setup_entry,
 )
 from tests.conftest import make_system_data
@@ -82,8 +82,34 @@ def test_update_entity_name_strips_leading_slash() -> None:
     assert entity.unique_id == "test-uuid_container_update_my-container"
 
 
-def test_installed_version_returns_sentinel() -> None:
-    """Test installed_version returns sentinel constant."""
+def test_installed_version_returns_image_tag() -> None:
+    """Test installed_version returns the Docker image tag."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        image="nginx:1.25.0",
+    )
+    entity = _make_update_entity(container)
+
+    assert entity.installed_version == "1.25.0"
+
+
+def test_installed_version_defaults_to_latest_without_tag() -> None:
+    """Test installed_version falls back to 'latest' when no tag is present."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        image="nginx",
+    )
+    entity = _make_update_entity(container)
+
+    assert entity.installed_version == "latest"
+
+
+def test_installed_version_none_without_image() -> None:
+    """Test installed_version returns None when no image reference exists."""
     container = DockerContainer(
         id="ct:1",
         name="/web",
@@ -91,7 +117,7 @@ def test_installed_version_returns_sentinel() -> None:
     )
     entity = _make_update_entity(container)
 
-    assert entity.installed_version == _VERSION_CURRENT
+    assert entity.installed_version is None
 
 
 def test_latest_version_when_no_update() -> None:
@@ -100,11 +126,12 @@ def test_latest_version_when_no_update() -> None:
         id="ct:1",
         name="/web",
         state="RUNNING",
+        image="nginx:1.25.0",
         isUpdateAvailable=False,
     )
     entity = _make_update_entity(container)
 
-    assert entity.latest_version == _VERSION_CURRENT
+    assert entity.latest_version == "1.25.0"
     assert entity.latest_version == entity.installed_version
 
 
@@ -128,12 +155,13 @@ def test_latest_version_when_update_none() -> None:
         id="ct:1",
         name="/web",
         state="RUNNING",
+        image="nginx:1.25.0",
         isUpdateAvailable=None,
     )
     entity = _make_update_entity(container)
 
     # None is falsy, so no update shown
-    assert entity.latest_version == _VERSION_CURRENT
+    assert entity.latest_version == "1.25.0"
 
 
 def test_entity_picture_from_icon_url() -> None:
@@ -159,6 +187,90 @@ def test_entity_picture_none_when_no_icon() -> None:
     entity = _make_update_entity(container)
 
     assert entity.entity_picture is None
+
+
+@pytest.mark.parametrize(
+    ("image", "expected"),
+    [
+        ("nginx:1.25.0", "1.25.0"),
+        ("nginx:latest", "latest"),
+        ("nginx", "latest"),
+        ("ghcr.io/foo/bar:2.1", "2.1"),
+        ("registry.example.com:5000/app:3.0", "3.0"),
+        ("registry.example.com:5000/app", "latest"),
+        ("repo@sha256:abc123", "latest"),
+        ("nginx:1.25.0@sha256:abc123", "1.25.0"),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_parse_image_tag(image: str | None, expected: str | None) -> None:
+    """Test image tag parsing handles tags, registries, and digests."""
+    assert _parse_image_tag(image) == expected
+
+
+def test_release_url_prefers_project_url() -> None:
+    """Test release_url returns the project URL when available."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        projectUrl="https://example.com/project",
+        registryUrl="https://hub.docker.com/r/library/nginx",
+        supportUrl="https://example.com/support",
+    )
+    entity = _make_update_entity(container)
+
+    assert entity.release_url == "https://example.com/project"
+
+
+def test_release_url_falls_back_to_registry_then_support() -> None:
+    """Test release_url falls back through registry and support URLs."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        registryUrl="https://hub.docker.com/r/library/nginx",
+        supportUrl="https://example.com/support",
+    )
+    entity = _make_update_entity(container)
+
+    assert entity.release_url == "https://hub.docker.com/r/library/nginx"
+
+
+def test_release_url_none_when_no_urls() -> None:
+    """Test release_url returns None when no URLs are present."""
+    container = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+    )
+    entity = _make_update_entity(container)
+
+    assert entity.release_url is None
+
+
+def test_release_summary_only_when_update_available() -> None:
+    """Test release_summary is set only when an update is available."""
+    no_update = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        image="nginx:1.25.0",
+        isUpdateAvailable=False,
+    )
+    entity = _make_update_entity(no_update)
+    assert entity.release_summary is None
+
+    update = DockerContainer(
+        id="ct:1",
+        name="/web",
+        state="RUNNING",
+        image="nginx:1.25.0",
+        isUpdateAvailable=True,
+    )
+    entity = _make_update_entity(update)
+    assert entity.release_summary is not None
 
 
 def test_in_progress_initially_false() -> None:
@@ -235,17 +347,19 @@ def test_container_cache_invalidated_on_new_data() -> None:
         id="ct:1",
         name="/web",
         state="RUNNING",
+        image="nginx:1.25.0",
         isUpdateAvailable=False,
     )
     entity = _make_update_entity(container)
 
-    assert entity.latest_version == _VERSION_CURRENT
+    assert entity.latest_version == "1.25.0"
 
     # Replace coordinator data with update available
     updated = DockerContainer(
         id="ct:1",
         name="/web",
         state="RUNNING",
+        image="nginx:1.25.0",
         isUpdateAvailable=True,
     )
     entity.coordinator.data = make_system_data(containers=[updated])

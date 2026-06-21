@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
 from homeassistant.exceptions import HomeAssistantError
@@ -35,10 +35,47 @@ _LOGGER = logging.getLogger(__name__)
 # Limit concurrent update operations to avoid overloading the Unraid server.
 PARALLEL_UPDATES = 1
 
-# Sentinel version strings used when the API only provides a boolean
-# `isUpdateAvailable` flag without actual version numbers.
-_VERSION_CURRENT = "installed"
-_VERSION_UPDATE_AVAILABLE = "update_available"
+# Fallback shown when the image reference carries no explicit tag (Docker
+# treats a missing tag as ``latest``).
+_DEFAULT_IMAGE_TAG: Final = "latest"
+
+# Shown for ``latest_version`` when the Unraid API reports an update is
+# available. The Unraid GraphQL API only exposes a boolean ``isUpdateAvailable``
+# flag — it does not provide the target version number — so a descriptive
+# marker is used instead of a real version string. It must differ from
+# ``installed_version`` so Home Assistant surfaces the update.
+_VERSION_UPDATE_AVAILABLE: Final = "Update available"
+
+
+def _parse_image_tag(image: str | None) -> str | None:
+    """
+    Extract the tag from a Docker image reference.
+
+    Handles registry hosts with ports (``host:5000/repo:tag``) and digest
+    references (``repo@sha256:...``). Returns ``latest`` when no explicit tag
+    is present, mirroring Docker's default behaviour. Returns ``None`` when no
+    image reference is available.
+
+    Examples:
+        ``nginx:1.25.0`` -> ``1.25.0``
+        ``ghcr.io/foo/bar:latest`` -> ``latest``
+        ``registry:5000/app:2.1`` -> ``2.1``
+        ``nginx`` -> ``latest``
+        ``repo@sha256:abc...`` -> ``latest``
+
+    """
+    if not image:
+        return None
+
+    # Strip any digest suffix (``@sha256:...``) before locating the tag.
+    reference = image.split("@", 1)[0]
+
+    # Only the final path segment can contain a tag; earlier colons belong to a
+    # registry host:port (e.g. ``registry:5000/repo``).
+    last_segment = reference.rsplit("/", 1)[-1]
+    if ":" in last_segment:
+        return last_segment.rsplit(":", 1)[1] or _DEFAULT_IMAGE_TAG
+    return _DEFAULT_IMAGE_TAG
 
 
 class DockerContainerUpdateEntity(
@@ -105,20 +142,28 @@ class DockerContainerUpdateEntity(
 
     @property
     def installed_version(self) -> str | None:
-        """Return the current (installed) version."""
+        """
+        Return the currently installed version (the Docker image tag).
+
+        The Unraid API does not expose a dedicated version field, so the tag
+        from the container's image reference is used (e.g. ``1.25.0`` or
+        ``latest``). Returns ``None`` when the container is unavailable.
+        """
         container = self._get_container()
         if container is None:
             return None
-        return _VERSION_CURRENT
+        return _parse_image_tag(container.image)
 
     @property
     def latest_version(self) -> str | None:
         """
         Return the latest available version.
 
-        When an update is available, returns a sentinel value different from
-        ``installed_version`` so HA displays the update badge.  When up-to-date,
-        returns the same sentinel as ``installed_version`` (no update shown).
+        The Unraid GraphQL API only reports whether an update is available via
+        a boolean flag — it does not provide the target version number. When an
+        update is available a descriptive marker is returned so Home Assistant
+        shows the update; otherwise ``installed_version`` is returned so no
+        update is shown.
         """
         container = self._get_container()
         if container is None:
@@ -126,7 +171,45 @@ class DockerContainerUpdateEntity(
 
         if container.isUpdateAvailable:
             return _VERSION_UPDATE_AVAILABLE
-        return _VERSION_CURRENT
+        return _parse_image_tag(container.image)
+
+    @property
+    def release_url(self) -> str | None:
+        """
+        Return a URL with more information about the container's image.
+
+        The Unraid API does not provide release notes, but the container
+        template often includes a project, registry, or support URL that links
+        to the upstream changelog or release notes. The first available URL is
+        used.
+        """
+        container = self._get_container()
+        if container is None:
+            return None
+        return (
+            container.projectUrl
+            or container.registryUrl
+            or container.supportUrl
+            or None
+        )
+
+    @property
+    def release_summary(self) -> str | None:
+        """
+        Return a short summary shown in the update dialog.
+
+        The Unraid API does not expose release notes, so a brief note is shown
+        when an update is available, pointing the user to the release URL (when
+        present) for upstream changes.
+        """
+        container = self._get_container()
+        if container is None or not container.isUpdateAvailable:
+            return None
+        return (
+            "A new image is available for this container. The Unraid API does "
+            "not provide detailed release notes; use the link below to view "
+            "the project's changes."
+        )
 
     @property
     def entity_picture(self) -> str | None:
