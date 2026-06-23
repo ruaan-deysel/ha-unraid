@@ -4920,7 +4920,7 @@ def test_parityspeedsensor_creation() -> None:
     """Test parity speed sensor creation."""
     coordinator = MagicMock(spec=UnraidStorageCoordinator)
     coordinator.data = make_storage_data(
-        parity_status=ParityCheck(speed="104857600", progress=50.0)
+        parity_status=ParityCheck(speed="100", progress=50.0)
     )
 
     sensor = ParitySpeedSensor(
@@ -4930,7 +4930,7 @@ def test_parityspeedsensor_creation() -> None:
     )
 
     assert sensor.unique_id == "test-uuid_parity_speed"
-    assert sensor.native_unit_of_measurement == "MiB/s"
+    assert sensor.native_unit_of_measurement == "MB/s"
     assert sensor.state_class == SensorStateClass.MEASUREMENT
     assert sensor.translation_key == "parity_speed"
     assert sensor.entity_registry_enabled_default is False
@@ -4938,10 +4938,9 @@ def test_parityspeedsensor_creation() -> None:
 
 
 def test_parityspeedsensor_state() -> None:
-    """Test parity speed sensor returns speed in MiB/s."""
+    """Test parity speed sensor returns speed in MB/s."""
     coordinator = MagicMock(spec=UnraidStorageCoordinator)
-    # 100 MiB/s = 104857600 bytes/s
-    coordinator.data = make_storage_data(parity_status=ParityCheck(speed="104857600"))
+    coordinator.data = make_storage_data(parity_status=ParityCheck(speed="100"))
 
     sensor = ParitySpeedSensor(
         coordinator=coordinator,
@@ -4957,7 +4956,7 @@ def test_parityspeedsensor_attributes() -> None:
     coordinator = MagicMock(spec=UnraidStorageCoordinator)
     coordinator.data = make_storage_data(
         parity_status=ParityCheck(
-            speed="52428800", elapsed=3600, estimated=7200, progress=50.0
+            speed="50", elapsed=3600, estimated=7200, progress=50.0
         )
     )
 
