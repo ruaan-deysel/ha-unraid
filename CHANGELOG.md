@@ -11,6 +11,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 - **Docker Container Update Entities Show Real Versions and Release Links** ([#258](https://github.com/ruaan-deysel/ha-unraid/issues/258)): Per-container update entities now display the actual Docker image tag as the installed version (e.g. `1.25.0` or `latest`) instead of the placeholder `installed`, and expose a `release_url` linking to the container's project, registry, or support page so the upstream changelog/release notes are one click away from the update dialog. A short release summary is shown when an update is available. The exact target version number and embedded release-notes text are not surfaced because the Unraid GraphQL API only reports a boolean `isUpdateAvailable` flag (no version or release-notes fields); when an update is pending, `latest_version` therefore shows a descriptive "Update available" marker.
 
+### Fixed
+
+- **Parity Check Speed Always Reading 0** ([#260](https://github.com/ruaan-deysel/ha-unraid/issues/260)): The `sensor.*_parity_check_speed` value was incorrectly divided by `1024 * 1024`, so it effectively always reported `0` MB/s. The Unraid API already reports parity speed directly in MB/s, so the conversion has been removed and the sensor's unit corrected from `MiB/s` to `MB/s`. The sensor now shows the real check speed.
+
 ## [2026.6.2] - 2026-06-20
 
 ### Added
