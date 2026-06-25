@@ -207,7 +207,7 @@ class DockerContainerUpdateEntity(
             return None
         return (
             "A new image is available for this container. The Unraid API does "
-            "not provide detailed release notes; use the link to view"
+            "not provide detailed release notes; use the link to view "
             "the project's changes."
         )
 
