@@ -1250,7 +1250,7 @@ requires-dist = [
     { name = "pytest-timeout", marker = "extra == 'test'", specifier = ">=2.4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.19" },
     { name = "syrupy", marker = "extra == 'test'", specifier = ">=5.0.0" },
-    { name = "unraid-api", specifier = ">=1.12.0" },
+    { name = "unraid-api", specifier = ">=1.12.1" },
 ]
 provides-extras = ["test", "dev"]
 
@@ -3088,16 +3088,16 @@ wheels = [
 
 [[package]]
 name = "unraid-api"
-version = "1.12.0"
+version = "1.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp", marker = "python_full_version >= '3.14.2'" },
     { name = "packaging", marker = "python_full_version >= '3.14.2'" },
     { name = "pydantic", marker = "python_full_version >= '3.14.2'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/f1/60450269584ce08930efc7d8a66f4383d0b62a903c52b6af4cd558b58d15/unraid_api-1.12.0.tar.gz", hash = "sha256:0ccdb185ec8c67be3d56b47f4e20c7b2023ebae7e6df90d3d6bb17f88a7a9eeb", size = 52390, upload-time = "2026-06-10T05:17:26.71Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/61/52ea4ad61d0b032362a985154a179fa6ba8a2ffcce453576075b37ca1b78/unraid_api-1.12.1.tar.gz", hash = "sha256:44a7ce5f9fee4e459b35e97f41b2983dd6a58d27c94054302fbf5c1a7bd03c24", size = 52794, upload-time = "2026-06-26T02:21:59.9Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/2c/bc86733f8f862c2749b162ac8fd2b00de12c98ab954693b47e2d7a5bc17a/unraid_api-1.12.0-py3-none-any.whl", hash = "sha256:d68971442c277e9cb51d3968098497f2e619b99e800b13321030b10b32f20ccd", size = 54059, upload-time = "2026-06-10T05:17:25.302Z" },
+    { url = "https://files.pythonhosted.org/packages/da/56/2804d8fa0dfc3f765cd91da1358aa4e305640b30be6cc4784b80683a122c/unraid_api-1.12.1-py3-none-any.whl", hash = "sha256:3cded0f7bf1730d9ee51ece3fafe13f899541996315a3eaa35a5b420f78b3ed3", size = 54469, upload-time = "2026-06-26T02:21:58.543Z" },
 ]
 
 [[package]]
