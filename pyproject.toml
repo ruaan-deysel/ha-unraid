@@ -43,7 +43,7 @@ dev = [
     "pre-commit>=4.6.0",
 
     # Type checking
-    "mypy>=2.1.0",
+    "mypy>=2.2.0",
 
     # Utilities
     "colorlog>=6.10.0",
