@@ -39,11 +39,11 @@ dev = [
     "ha-unraid[test]",
 
     # Linting and formatting
-    "ruff==0.15.20",
+    "ruff==0.15.21",
     "pre-commit>=4.6.0",
 
     # Type checking
-    "mypy>=2.1.0",
+    "mypy>=2.2.0",
 
     # Utilities
     "colorlog>=6.10.0",
