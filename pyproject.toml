@@ -39,8 +39,8 @@ dev = [
     "ha-unraid[test]",
 
     # Linting and formatting
-    "ruff==0.15.21",
-    "pre-commit>=4.6.0",
+    "ruff==0.15.22",
+    "pre-commit>=4.6.1",
 
     # Type checking
     "mypy>=2.3.0",
