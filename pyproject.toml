@@ -20,7 +20,7 @@ classifiers = [
 
 dependencies = [
     "homeassistant>=2026.5.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.2",
     "pydantic>=2.13.4",
     "unraid-api>=1.12.1",
 ]
