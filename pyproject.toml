@@ -46,7 +46,7 @@ dev = [
     "mypy>=2.3.0",
 
     # Utilities
-    "colorlog>=6.10.0",
+    "colorlog>=6.12.0",
 ]
 
 [build-system]
