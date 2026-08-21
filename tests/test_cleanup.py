@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.unraid import cleanup as cleanup_module
 from custom_components.unraid.cleanup import (
+    _MISSING_STREAK_THRESHOLD,
     _is_dynamic_resource_id,
     async_cleanup_stale_entities,
     build_expected_dynamic_unique_ids,
@@ -330,6 +332,10 @@ _SENTINEL = object()
 class TestAsyncCleanupStaleEntities:
     """Integration-level tests for the full cleanup function."""
 
+    def setup_method(self) -> None:
+        """Isolate the module-level streak counters between tests."""
+        cleanup_module._missing_streaks.clear()
+
     def _make_system_coordinator(
         self,
         *,
@@ -368,7 +374,10 @@ class TestAsyncCleanupStaleEntities:
         stor_coord = self._make_storage_coordinator()
 
         with patch("custom_components.unraid.cleanup.er.async_get") as mock_reg:
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
             # The entity registry should never be queried
             mock_reg.assert_not_called()
 
@@ -380,7 +389,10 @@ class TestAsyncCleanupStaleEntities:
         stor_coord = self._make_storage_coordinator(last_update_success=False)
 
         with patch("custom_components.unraid.cleanup.er.async_get") as mock_reg:
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
             mock_reg.assert_not_called()
 
     async def test_skips_cleanup_when_coordinator_data_none(
@@ -391,7 +403,10 @@ class TestAsyncCleanupStaleEntities:
         stor_coord = self._make_storage_coordinator()
 
         with patch("custom_components.unraid.cleanup.er.async_get") as mock_reg:
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
             mock_reg.assert_not_called()
 
     async def test_skips_cleanup_when_coordinator_data_wrong_type(
@@ -402,7 +417,10 @@ class TestAsyncCleanupStaleEntities:
         stor_coord = self._make_storage_coordinator()
 
         with patch("custom_components.unraid.cleanup.er.async_get") as mock_reg:
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
             mock_reg.assert_not_called()
 
     async def test_removes_orphaned_container_entity(self, hass: HomeAssistant) -> None:
@@ -450,7 +468,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         # Orphaned container entities removed; static entity untouched
         removed_ids = {call[0][0] for call in mock_reg.async_remove.call_args_list}
@@ -499,7 +520,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         mock_reg.async_remove.assert_not_called()
 
@@ -541,7 +565,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         removed_ids = {call[0][0] for call in mock_reg.async_remove.call_args_list}
         assert "sensor.server_disk_sdb_temp" in removed_ids
@@ -580,7 +607,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         mock_reg.async_remove.assert_called_once_with(
             "sensor.server_share_movies_usage"
@@ -629,7 +659,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         mock_reg.async_remove.assert_not_called()
 
@@ -666,7 +699,10 @@ class TestAsyncCleanupStaleEntities:
                 return_value=[],
             ),
         ):
-            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
 
         mock_reg.async_remove.assert_not_called()
 
@@ -706,3 +742,99 @@ class TestAsyncRemoveConfigEntryDevice:
 
         result = await async_remove_config_entry_device(hass, entry, device)
         assert result is True
+
+    async def test_first_missing_refresh_keeps_entity(
+        self, hass: HomeAssistant
+    ) -> None:
+        """A single refresh without the resource must NOT remove its entities."""
+        sys_coord = self._make_system_coordinator(data_override=make_system_data())
+        stor_coord = self._make_storage_coordinator()
+
+        orphan = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp", "switch.server_oldapp"
+        )
+
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [orphan]
+        mock_reg.async_remove = MagicMock()
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+
+        mock_reg.async_remove.assert_not_called()
+        assert cleanup_module._missing_streaks[f"{_UUID}_container_switch_oldapp"] == 1
+
+    async def test_streak_resets_when_resource_returns(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Alternating gaps must never reach the removal threshold."""
+        from unraid_api.models import DockerContainer
+
+        sys_coord_missing = self._make_system_coordinator(
+            data_override=make_system_data()
+        )
+        container = MagicMock(spec=DockerContainer)
+        container.name = "oldapp"
+        sys_data_present = make_system_data()
+        sys_data_present.containers = [container]
+        sys_coord_present = self._make_system_coordinator(
+            data_override=sys_data_present
+        )
+        stor_coord = self._make_storage_coordinator()
+
+        orphan = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp", "switch.server_oldapp"
+        )
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [orphan]
+        mock_reg.async_remove = MagicMock()
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            # missing, present, missing, missing — never 3 consecutive
+            for coord in (
+                sys_coord_missing,
+                sys_coord_present,
+                sys_coord_missing,
+                sys_coord_missing,
+            ):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, coord, stor_coord
+                )
+
+        mock_reg.async_remove.assert_not_called()

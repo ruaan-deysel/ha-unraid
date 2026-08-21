@@ -39,6 +39,24 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Transient-absence grace period
+# ---------------------------------------------------------------------------
+
+# Number of consecutive successful refreshes a dynamic resource may be absent
+# from the coordinator data before its entities are removed. The Unraid API
+# can transiently omit resources (UPS data in particular) from an otherwise
+# successful response; removing entities on the first gap deletes healthy
+# entities and breaks dashboards and automations until the integration is
+# reloaded (#293).
+_MISSING_STREAK_THRESHOLD: Final = 3
+
+# Consecutive-missing counters, keyed by unique_id. Bounded by the number of
+# dynamic entities across configured servers: entries are dropped when the
+# resource reappears, when the entity is removed, or when it is no longer
+# registered.
+_missing_streaks: dict[str, int] = {}
+
+# ---------------------------------------------------------------------------
 # Dynamic-resource prefix detection
 # ---------------------------------------------------------------------------
 
@@ -299,6 +317,7 @@ def async_cleanup_stale_entities(
 
     server_uuid_prefix = f"{server_uuid}_"
     orphans: list[er.RegistryEntry] = []
+    present_uids: set[str] = set()
 
     for entity_entry in registered:
         uid = entity_entry.unique_id
@@ -312,8 +331,34 @@ def async_cleanup_stale_entities(
             # Static entity — never prune.
             continue
 
-        if uid not in expected:
-            orphans.append(entity_entry)
+        if uid in expected:
+            present_uids.add(uid)
+            continue
+
+        # Dynamic entity whose resource is absent from this refresh. Only
+        # remove it after it has been missing for several consecutive
+        # successful refreshes, so a transient API gap does not delete it.
+        streak = _missing_streaks.get(uid, 0) + 1
+        _missing_streaks[uid] = streak
+        if streak < _MISSING_STREAK_THRESHOLD:
+            _LOGGER.debug(
+                "Entity %s (unique_id=%s) missing for %d consecutive refresh(es) "
+                "for entry %s; deferring removal until %d",
+                entity_entry.entity_id,
+                uid,
+                streak,
+                entry_id,
+                _MISSING_STREAK_THRESHOLD,
+            )
+            continue
+        orphans.append(entity_entry)
+
+    # Reset streaks for resources that came back and drop counters for
+    # entities that are no longer registered (removed above or elsewhere).
+    registered_uids = {e.unique_id for e in registered}
+    for uid in list(_missing_streaks):
+        if uid in present_uids or uid not in registered_uids:
+            _missing_streaks.pop(uid, None)
 
     if not orphans:
         return
@@ -330,6 +375,7 @@ def async_cleanup_stale_entities(
             entity_entry.entity_id,
             entity_entry.unique_id,
         )
+        _missing_streaks.pop(entity_entry.unique_id, None)
         ent_reg.async_remove(entity_entry.entity_id)
 
     # Remove any devices that are now empty after entity removal.
