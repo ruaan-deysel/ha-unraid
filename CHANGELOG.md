@@ -7,6 +7,12 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.8.0] - 2026-08-29
+
+### Fixed
+
+- **Aggressive Dynamic Entity Purging on Transient API Gaps** ([#293](https://github.com/ruaan-deysel/ha-unraid/issues/293), [#294](https://github.com/ruaan-deysel/ha-unraid/pull/294)): Dynamic entity cleanup now requires a resource to be absent for 3 consecutive successful coordinator refreshes before removing its entities and orphaned devices. Previously, any single successful refresh where the Unraid API transiently omitted a resource (such as UPS data) would immediately purge all associated entities, breaking user dashboards and automations. The missing streak counter resets whenever a resource reappears, and stored counters are automatically cleaned up when entities are removed. Huge thanks to **@yzxcj797** for this contribution! 🎉
+
 ## [2026.6.3] - 2026-06-25
 
 ### Changed
@@ -384,7 +390,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.0...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.3...HEAD
+[2026.6.3]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.2...v2026.6.3
+[2026.6.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.1...v2026.6.2
+[2026.6.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.0...v2026.6.1
 [2026.6.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.5.0...v2026.6.0
 [2026.5.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.1...v2026.5.0
 [2026.4.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.0...v2026.4.1
