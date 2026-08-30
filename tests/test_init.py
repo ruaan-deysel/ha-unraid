@@ -603,10 +603,12 @@ async def test_setup_entry_uses_local_url_when_available(
     )
 
 
-async def test_setup_entry_falls_back_from_local_url_without_host(
+@pytest.mark.parametrize("local_url", ["http://:80", "http://tower.local:invalid"])
+async def test_setup_entry_falls_back_from_invalid_local_url(
     hass: HomeAssistant,
     mock_unraid_client_factory: type,
     mock_coordinator: MagicMock,
+    local_url: str,
 ) -> None:
     """Test setup falls back to the configured host for an invalid local URL."""
     entry = MockConfigEntry(
@@ -626,7 +628,7 @@ async def test_setup_entry_falls_back_from_local_url_without_host(
     client = create_mock_unraid_client(
         server_info=make_server_info(
             uuid="test-uuid",
-            local_url="http://:80",
+            local_url=local_url,
             lan_ip="",
         )
     )

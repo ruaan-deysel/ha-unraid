@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 from homeassistant.const import (
     CONF_API_KEY,
@@ -32,6 +31,7 @@ from unraid_api.exceptions import (
     UnraidSSLError,
     UnraidTimeoutError,
 )
+from yarl import URL
 
 from .cleanup import async_cleanup_stale_entities
 from .const import (
@@ -91,9 +91,9 @@ def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dic
     # Determine configuration URL for device info
     configuration_url = server_info.local_url
     try:
-        parsed_url = urlparse(configuration_url or "")
-        valid_configuration_url = (
-            parsed_url.scheme in {"http", "https"} and parsed_url.hostname is not None
+        parsed_url = URL(configuration_url or "")
+        valid_configuration_url = parsed_url.scheme in {"http", "https"} and bool(
+            parsed_url.host
         )
     except ValueError:
         valid_configuration_url = False
