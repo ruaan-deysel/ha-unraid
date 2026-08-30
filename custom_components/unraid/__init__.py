@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from homeassistant.const import (
     CONF_API_KEY,
@@ -89,9 +90,17 @@ def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dic
 
     # Determine configuration URL for device info
     configuration_url = server_info.local_url
-    if not configuration_url and server_info.lan_ip:
+    try:
+        parsed_url = urlparse(configuration_url or "")
+        valid_configuration_url = (
+            parsed_url.scheme in {"http", "https"} and parsed_url.hostname is not None
+        )
+    except ValueError:
+        valid_configuration_url = False
+
+    if not valid_configuration_url:
         protocol = "https" if use_ssl else "http"
-        configuration_url = f"{protocol}://{server_info.lan_ip}"
+        configuration_url = f"{protocol}://{server_info.lan_ip or host}"
 
     return {
         "uuid": server_info.uuid,
