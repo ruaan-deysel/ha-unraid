@@ -30,10 +30,6 @@ A Home Assistant custom integration for monitoring and controlling Unraid server
 2. Search for **Unraid** and click **Download**
 3. Restart Home Assistant
 
-### Alternative
-
-I encourage users to check out **[Unraid Management Agent integration](https://www.github.com/ruaan-deysel/ha-unraid-management-agent)**, which provides an alternative solution for integrating Unraid with Home Assistant.
-
 ## Features
 
 ### System Monitoring
