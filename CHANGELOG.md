@@ -7,6 +7,12 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.8.1] - 2026-08-31
+
+### Fixed
+
+- **CPU usage unavailable when GraphQL returns a local URL without a host** ([#299](https://github.com/ruaan-deysel/ha-unraid/issues/299), [#300](https://github.com/ruaan-deysel/ha-unraid/pull/300)) Huge thanks to **@sephirothx** for this contribution! 🎉
+
 ## [2026.8.0] - 2026-08-29
 
 ### Fixed
