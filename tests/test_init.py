@@ -603,6 +603,63 @@ async def test_setup_entry_uses_local_url_when_available(
     )
 
 
+@pytest.mark.parametrize("local_url", ["http://:80", "http://tower.local:invalid"])
+async def test_setup_entry_falls_back_from_invalid_local_url(
+    hass: HomeAssistant,
+    mock_unraid_client_factory: type,
+    mock_coordinator: MagicMock,
+    local_url: str,
+) -> None:
+    """Test setup falls back to the configured host for an invalid local URL."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={
+            CONF_HOST: "192.168.1.100",
+            CONF_API_KEY: "test-api-key",
+            CONF_SSL: True,
+        },
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    from tests.conftest import create_mock_unraid_client, make_server_info
+
+    client = create_mock_unraid_client(
+        server_info=make_server_info(
+            uuid="test-uuid",
+            local_url=local_url,
+            lan_ip="",
+        )
+    )
+    mock_unraid_client_factory.return_value = client
+
+    with (
+        patch(
+            "custom_components.unraid.UnraidSystemCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidStorageCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.unraid.UnraidInfraCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch("custom_components.unraid.async_get_clientsession") as mock_session,
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", return_value=None
+        ),
+    ):
+        mock_session.return_value = MagicMock()
+        await async_setup_entry(hass, entry)
+
+    assert (
+        entry.runtime_data.server_info["configuration_url"] == "https://192.168.1.100"
+    )
+
+
 async def test_setup_entry_uses_host_when_hostname_missing(
     hass: HomeAssistant,
     mock_unraid_client_factory: type,
