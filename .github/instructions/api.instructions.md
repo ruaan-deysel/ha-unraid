@@ -39,11 +39,13 @@ Never Bypass `unraid-api`".
 # ❌ NEVER — direct HTTP
 import requests
 import httpx
+
 session.get("http://unraid-server/...")
 
 # ❌ NEVER — raw aiohttp session creation
 import aiohttp
-session = aiohttp.ClientSession()   # direct construction
+
+session = aiohttp.ClientSession()  # direct construction
 
 # ❌ NEVER — raw GraphQL client
 from gql import gql, Client

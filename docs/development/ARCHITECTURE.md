@@ -71,6 +71,7 @@ class UnraidRuntimeData:
     infra_coordinator: UnraidInfraCoordinator
     server_info: dict
 
+
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 ```
 

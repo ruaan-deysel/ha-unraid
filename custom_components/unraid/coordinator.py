@@ -186,6 +186,15 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         self._cached_containers: list[DockerContainer] = []
         self._last_docker_refresh: float = 0.0
         self._force_docker_refresh: bool = False
+        # Cached VM list to keep the last known-good value across failed
+        # optional queries.
+        self._cached_vms: list[VmDomain] = []
+        # Cached UPS device list to keep the last known-good value across
+        # failed optional queries.
+        self._cached_ups_devices: list[UPSDevice] = []
+        # Cached network metrics list to keep the last known-good value across
+        # failed optional queries.
+        self._cached_network_metrics: list[NetworkMetrics] = []
         self._event_listeners: dict[
             str, list[Callable[[UnraidNotificationEventData], None]]
         ] = {}
@@ -433,11 +442,10 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             notification_type=str(notification_type or "UNREAD"),
         )
 
-    async def _async_process_notification_events(self) -> None:
-        """Detect new unread notifications and notify listeners."""
-        await self._async_load_seen_notification_ids()
-
-        notifications = await self._async_get_unread_notifications()
+    def _collect_unread_notifications_by_id(
+        self, notifications: list[Any]
+    ) -> dict[str, Any]:
+        """Extract and validate unread notification records by id."""
         unread_by_id: dict[str, Any] = {}
         for notification in notifications:
             notification_id = self._notification_field(notification, "id")
@@ -462,6 +470,45 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 )
                 continue
             unread_by_id[str(notification_id)] = notification
+        return unread_by_id
+
+    def _emit_single_notification_event(self, notification: Any) -> bool:
+        """Emit notification event for a single notification record."""
+        event_data = self._to_notification_event_data(notification)
+        if event_data is None:
+            notification_id = self._notification_field(notification, "id")
+            _LOGGER.warning(
+                "Skipping invalid notification payload on %s: id=%s",
+                self._server_name,
+                notification_id,
+            )
+            return False
+
+        try:
+            self._async_notify_event_listeners(event_data)
+        except Exception:
+            _LOGGER.exception(
+                "Failed to emit notification event for %s on %s",
+                event_data.notification_id,
+                self._server_name,
+            )
+            return False
+
+        _LOGGER.info(
+            "Emitted Unraid notification event %s (%s) at %s",
+            event_data.notification_id,
+            event_data.title,
+            event_data.timestamp,
+        )
+        self._seen_notification_ids.add(event_data.notification_id)
+        return True
+
+    async def _async_process_notification_events(self) -> None:
+        """Detect new unread notifications and notify listeners."""
+        await self._async_load_seen_notification_ids()
+
+        notifications = await self._async_get_unread_notifications()
+        unread_by_id = self._collect_unread_notifications_by_id(notifications)
 
         unread_ids = set(unread_by_id)
         if not self._notification_ids_baselined:
@@ -485,47 +532,26 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
 
         emitted_any = False
         for notification in unseen_notifications:
-            event_data = self._to_notification_event_data(notification)
-            if event_data is None:
-                notification_id = self._notification_field(notification, "id")
-                _LOGGER.warning(
-                    "Skipping invalid notification payload on %s: id=%s",
-                    self._server_name,
-                    notification_id,
-                )
-                continue
-
-            try:
-                self._async_notify_event_listeners(event_data)
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to emit notification event for %s on %s",
-                    event_data.notification_id,
-                    self._server_name,
-                )
-                continue
-
-            _LOGGER.info(
-                "Emitted Unraid notification event %s (%s) at %s",
-                event_data.notification_id,
-                event_data.title,
-                event_data.timestamp,
-            )
-            self._seen_notification_ids.add(event_data.notification_id)
-            emitted_any = True
+            if self._emit_single_notification_event(notification):
+                emitted_any = True
 
         if emitted_any:
             await self._async_save_seen_notification_ids()
 
-    async def _query_optional_docker(self) -> list[DockerContainer]:
+    async def _query_optional_docker(self) -> list[DockerContainer] | None:
         """
-        Query Docker containers (fails gracefully if Docker not enabled).
+        Query Docker containers (fails gracefully if Docker not enabled or query fails).
+
+        Returns:
+            list[DockerContainer] on success (including [] if no containers exist),
+            or None if the query failed.
 
         Uses the lightweight typed_get_containers_safe() variant: the full
         query's sizeRootFs/sizeRw/sizeLog fields make the Docker daemon
         compute writable-layer sizes on every poll, causing multi-second CPU
         spikes on the Unraid server (#237). The safe variant returns every
         field this integration consumes.
+
         """
         try:
             return await self.api_client.typed_get_containers_safe()
@@ -533,35 +559,54 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("Docker data not available: %s", err)
-            return []
+            return None
 
-    async def _query_optional_vms(self) -> list[VmDomain]:
-        """Query VMs (fails gracefully if VMs not enabled)."""
+    async def _query_optional_vms(self) -> list[VmDomain] | None:
+        """
+        Query VMs (fails gracefully if VMs not enabled or query fails).
+
+        Returns:
+            list[VmDomain] on success (including [] if no VMs exist),
+            or None if the query failed.
+
+        """
         try:
             return await self.api_client.typed_get_vms()
         except UnraidAuthenticationError:
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("VM data not available: %s", err)
-            return []
+            return None
 
-    async def _query_optional_ups(self) -> list[UPSDevice]:
-        """Query UPS devices (fails gracefully if no UPS configured)."""
+    async def _query_optional_ups(self) -> list[UPSDevice] | None:
+        """
+        Query UPS devices (fails gracefully if no UPS configured or query fails).
+
+        Returns:
+            list[UPSDevice] on success (including [] if no UPS devices exist),
+            or None if the query failed.
+
+        """
         try:
             return await self.api_client.typed_get_ups_devices()
         except UnraidAuthenticationError:
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("UPS data not available: %s", err)
-            return []
+            return None
 
-    async def _query_optional_network_metrics(self) -> list[NetworkMetrics]:
+    async def _query_optional_network_metrics(self) -> list[NetworkMetrics] | None:
         """
         Query per-interface network metrics (fails gracefully).
+
+        Returns:
+            list[NetworkMetrics] on success (including [] if no interfaces exist),
+            or None if the query failed.
 
         Requires Unraid API 4.35.0+ (metrics.network); older servers raise
         UnraidAPIError from the library's capability check, which is cheap
         after the first call because capabilities are cached.
+
         """
         try:
             return await self.api_client.get_network_metrics()
@@ -569,7 +614,7 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("Network metrics not available: %s", err)
-            return []
+            return None
 
     async def _query_optional_mover_status(self) -> bool | None:
         """Query mover active status (fails gracefully)."""
@@ -656,6 +701,65 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         """Delete all archived notifications."""
         await self.api_client.delete_all_notifications()
 
+    async def _async_fetch_optional_system_data(
+        self,
+    ) -> tuple[
+        list[DockerContainer],
+        list[VmDomain],
+        list[UPSDevice],
+        bool | None,
+        list[NetworkMetrics],
+    ]:
+        """Fetch optional system data with throttling and cache fallback."""
+        fetch_docker = self._force_docker_refresh or (
+            time.monotonic() - self._last_docker_refresh >= DOCKER_POLL_INTERVAL
+        )
+        if fetch_docker:
+            (
+                docker_result,
+                vms_result,
+                ups_result,
+                mover_active,
+                network_result,
+            ) = await asyncio.gather(
+                self._query_optional_docker(),
+                self._query_optional_vms(),
+                self._query_optional_ups(),
+                self._query_optional_mover_status(),
+                self._query_optional_network_metrics(),
+            )
+            if docker_result is not None:
+                self._cached_containers = docker_result
+            self._last_docker_refresh = time.monotonic()
+            self._force_docker_refresh = False
+        else:
+            (
+                vms_result,
+                ups_result,
+                mover_active,
+                network_result,
+            ) = await asyncio.gather(
+                self._query_optional_vms(),
+                self._query_optional_ups(),
+                self._query_optional_mover_status(),
+                self._query_optional_network_metrics(),
+            )
+
+        if vms_result is not None:
+            self._cached_vms = vms_result
+        if ups_result is not None:
+            self._cached_ups_devices = ups_result
+        if network_result is not None:
+            self._cached_network_metrics = network_result
+
+        return (
+            self._cached_containers,
+            self._cached_vms,
+            self._cached_ups_devices,
+            mover_active,
+            self._cached_network_metrics,
+        )
+
     async def _async_update_data(self) -> UnraidSystemData:
         """
         Fetch system data from Unraid server using library typed methods.
@@ -670,11 +774,6 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         _LOGGER.debug("Starting system data update")
         try:
             # Phase 1: Required calls — run concurrently; any failure raises immediately
-            # NOTE: We use get_system_metrics_safe() instead of
-            # get_system_metrics() to avoid querying metrics.temperature.sensors
-            # which triggers smartctl disk reads and wakes sleeping disks.
-            # Server info is static and captured once at setup, so it is not
-            # re-queried here.
             metrics, notifications = await asyncio.gather(
                 self.api_client.get_system_metrics_safe(),
                 self.api_client.get_notification_overview(),
@@ -682,37 +781,13 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             info = self._server_info
 
             # Phase 2: Optional services — run concurrently; each fails gracefully.
-            # The Docker container list is the most expensive query on the
-            # Unraid server, so it is throttled to DOCKER_POLL_INTERVAL and the
-            # previous result reused in between to avoid periodic CPU spikes.
-            fetch_docker = self._force_docker_refresh or (
-                time.monotonic() - self._last_docker_refresh >= DOCKER_POLL_INTERVAL
-            )
-            if fetch_docker:
-                (
-                    containers,
-                    vms,
-                    ups_devices,
-                    mover_active,
-                    network_metrics,
-                ) = await asyncio.gather(
-                    self._query_optional_docker(),
-                    self._query_optional_vms(),
-                    self._query_optional_ups(),
-                    self._query_optional_mover_status(),
-                    self._query_optional_network_metrics(),
-                )
-                self._cached_containers = containers
-                self._last_docker_refresh = time.monotonic()
-                self._force_docker_refresh = False
-            else:
-                vms, ups_devices, mover_active, network_metrics = await asyncio.gather(
-                    self._query_optional_vms(),
-                    self._query_optional_ups(),
-                    self._query_optional_mover_status(),
-                    self._query_optional_network_metrics(),
-                )
-                containers = self._cached_containers
+            (
+                containers,
+                vms,
+                ups_devices,
+                mover_active,
+                network_metrics,
+            ) = await self._async_fetch_optional_system_data()
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:

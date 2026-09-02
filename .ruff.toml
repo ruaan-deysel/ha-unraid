@@ -44,6 +44,9 @@ ignore = [
     "PT011",  # pytest.raises too broad (acceptable for test simplicity)
     "PLC0415", # Import not at top (local import is intentional)
     "ANN002", # Missing *args annotation (not needed for forwarding)
+    "CPY",   # Missing copyright notice
+    "PLR0917", # Too many positional arguments
+    "LOG004", # logging.exception outside except block
 ]
 
 [lint.per-file-ignores]

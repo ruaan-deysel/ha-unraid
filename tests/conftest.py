@@ -19,6 +19,7 @@ from unraid_api.models import (
     Cloud,
     Connect,
     DockerContainer,
+    NetworkMetrics,
     NotificationOverview,
     NotificationOverviewCounts,
     ParityCheck,
@@ -123,6 +124,7 @@ def make_system_data(
     notification_overview: NotificationOverview | None = None,
     temperature: TemperatureMetrics | None = None,
     mover_active: bool | None = None,
+    network_metrics: list[NetworkMetrics] | None = None,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
     from datetime import datetime
@@ -165,6 +167,7 @@ def make_system_data(
         notification_overview=notification_overview,
         notifications_unread=notifications_unread,
         mover_active=mover_active,
+        network_metrics=network_metrics or [],
     )
 
 
@@ -174,7 +177,7 @@ _UNSET = object()
 
 def make_storage_data(
     array_state: str | None = None,
-    capacity: ArrayCapacity | None | object = _UNSET,
+    capacity: ArrayCapacity | object | None = _UNSET,
     parity_status: ParityCheck | None = None,
     disks: list[ArrayDisk] | None = None,
     parities: list[ArrayDisk] | None = None,

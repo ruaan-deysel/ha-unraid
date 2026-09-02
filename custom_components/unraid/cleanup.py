@@ -13,6 +13,9 @@ Design principles
 * **Transient-failure guard** — cleanup is skipped when a coordinator's last
   update failed, preventing entity loss due to a momentary API or network
   error.
+* **Empty-category guard** — an empty resource list caused by a failed
+  optional query or initial startup window must not trigger a whole-category
+  prune when registered entities exist.
 * **Device cleanup** — after entity removal, any HA device that has lost all
   its entities is also removed from the device registry.
 """
@@ -130,6 +133,125 @@ def _is_dynamic_resource_id(resource_id: str) -> bool:
     )
 
 
+def _get_dynamic_resource_category(resource_id: str) -> str | None:
+    """Return the resource category for dynamic entities, or None."""
+    if (
+        resource_id.startswith("container_")
+        and resource_id not in _STATIC_CONTAINER_RESOURCE_IDS
+    ):
+        return "containers"
+    if resource_id.startswith("vm_"):
+        return "vms"
+    if resource_id.startswith("ups_"):
+        return "ups_devices"
+    if (
+        resource_id.startswith("network_")
+        and resource_id not in _STATIC_NETWORK_RESOURCE_IDS
+        and bool(_NETWORK_INTERFACE_RESOURCE_ID_RE.match(resource_id))
+    ):
+        return "network_metrics"
+    return None
+
+
+def _build_system_dynamic_unique_ids(
+    pfx: str,
+    sys_data: UnraidSystemData,
+) -> set[str]:
+    """Return dynamic unique_ids from system coordinator data."""
+    expected: set[str] = set()
+
+    for container in sys_data.containers or []:
+        name = container.name.lstrip("/")
+        expected.update(
+            {
+                f"{pfx}container_switch_{name}",
+                f"{pfx}container_restart_{name}",
+                f"{pfx}container_{name}_cpu",
+                f"{pfx}container_{name}_memory",
+                f"{pfx}container_{name}_memory_pct",
+                f"{pfx}container_{name}_update",
+                f"{pfx}container_update_{name}",
+            }
+        )
+
+    for vm in sys_data.vms or []:
+        expected.update(
+            {
+                f"{pfx}vm_switch_{vm.name}",
+                f"{pfx}vm_force_stop_{vm.name}",
+                f"{pfx}vm_reboot_{vm.name}",
+                f"{pfx}vm_pause_{vm.name}",
+                f"{pfx}vm_resume_{vm.name}",
+                f"{pfx}vm_reset_{vm.name}",
+            }
+        )
+
+    for ups in sys_data.ups_devices or []:
+        for suffix in (
+            "battery",
+            "load",
+            "runtime",
+            "power",
+            "energy",
+            "input_voltage",
+            "output_voltage",
+            "battery_health",
+            "status",
+            "connected",
+        ):
+            expected.add(f"{pfx}ups_{ups.id}_{suffix}")
+
+    for sensor in (
+        sys_data.metrics.temperature.sensors
+        if (sys_data.metrics and sys_data.metrics.temperature is not None)
+        else []
+    ):
+        expected.add(f"{pfx}temp_{sensor.id}")
+
+    for iface in sys_data.network_metrics or []:
+        if iface.name is not None:
+            expected.update(
+                {
+                    f"{pfx}network_{iface.name}_rx",
+                    f"{pfx}network_{iface.name}_tx",
+                }
+            )
+
+    return expected
+
+
+def _build_storage_dynamic_unique_ids(
+    pfx: str,
+    stor_data: UnraidStorageData,
+) -> set[str]:
+    """Return dynamic unique_ids from storage coordinator data."""
+    expected: set[str] = set()
+    all_disks = list(stor_data.disks or [])
+    all_disks.extend(stor_data.parities or [])
+    all_disks.extend(stor_data.caches or [])
+    if stor_data.boot is not None:
+        all_disks.append(stor_data.boot)
+
+    for disk in all_disks:
+        if disk.id is None:
+            continue
+        expected.update(
+            {
+                f"{pfx}disk_{disk.id}_temp",
+                f"{pfx}disk_{disk.id}_errors",
+                f"{pfx}disk_{disk.id}_usage",
+                f"{pfx}disk_health_{disk.id}",
+                f"{pfx}disk_spin_{disk.id}",
+            }
+        )
+
+    for share in stor_data.shares or []:
+        if share.id is not None:
+            expected.add(f"{pfx}share_{share.id}_usage")
+
+    return expected
+
+
 # ---------------------------------------------------------------------------
 # Expected unique-id computation
 # ---------------------------------------------------------------------------
@@ -153,106 +275,73 @@ def build_expected_dynamic_unique_ids(
         resources that are currently alive.
 
     """
-    expected: set[str] = set()
     pfx = f"{server_uuid}_"
-
-    # --- Docker containers ---
-    for container in sys_data.containers or []:
-        name = container.name.lstrip("/")
-        expected.update(
-            {
-                f"{pfx}container_switch_{name}",
-                f"{pfx}container_restart_{name}",
-                f"{pfx}container_{name}_cpu",
-                f"{pfx}container_{name}_memory",
-                f"{pfx}container_{name}_memory_pct",
-                # binary_sensor update entity
-                f"{pfx}container_{name}_update",
-                # update platform entity (different resource_id pattern)
-                f"{pfx}container_update_{name}",
-            }
-        )
-
-    # --- Virtual machines ---
-    for vm in sys_data.vms or []:
-        expected.update(
-            {
-                f"{pfx}vm_switch_{vm.name}",
-                f"{pfx}vm_force_stop_{vm.name}",
-                f"{pfx}vm_reboot_{vm.name}",
-                f"{pfx}vm_pause_{vm.name}",
-                f"{pfx}vm_resume_{vm.name}",
-                f"{pfx}vm_reset_{vm.name}",
-            }
-        )
-
-    # --- UPS devices ---
-    for ups in sys_data.ups_devices or []:
-        for suffix in (
-            "battery",
-            "load",
-            "runtime",
-            "power",
-            "energy",
-            "input_voltage",
-            "output_voltage",
-            "battery_health",
-            "status",
-            "connected",
-        ):
-            expected.add(f"{pfx}ups_{ups.id}_{suffix}")
-
-    # --- Hardware temperature sensors ---
-    # Use a conditional iterable to avoid a separate if branch (PLR0912).
-    for sensor in (
-        sys_data.metrics.temperature.sensors
-        if (sys_data.metrics and sys_data.metrics.temperature is not None)
-        else []
-    ):
-        expected.add(f"{pfx}temp_{sensor.id}")
-
-    # --- Network interfaces ---
-    for iface in sys_data.network_metrics or []:
-        if iface.name is not None:
-            expected.update(
-                {
-                    f"{pfx}network_{iface.name}_rx",
-                    f"{pfx}network_{iface.name}_tx",
-                }
-            )
-
-    # --- Array disks (data, parity, cache, and boot/flash) ---
-    all_disks = list(stor_data.disks or [])
-    all_disks.extend(stor_data.parities or [])
-    all_disks.extend(stor_data.caches or [])
-    if stor_data.boot is not None:
-        all_disks.append(stor_data.boot)
-
-    for disk in all_disks:
-        if disk.id is None:
-            continue
-        expected.update(
-            {
-                f"{pfx}disk_{disk.id}_temp",
-                f"{pfx}disk_{disk.id}_errors",
-                f"{pfx}disk_{disk.id}_usage",
-                f"{pfx}disk_health_{disk.id}",
-                f"{pfx}disk_spin_{disk.id}",
-            }
-        )
-
-    # --- Shares ---
-    for share in stor_data.shares or []:
-        if share.id is None:
-            continue
-        expected.add(f"{pfx}share_{share.id}_usage")
-
+    expected = _build_system_dynamic_unique_ids(pfx, sys_data)
+    expected.update(_build_storage_dynamic_unique_ids(pfx, stor_data))
     return frozenset(expected)
 
 
 # ---------------------------------------------------------------------------
-# Core cleanup logic
-# ---------------------------------------------------------------------------
+def _collect_stale_dynamic_entities(
+    entry_id: str,
+    server_uuid_prefix: str,
+    registered: list[er.RegistryEntry],
+    expected: frozenset[str],
+    empty_live_categories: dict[str, bool],
+) -> tuple[list[er.RegistryEntry], set[str]]:
+    """Inspect registered entities and collect candidates for removal."""
+    orphans: list[er.RegistryEntry] = []
+    present_uids: set[str] = set()
+    skipped_categories: set[str] = set()
+
+    for entity_entry in registered:
+        uid = entity_entry.unique_id
+        if not uid.startswith(server_uuid_prefix):
+            # Entity belongs to a different server (multi-instance setups).
+            continue
+
+        resource_id = uid[len(server_uuid_prefix) :]
+
+        if not _is_dynamic_resource_id(resource_id):
+            # Static entity — never prune.
+            continue
+
+        category = _get_dynamic_resource_category(resource_id)
+        if category and empty_live_categories.get(category):
+            if category not in skipped_categories:
+                _LOGGER.info(
+                    "Skipping %s entity cleanup for entry %s: live %s list is empty "
+                    "but registered entities exist",
+                    category,
+                    entry_id,
+                    category,
+                )
+                skipped_categories.add(category)
+            continue
+
+        if uid in expected:
+            present_uids.add(uid)
+            continue
+
+        # Dynamic entity whose resource is absent from this refresh. Only
+        # remove it after it has been missing for several consecutive
+        # successful refreshes, so a transient API gap does not delete it.
+        streak = _missing_streaks.get(uid, 0) + 1
+        _missing_streaks[uid] = streak
+        if streak < _MISSING_STREAK_THRESHOLD:
+            _LOGGER.debug(
+                "Entity %s (unique_id=%s) missing for %d consecutive refresh(es) "
+                "for entry %s; deferring removal until %d",
+                entity_entry.entity_id,
+                uid,
+                streak,
+                entry_id,
+                _MISSING_STREAK_THRESHOLD,
+            )
+            continue
+        orphans.append(entity_entry)
+
+    return orphans, present_uids
 
 
 def async_cleanup_stale_entities(
@@ -315,43 +404,20 @@ def async_cleanup_stale_entities(
     ent_reg = er.async_get(hass)
     registered = er.async_entries_for_config_entry(ent_reg, entry_id)
 
-    server_uuid_prefix = f"{server_uuid}_"
-    orphans: list[er.RegistryEntry] = []
-    present_uids: set[str] = set()
+    empty_live_categories: dict[str, bool] = {
+        "containers": not bool(sys_data.containers),
+        "vms": not bool(sys_data.vms),
+        "ups_devices": not bool(sys_data.ups_devices),
+        "network_metrics": not bool(sys_data.network_metrics),
+    }
 
-    for entity_entry in registered:
-        uid = entity_entry.unique_id
-        if not uid.startswith(server_uuid_prefix):
-            # Entity belongs to a different server (multi-instance setups).
-            continue
-
-        resource_id = uid[len(server_uuid_prefix) :]
-
-        if not _is_dynamic_resource_id(resource_id):
-            # Static entity — never prune.
-            continue
-
-        if uid in expected:
-            present_uids.add(uid)
-            continue
-
-        # Dynamic entity whose resource is absent from this refresh. Only
-        # remove it after it has been missing for several consecutive
-        # successful refreshes, so a transient API gap does not delete it.
-        streak = _missing_streaks.get(uid, 0) + 1
-        _missing_streaks[uid] = streak
-        if streak < _MISSING_STREAK_THRESHOLD:
-            _LOGGER.debug(
-                "Entity %s (unique_id=%s) missing for %d consecutive refresh(es) "
-                "for entry %s; deferring removal until %d",
-                entity_entry.entity_id,
-                uid,
-                streak,
-                entry_id,
-                _MISSING_STREAK_THRESHOLD,
-            )
-            continue
-        orphans.append(entity_entry)
+    orphans, present_uids = _collect_stale_dynamic_entities(
+        entry_id=entry_id,
+        server_uuid_prefix=f"{server_uuid}_",
+        registered=registered,
+        expected=expected,
+        empty_live_categories=empty_live_categories,
+    )
 
     # Reset streaks for resources that came back and drop counters for
     # entities that are no longer registered (removed above or elsewhere).

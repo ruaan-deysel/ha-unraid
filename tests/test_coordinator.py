@@ -2219,23 +2219,89 @@ def test_storage_data_boot_fallback() -> None:
 @pytest.mark.parametrize(
     ("method", "client_method", "empty"),
     [
-        ("_query_optional_docker", "typed_get_containers_safe", []),
-        ("_query_optional_vms", "typed_get_vms", []),
-        ("_query_optional_ups", "typed_get_ups_devices", []),
+        ("_query_optional_docker", "typed_get_containers_safe", None),
+        ("_query_optional_vms", "typed_get_vms", None),
+        ("_query_optional_ups", "typed_get_ups_devices", None),
         ("_query_optional_mover_status", "typed_get_vars", None),
-        ("_query_optional_network_metrics", "get_network_metrics", []),
+        ("_query_optional_network_metrics", "get_network_metrics", None),
     ],
 )
 async def test_system_optional_queries_fail_gracefully(
     hass, mock_api_client, mock_config_entry, method, client_method, empty
 ):
-    """Optional system queries return empty results on API errors."""
+    """Optional system queries return None on API errors."""
     setattr(
         mock_api_client, client_method, AsyncMock(side_effect=UnraidAPIError("nope"))
     )
     coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
 
     assert await getattr(coordinator, method)() == empty
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_last_known_good_docker_fallback(
+    hass, mock_api_client, mock_config_entry
+):
+    """Docker containers fallback to last known-good cache when optional query fails."""
+    container = make_docker_container(name="plex")
+    mock_api_client.typed_get_containers_safe = AsyncMock(return_value=[container])
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    # First update succeeds and populates cache
+    data = await coordinator._async_update_data()
+    assert len(data.containers) == 1
+    assert data.containers[0].name == "plex"
+
+    # Next update has a Docker query error (e.g. HTTP 504 / timeout)
+    mock_api_client.typed_get_containers_safe = AsyncMock(
+        side_effect=UnraidAPIError("HTTP error 504")
+    )
+    coordinator._force_docker_refresh = True
+    data_after_error = await coordinator._async_update_data()
+
+    # Containers should be preserved from last known-good cache
+    assert len(data_after_error.containers) == 1
+    assert data_after_error.containers[0].name == "plex"
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_last_known_good_vms_ups_network_fallback(
+    hass, mock_api_client, mock_config_entry
+):
+    """Optional resources fall back to last known-good cache on query failure."""
+    from unraid_api.models import NetworkMetrics
+
+    vm = make_vm(name="windows11")
+    ups = make_ups(name="CyberPower")
+    net = NetworkMetrics(name="eth0")
+
+    mock_api_client.typed_get_vms = AsyncMock(return_value=[vm])
+    mock_api_client.typed_get_ups_devices = AsyncMock(return_value=[ups])
+    mock_api_client.get_network_metrics = AsyncMock(return_value=[net])
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    # First update populates caches
+    data = await coordinator._async_update_data()
+    assert len(data.vms) == 1
+    assert len(data.ups_devices) == 1
+    assert len(data.network_metrics) == 1
+
+    # Second update where queries fail
+    mock_api_client.typed_get_vms = AsyncMock(side_effect=UnraidTimeoutError("timeout"))
+    mock_api_client.typed_get_ups_devices = AsyncMock(
+        side_effect=UnraidConnectionError("conn err")
+    )
+    mock_api_client.get_network_metrics = AsyncMock(
+        side_effect=UnraidAPIError("api err")
+    )
+
+    data2 = await coordinator._async_update_data()
+    assert len(data2.vms) == 1
+    assert data2.vms[0].name == "windows11"
+    assert len(data2.ups_devices) == 1
+    assert data2.ups_devices[0].name == "CyberPower"
+    assert len(data2.network_metrics) == 1
+    assert data2.network_metrics[0].name == "eth0"
 
 
 @pytest.mark.asyncio

@@ -40,15 +40,22 @@ async def _async_update_data(self) -> UnraidXxxData:
 
 ## Optional Services Pattern
 
-Docker, VMs, and UPS may not be enabled. Query them separately with graceful fallback:
+Docker, VMs, UPS, and network metrics may not be enabled or may transiently fail.
+Query them separately with `list[...] | None` return types:
+
+- **Return `None` on caught error** (`UnraidAPIError`, `UnraidConnectionError`, `UnraidTimeoutError`) so query failure is distinct from an empty resource list.
+- **Cache last known-good data**: Coordinators maintain `_cached_containers`, `_cached_vms`, `_cached_ups_devices`, and `_cached_network_metrics` to preserve entities during transient failures.
+- **Re-raise `UnraidAuthenticationError`** to ensure auth failures are never swallowed.
 
 ```python
-async def _query_optional_docker(self) -> list[DockerContainer]:
+async def _query_optional_docker(self) -> list[DockerContainer] | None:
     try:
-        return await self.api_client.typed_get_containers()
-    except (UnraidAPIError, UnraidConnectionError) as err:
+        return await self.api_client.typed_get_containers_safe()
+    except UnraidAuthenticationError:
+        raise
+    except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
         _LOGGER.debug("Docker data not available: %s", err)
-        return []
+        return None
 ```
 
 ## Recovery Logging

@@ -10,16 +10,16 @@
 - [ ] ✨ New feature (non-breaking change which adds functionality)
 - [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] 📝 Documentation update
-- [ ] 🔧 Configuration change
+- [ ] 🔧 Configuration / CI change
 - [ ] ♻️ Code refactoring (no functional changes)
 - [ ] ⚡ Performance improvement
-- [ ] ✅ Test update
+- [ ] ✅ Test update / new tests
 
 ## Related Issue
 
-<!-- Link to the issue this PR addresses -->
+<!-- Link to the issue this PR addresses (e.g. Fixes #123, Closes #456) -->
 
-Fixes #(issue number)
+Fixes #
 
 ## Changes Made
 
@@ -29,38 +29,40 @@ Fixes #(issue number)
 -
 -
 
-## Testing
+## ⚠️ Critical Rule: Never Bypass `unraid-api`
 
-<!-- Describe the testing you've done -->
+<!-- MANDATORY — All communication with the Unraid server must go through unraid-api. Failure to comply blocks merge. -->
 
-- [ ] Code lints successfully (`./script/lint`)
-- [ ] Tests pass (`pytest`)
-- [ ] Tested in development environment (`./script/develop`)
-- [ ] Manual testing completed
+- [ ] This PR does **not** bypass `unraid-api`: no direct GraphQL, HTTP/REST, WebSocket, SSH, or raw socket calls to the Unraid server have been added.
+- [ ] All communication with the Unraid server strictly uses `UnraidClient` from `unraid-api`.
+- [ ] If functionality needed for this PR is missing or incomplete in `unraid-api`, an issue has been filed at https://github.com/ruaan-deysel/unraid-api and this PR waits for the library to ship it.
 
-## ⚠️ API Boundary
+## Quality & Architecture Checklist
 
-<!-- MANDATORY — failure to comply blocks merge -->
+<!-- Ensure the following Home Assistant integration standards and rules are met -->
 
-- [ ] This PR does **not** bypass `unraid-api`: no direct GraphQL, HTTP, WebSocket, or SSH calls to the Unraid server have been added. All Unraid communication goes through `UnraidClient`.
-- [ ] If functionality needed for this PR is missing from `unraid-api`, an issue has been filed at https://github.com/ruaan-deysel/unraid-api and this PR waits for the library to ship it.
+- [ ] **Small & Focused**: This PR addresses **only one issue or feature**.
+- [ ] **Python Conventions**: Includes `from __future__ import annotations` and explicit type hints on all public functions.
+- [ ] **Entity Standards**: Follows `UnraidBaseEntity` / `UnraidEntity`, sets `_attr_has_entity_name = True`, and uses `_attr_translation_key` (no hardcoded English names).
+- [ ] **Translations & Icons**: Any new/modified entity names are present in `strings.json` and generated in `translations/en.json`, with corresponding entries in `icons.json`.
+- [ ] **Coordinators & State**: Uses the Triple Coordinator pattern; polling intervals remain fixed constants from `const.py` (not user-configurable); runtime data accessed via `config_entry.runtime_data`.
+- [ ] **Dynamic Resources & Cleanup**: Any new dynamic/per-resource entities are properly tracked in `cleanup.py` and guarded against spurious removal.
+- [ ] **Self-Review**: I have performed a self-review of my code and added explanatory comments for non-obvious logic.
 
-## Checklist
+## Validation & Verification
 
-<!-- Ensure all items are completed before submitting -->
+<!-- Please run and verify all local checks before submitting -->
 
-- [ ] This PR addresses **only one issue or feature** (not multiple unrelated changes)
-- [ ] My code follows the project's style guidelines
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have updated the documentation accordingly
-- [ ] My changes generate no new warnings or errors
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] All new and existing tests pass
+- [ ] Boundary check passes: `./script/check_api_boundary.py` (or `./script/check`)
+- [ ] Code formatting & linting pass: `./script/lint` (or `ruff check . && ruff format .`)
+- [ ] Type checking passes: `./script/type-check` (or `mypy custom_components/unraid`)
+- [ ] Unit tests pass with coverage >= 95%: `./script/test` (or `pytest`)
+- [ ] Integration validation passes: `./script/check`
+- [ ] Tested in local development environment: `./script/develop` (Home Assistant loads cleanly without unexpected errors or warnings)
 
-## Screenshots (if applicable)
+## Screenshots / Verification Output (if applicable)
 
-<!-- Add screenshots to help explain your changes -->
+<!-- Add screenshots, logs, or terminal output demonstrating the fix or feature -->
 
 ## Additional Context
 
@@ -68,4 +70,4 @@ Fixes #(issue number)
 
 ---
 
-**📌 Reminder**: Please keep pull requests small and focused on a single issue or feature. This makes review and testing much easier! If you have multiple changes, please submit separate PRs. See [CONTRIBUTING.md](../CONTRIBUTING.md#keep-pull-requests-small-and-focused) for more details.
+**📌 Reminder**: Please keep pull requests small and focused on a single issue or feature. This makes review and testing much easier! If you have multiple changes, please submit separate PRs. See [CONTRIBUTING.md](../CONTRIBUTING.md#keep-pull-requests-small-and-focused) for details.

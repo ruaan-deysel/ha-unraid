@@ -43,15 +43,21 @@ Before adding a service action, consider whether an entity-based control (switch
    import voluptuous as vol
    from homeassistant.helpers import config_validation as cv
 
-   MY_ACTION_SCHEMA = vol.Schema({
-       vol.Required("parameter"): cv.string,
-   })
+   MY_ACTION_SCHEMA = vol.Schema(
+       {
+           vol.Required("parameter"): cv.string,
+       }
+   )
+
 
    async def async_handle_my_action(call: ServiceCall) -> None:
        # Implementation — inputs already validated by the framework
        pass
 
-   hass.services.async_register(DOMAIN, "my_action", async_handle_my_action, schema=MY_ACTION_SCHEMA)
+
+   hass.services.async_register(
+       DOMAIN, "my_action", async_handle_my_action, schema=MY_ACTION_SCHEMA
+   )
    ```
 
 3. **Unregister** in `async_unload_entry()`:
