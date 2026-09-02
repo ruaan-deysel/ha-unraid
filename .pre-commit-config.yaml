@@ -49,6 +49,6 @@ repos:
       - id: pip-audit
         name: pip-audit (dependency vulnerability scan)
         language: system
-        entry: bash -c 'export PATH="$PWD/.local/ha-venv/bin:$HOME/.local/ha-venv/bin:$PATH" && uv export --no-hashes --frozen > /tmp/pre-commit-requirements.txt && pip-audit --disable-pip --no-deps -r /tmp/pre-commit-requirements.txt'
+        entry: bash -c 'export PATH="$PWD/.local/ha-venv/bin:$HOME/.local/ha-venv/bin:$PATH" && REQ_FILE=$(mktemp) && trap "rm -f \"$REQ_FILE\"" EXIT && uv export --no-hashes --frozen > "$REQ_FILE" && pip-audit --disable-pip --no-deps -r "$REQ_FILE"'
         files: ^uv\.lock$
         pass_filenames: false

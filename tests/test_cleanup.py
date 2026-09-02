@@ -561,6 +561,7 @@ class TestAsyncCleanupStaleEntities:
 
         mock_reg.async_remove.assert_not_called()
         assert f"{_UUID}_container_switch_oldapp" not in cleanup_module._missing_streaks
+        assert f"{_UUID}_container_oldapp_cpu" not in cleanup_module._missing_streaks
 
     async def test_removes_all_containers_when_query_succeeded_empty(
         self, hass: HomeAssistant
