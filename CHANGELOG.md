@@ -7,10 +7,14 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Added
+
+- **Pull Request Template** ([#302](https://github.com/ruaan-deysel/ha-unraid/pull/302)): Added a pull request template (`.github/PULL_REQUEST_TEMPLATE.md`) with contributor checklists for `unraid-api` boundary compliance, Home Assistant Integration Quality Scale standards, and test/lint validation.
+
 ### Fixed
 
-- **Sensors Do Not Round Correctly in Templates and External Dashboards** ([#296](https://github.com/ruaan-deysel/ha-unraid/issues/296)): Numeric sensor values (CPU, RAM, Swap, Temperatures, Array usage, Share usage, Docker stats, UPS metrics) are now cleanly rounded in `native_value` to match their natural resolution and `suggested_display_precision`. Templates (e.g. `{{ states('sensor.tower_cpu_usage') }}`), external dashboards (Homarr, MQTT, Node-RED, REST), and automations now receive clean, expected numerical values matching the Home Assistant frontend display without requiring manual `| round(...)` filters in YAML.
-- **Dynamic Entity Pruning on Optional Query Failures** ([#297](https://github.com/ruaan-deysel/ha-unraid/issues/297)): Optional queries for Docker containers, VMs, UPS devices, and network metrics now return `None` on caught network/API errors rather than an empty list, allowing `UnraidSystemCoordinator` to retain last known-good cached data and preventing entity cleanup from incorrectly pruning active entities when an optional query fails.
+- **Sensors Do Not Round Correctly in Templates and External Dashboards** ([#296](https://github.com/ruaan-deysel/ha-unraid/issues/296), [#302](https://github.com/ruaan-deysel/ha-unraid/pull/302)): Numeric sensor values (CPU, RAM, Swap, Temperatures, Array usage, Share usage, Docker stats, UPS metrics) are now cleanly rounded in `native_value` to match their natural resolution and `suggested_display_precision`. Templates (e.g. `{{ states('sensor.tower_cpu_usage') }}`), external dashboards (Homarr, MQTT, Node-RED, REST), and automations now receive clean, expected numerical values matching the Home Assistant frontend display without requiring manual `| round(...)` filters in YAML.
+- **Dynamic Entity Pruning on Optional Query Failures** ([#297](https://github.com/ruaan-deysel/ha-unraid/issues/297), [#302](https://github.com/ruaan-deysel/ha-unraid/pull/302)): Optional queries for Docker containers, VMs, UPS devices, and network metrics now return `None` on caught network/API errors rather than an empty list, allowing `UnraidSystemCoordinator` to retain last known-good cached data and preventing entity cleanup from incorrectly pruning active entities when an optional query fails.
 
 ## [2026.8.1] - 2026-08-31
 
