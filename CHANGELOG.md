@@ -7,9 +7,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
-### Added
-
-- **Pull Request Template** ([#302](https://github.com/ruaan-deysel/ha-unraid/pull/302)): Added a pull request template (`.github/PULL_REQUEST_TEMPLATE.md`) with contributor checklists for `unraid-api` boundary compliance, Home Assistant Integration Quality Scale standards, and test/lint validation.
+## [2026.9.0] - 2026-09-02
 
 ### Fixed
 
