@@ -20,7 +20,7 @@ Intervals are **fixed** (not user-configurable) per HA Core guidelines.
 
 Each coordinator returns a typed dataclass:
 
-- `UnraidSystemData` — `info: ServerInfo`, `metrics: SystemMetrics`, `containers`, `vms`, `ups_devices`, `notification_overview`
+- `UnraidSystemData` — `info: ServerInfo`, `metrics: SystemMetrics`, `containers`, `vms`, `ups_devices`, `network_metrics`, `notification_overview`
 - `UnraidStorageData` — `array: UnraidArray`, `shares`, `parity_history` + convenience properties
 - `UnraidInfraData` — `services`, `registration`, `cloud`, `remote_access`, `plugins`, `vars`
 

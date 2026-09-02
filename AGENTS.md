@@ -115,7 +115,7 @@ Access in platform setup: `entry.runtime_data.system_coordinator`, etc.
 
 Each coordinator returns a typed dataclass:
 
-- `UnraidSystemData` — `info`, `metrics`, `containers`, `vms`, `ups_devices`, `notification_overview`
+- `UnraidSystemData` — `info`, `metrics`, `containers`, `vms`, `ups_devices`, `network_metrics`, `notification_overview`
 - `UnraidStorageData` — `array`, `shares`, `parity_history` (+ convenience properties: `array_state`, `capacity`, `parity_status`, `boot`, `disks`, `parities`, `caches`)
 - `UnraidInfraData` — `services`, `registration`, `cloud`, `remote_access`, `plugins`, `vars`
 
