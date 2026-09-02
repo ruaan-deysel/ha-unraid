@@ -57,7 +57,7 @@ Each coordinator:
 - Returns a typed dataclass (`UnraidSystemData`, `UnraidStorageData`, `UnraidInfraData`)
 - Handles auth errors → `ConfigEntryAuthFailed` (triggers reauth)
 - Handles connection errors → `UpdateFailed` (retries next interval)
-- Queries optional services (Docker, VMs, UPS) with graceful fallback to empty lists
+- Queries optional services (Docker, VMs, UPS, network) returning `None` on failure while preserving the last known-good cache; successful empty queries return empty lists
 - Tracks `_previously_unavailable` for recovery logging
 
 ### Runtime Data

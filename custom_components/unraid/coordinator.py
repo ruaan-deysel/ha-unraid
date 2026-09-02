@@ -241,19 +241,15 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         self, event_data: UnraidNotificationEventData
     ) -> None:
         """Notify listeners about a newly detected event."""
-        errors: list[Exception] = []
         for callback in self._event_listeners.get(event_data.event_type, []):
             try:
                 callback(event_data)
-            except Exception as err:
+            except Exception:
                 _LOGGER.exception(
                     "Error calling notification event listener for %s on %s",
                     event_data.event_type,
                     self._server_name,
                 )
-                errors.append(err)
-        if errors:
-            raise errors[0]
 
     async def _async_load_seen_notification_ids(self) -> None:
         """Load persisted seen notification IDs once."""
@@ -803,7 +799,10 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         """
         _LOGGER.debug("Starting system data update")
         try:
-            # Phase 1: Required calls — run concurrently; any failure raises immediately
+            # Phase 1: Required calls — run concurrently.
+            # NOTE: Use get_system_metrics_safe() to avoid querying individual disk
+            # temperatures (metrics.temperature.sensors), which invokes smartctl and
+            # wakes sleeping disks on every 30s poll.
             metrics, notifications = await asyncio.gather(
                 self.api_client.get_system_metrics_safe(),
                 self.api_client.get_notification_overview(),

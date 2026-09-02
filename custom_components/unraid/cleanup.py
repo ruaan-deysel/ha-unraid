@@ -282,6 +282,10 @@ def build_expected_dynamic_unique_ids(
 
 
 # ---------------------------------------------------------------------------
+# Entity inspection & candidate collection
+# ---------------------------------------------------------------------------
+
+
 def _collect_stale_dynamic_entities(
     entry_id: str,
     server_uuid_prefix: str,
@@ -404,8 +408,11 @@ def async_cleanup_stale_entities(
     ent_reg = er.async_get(hass)
     registered = er.async_entries_for_config_entry(ent_reg, entry_id)
 
-    query_status = getattr(system_coordinator, "optional_query_status", {})
-    failed_categories = {cat for cat, success in query_status.items() if not success}
+    failed_categories = {
+        cat
+        for cat, success in system_coordinator.optional_query_status.items()
+        if not success
+    }
 
     orphans, present_uids = _collect_stale_dynamic_entities(
         entry_id=entry_id,

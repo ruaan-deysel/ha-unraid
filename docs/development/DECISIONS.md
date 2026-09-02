@@ -176,25 +176,24 @@ Each decision is documented with:
 
 ---
 
-### Centralized Sensor State Rounding
+### Sensor Precision and Formatting
 
 **Date:** 2026-09
 
-**Context:** While `_attr_suggested_display_precision` provides frontend formatting hints, Home Assistant's state engine records the raw unrounded float from `native_value`. Consequently, Jinja templates, external integrations (e.g., Homarr, MQTT, Node-RED, REST), and automations reading `states('sensor...')` received high-precision unrounded floats (e.g., `23.456789%`).
+**Context:** The API sometimes returns floating-point metrics with excessive precision (e.g. `23.456789%`). While `_attr_suggested_display_precision` formats numbers in the UI, templates and external dashboards (Homarr, MQTT, Node-RED, REST) reading the sensor state receive `native_value`. Overriding `state` on `SensorEntity` violates Home Assistant architectural rules and can bypass core unit conversions and statistics processing.
 
-**Decision:** Override `state` in `UnraidSensorEntity` to round the reported numeric state to `suggested_display_precision` if configured on the sensor, while keeping `native_value` unrounded.
+**Decision:** Round `native_value` directly in numeric sensors to match their natural resolution (e.g. 1 decimal place for CPU, RAM, and temperatures; 0 decimals for battery and integer percentages) while setting `_attr_suggested_display_precision`. Never override the `state` property on `SensorEntity`.
 
 **Rationale:**
 
-- Centralized in `UnraidSensorEntity` so all Unraid sensors consistently report properly formatted states
-- Leaves `native_value` intact and unrounded for accuracy
-- Templates and external consumers receive clean, expected numerical values matching the UI display without requiring extra `| round(...)` filters in YAML
-- Non-numeric and sensors without precision hints remain unaffected
+- Fully compliant with Home Assistant core architecture and Integration Quality Scale
+- Preserves core unit conversion, state class validation, and recorder statistics
+- Templates and external consumers receive clean, expected numerical values without extra YAML filters
 
 **Consequences:**
 
-- `sensor.state` is rounded to `suggested_display_precision`
-- External dashboards and templates display clean numbers out-of-the-box
+- `native_value` and state values reflect the clean, rounded resolution
+- Fully native Home Assistant behavior across all platforms and consumers
 
 ---
 

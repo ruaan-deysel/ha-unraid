@@ -2217,7 +2217,7 @@ def test_storage_data_boot_fallback() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("method", "client_method", "empty"),
+    ("method", "client_method", "expected"),
     [
         ("_query_optional_docker", "typed_get_containers_safe", None),
         ("_query_optional_vms", "typed_get_vms", None),
@@ -2227,7 +2227,7 @@ def test_storage_data_boot_fallback() -> None:
     ],
 )
 async def test_system_optional_queries_fail_gracefully(
-    hass, mock_api_client, mock_config_entry, method, client_method, empty
+    hass, mock_api_client, mock_config_entry, method, client_method, expected
 ):
     """Optional system queries return None on API errors."""
     setattr(
@@ -2235,7 +2235,7 @@ async def test_system_optional_queries_fail_gracefully(
     )
     coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
 
-    assert await getattr(coordinator, method)() == empty
+    assert await getattr(coordinator, method)() == expected
 
 
 @pytest.mark.asyncio
@@ -2251,6 +2251,7 @@ async def test_system_coordinator_last_known_good_docker_fallback(
     data = await coordinator._async_update_data()
     assert len(data.containers) == 1
     assert data.containers[0].name == "plex"
+    assert coordinator.optional_query_status["containers"] is True
 
     # Next update has a Docker query error (e.g. HTTP 504 / timeout)
     mock_api_client.typed_get_containers_safe = AsyncMock(
@@ -2262,6 +2263,7 @@ async def test_system_coordinator_last_known_good_docker_fallback(
     # Containers should be preserved from last known-good cache
     assert len(data_after_error.containers) == 1
     assert data_after_error.containers[0].name == "plex"
+    assert coordinator.optional_query_status["containers"] is False
 
 
 @pytest.mark.asyncio
@@ -2285,6 +2287,9 @@ async def test_system_coordinator_last_known_good_vms_ups_network_fallback(
     assert len(data.vms) == 1
     assert len(data.ups_devices) == 1
     assert len(data.network_metrics) == 1
+    assert coordinator.optional_query_status["vms"] is True
+    assert coordinator.optional_query_status["ups_devices"] is True
+    assert coordinator.optional_query_status["network_metrics"] is True
 
     # Second update where queries fail
     mock_api_client.typed_get_vms = AsyncMock(side_effect=UnraidTimeoutError("timeout"))
@@ -2302,6 +2307,9 @@ async def test_system_coordinator_last_known_good_vms_ups_network_fallback(
     assert data2.ups_devices[0].name == "CyberPower"
     assert len(data2.network_metrics) == 1
     assert data2.network_metrics[0].name == "eth0"
+    assert coordinator.optional_query_status["vms"] is False
+    assert coordinator.optional_query_status["ups_devices"] is False
+    assert coordinator.optional_query_status["network_metrics"] is False
 
 
 @pytest.mark.asyncio
@@ -2620,8 +2628,8 @@ async def test_notification_listener_exception_does_not_break_processing(
     await coordinator._async_process_notification_events()
 
     assert received == ["n2"]
-    # The failing notification stays unseen so it can be retried
-    assert coordinator._seen_notification_ids == {"n2"}
+    # The notification is recorded as seen so working listeners are not re-spammed
+    assert coordinator._seen_notification_ids == {"n1", "n2"}
 
 
 @pytest.mark.asyncio

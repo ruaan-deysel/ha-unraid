@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.unraid import cleanup as cleanup_module
 from custom_components.unraid.cleanup import (
     _MISSING_STREAK_THRESHOLD,
+    _get_dynamic_resource_category,
     _is_dynamic_resource_id,
     async_cleanup_stale_entities,
     build_expected_dynamic_unique_ids,
@@ -161,10 +162,12 @@ class TestIsDynamicResourceId:
     def test_unraid_version_is_static(self) -> None:
         assert _is_dynamic_resource_id("unraid_version") is False
 
+
+class TestGetDynamicResourceCategory:
+    """Tests for the _get_dynamic_resource_category helper."""
+
     def test_get_dynamic_resource_category(self) -> None:
         """Category helper classifies dynamic resources correctly."""
-        from custom_components.unraid.cleanup import _get_dynamic_resource_category
-
         assert _get_dynamic_resource_category("container_switch_app") == "containers"
         assert _get_dynamic_resource_category("vm_switch_win") == "vms"
         assert _get_dynamic_resource_category("ups_apc_battery") == "ups_devices"

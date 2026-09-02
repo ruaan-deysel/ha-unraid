@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
@@ -23,7 +22,6 @@ from homeassistant.const import (
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api import format_bytes
 
@@ -110,27 +108,6 @@ class UnraidSensorEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordi
             server_info=server_info,
         )
 
-    @property
-    def state(self) -> StateType | date | datetime | Decimal:
-        """
-        Return the state of the entity.
-
-        Rounds to suggested_display_precision if configured.
-        """
-        try:
-            value = super().state
-        except (ValueError, AttributeError):
-            value = self.native_value
-
-        precision = self.suggested_display_precision
-        if (
-            precision is not None
-            and isinstance(value, (int, float))
-            and not isinstance(value, bool)
-        ):
-            return round(value, precision)
-        return value
-
 
 class CpuSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """CPU usage sensor with model and core count attributes."""
@@ -161,9 +138,9 @@ class CpuSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return CPU usage percentage."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.metrics.cpu_percent is None:
             return None
-        return data.metrics.cpu_percent
+        return round(data.metrics.cpu_percent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -205,9 +182,9 @@ class RAMUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return memory usage percentage."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.metrics.memory_percent is None:
             return None
-        return data.metrics.memory_percent
+        return round(data.metrics.memory_percent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -302,9 +279,9 @@ class SwapUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return swap usage percentage."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.metrics.swap_percent is None:
             return None
-        return data.metrics.swap_percent
+        return round(data.metrics.swap_percent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -484,9 +461,9 @@ class TemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return average CPU temperature."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.metrics.average_cpu_temperature is None:
             return None
-        return data.metrics.average_cpu_temperature
+        return round(data.metrics.average_cpu_temperature, 1)
 
 
 class SystemTemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
@@ -533,9 +510,13 @@ class SystemTemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return the current temperature value."""
         sensor = self._get_sensor()
-        if sensor is None or not _is_valid_system_temp_sensor(sensor):
+        if (
+            sensor is None
+            or not _is_valid_system_temp_sensor(sensor)
+            or sensor.temperature is None
+        ):
             return None
-        return sensor.temperature
+        return round(sensor.temperature, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -657,9 +638,9 @@ class CpuPowerSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return CPU power consumption in watts."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None:
+        if data is None or data.metrics.cpu_power is None:
             return None
-        return data.metrics.cpu_power
+        return round(data.metrics.cpu_power, 1)
 
 
 class UnraidVersionSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
@@ -1285,9 +1266,9 @@ class ArrayUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     def native_value(self) -> float | None:
         """Return array usage percentage."""
         data: UnraidStorageData | None = self.coordinator.data
-        if data is None or data.capacity is None:
+        if data is None or data.capacity is None or data.capacity.usage_percent is None:
             return None
-        return data.capacity.usage_percent
+        return round(data.capacity.usage_percent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1798,9 +1779,9 @@ class UPSLoadSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     def native_value(self) -> float | None:
         """Return UPS load percentage."""
         ups = self._get_ups()
-        if ups is None:
+        if ups is None or ups.power.loadPercentage is None:
             return None
-        return ups.power.loadPercentage
+        return round(ups.power.loadPercentage, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -2216,9 +2197,9 @@ class ShareUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     def native_value(self) -> float | None:
         """Return share usage percentage."""
         share = self._get_share()
-        if share is None:
+        if share is None or share.usage_percent is None:
             return None
-        return share.usage_percent
+        return round(share.usage_percent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -2342,9 +2323,9 @@ class ContainerCpuSensor(
         if self._is_container_stopped():
             return 0.0
         stats = self._get_current_stats()
-        if stats is None:
+        if stats is None or stats.cpuPercent is None:
             return None
-        return stats.cpuPercent
+        return round(stats.cpuPercent, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -2446,9 +2427,9 @@ class ContainerMemoryPercentSensor(
         if self._is_container_stopped():
             return 0.0
         stats = self._get_current_stats()
-        if stats is None:
+        if stats is None or stats.memPercent is None:
             return None
-        return stats.memPercent
+        return round(stats.memPercent, 1)
 
 
 # =============================================================================
