@@ -176,6 +176,27 @@ Each decision is documented with:
 
 ---
 
+### Sensor Precision and Formatting
+
+**Date:** 2026-09
+
+**Context:** The API sometimes returns floating-point metrics with excessive precision (e.g. `23.456789%`). While `_attr_suggested_display_precision` formats numbers in the UI, templates and external dashboards (Homarr, MQTT, Node-RED, REST) reading the sensor state receive `native_value`. Overriding `state` on `SensorEntity` violates Home Assistant architectural rules and can bypass core unit conversions and statistics processing.
+
+**Decision:** Round `native_value` directly in numeric sensors to match their natural resolution (e.g. 1 decimal place for CPU, RAM, and temperatures; 0 decimals for battery and integer percentages) while setting `_attr_suggested_display_precision`. Never override the `state` property on `SensorEntity`.
+
+**Rationale:**
+
+- Fully compliant with Home Assistant core architecture and Integration Quality Scale
+- Preserves core unit conversion, state class validation, and recorder statistics
+- Templates and external consumers receive clean, expected numerical values without extra YAML filters
+
+**Consequences:**
+
+- `native_value` and state values reflect the clean, rounded resolution
+- Fully native Home Assistant behavior across all platforms and consumers
+
+---
+
 ## Future Considerations
 
 ### WebSocket/Push Updates

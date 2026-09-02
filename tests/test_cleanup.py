@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.unraid import cleanup as cleanup_module
 from custom_components.unraid.cleanup import (
     _MISSING_STREAK_THRESHOLD,
+    _get_dynamic_resource_category,
     _is_dynamic_resource_id,
     async_cleanup_stale_entities,
     build_expected_dynamic_unique_ids,
@@ -158,11 +159,22 @@ class TestIsDynamicResourceId:
     def test_check_container_updates_is_static(self) -> None:
         assert _is_dynamic_resource_id("check_container_updates") is False
 
-    def test_docker_total_cpu_is_static(self) -> None:
-        assert _is_dynamic_resource_id("docker_total_cpu") is False
-
     def test_unraid_version_is_static(self) -> None:
         assert _is_dynamic_resource_id("unraid_version") is False
+
+
+class TestGetDynamicResourceCategory:
+    """Tests for the _get_dynamic_resource_category helper."""
+
+    def test_get_dynamic_resource_category(self) -> None:
+        """Category helper classifies dynamic resources correctly."""
+        assert _get_dynamic_resource_category("container_switch_app") == "containers"
+        assert _get_dynamic_resource_category("vm_switch_win") == "vms"
+        assert _get_dynamic_resource_category("ups_apc_battery") == "ups_devices"
+        assert _get_dynamic_resource_category("network_eth0_rx") == "network_metrics"
+        assert _get_dynamic_resource_category("disk_sda_temp") is None
+        assert _get_dynamic_resource_category("container_updates_count") is None
+        assert _get_dynamic_resource_category("network_access") is None
 
 
 # =============================================================================
@@ -341,10 +353,21 @@ class TestAsyncCleanupStaleEntities:
         *,
         last_update_success: bool = True,
         data_override: object = _SENTINEL,
+        optional_query_status: dict[str, bool] | None = None,
     ) -> MagicMock:
         coord = MagicMock()
         coord.last_update_success = last_update_success
         coord.data = make_system_data() if data_override is _SENTINEL else data_override
+        coord.optional_query_status = (
+            {
+                "containers": True,
+                "vms": True,
+                "ups_devices": True,
+                "network_metrics": True,
+            }
+            if optional_query_status is None
+            else optional_query_status
+        )
         return coord
 
     def _make_storage_coordinator(
@@ -424,9 +447,17 @@ class TestAsyncCleanupStaleEntities:
             mock_reg.assert_not_called()
 
     async def test_removes_orphaned_container_entity(self, hass: HomeAssistant) -> None:
-        """Entities for a deleted container should be removed."""
-        # System data has NO containers
-        sys_coord = self._make_system_coordinator(data_override=make_system_data())
+        """Entities for deleted container removed when live containers exist."""
+        from unraid_api.models import DockerContainer
+
+        live_container = MagicMock(spec=DockerContainer)
+        live_container.name = "/liveapp"
+        live_container.id = "live-1"
+        live_container.is_running = True
+
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(containers=[live_container])
+        )
         stor_coord = self._make_storage_coordinator()
 
         orphan_switch = self._make_entity_entry(
@@ -478,6 +509,168 @@ class TestAsyncCleanupStaleEntities:
         assert "switch.server_oldapp" in removed_ids
         assert "sensor.server_oldapp_cpu" in removed_ids
         assert "sensor.server_cpu" not in removed_ids
+
+    async def test_skips_category_cleanup_when_query_failed(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Category prune is skipped when optional query failed."""
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(containers=[])
+        )
+        sys_coord.optional_query_status["containers"] = False
+        stor_coord = self._make_storage_coordinator()
+
+        orphan_switch = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp",
+            "switch.server_oldapp",
+        )
+        orphan_cpu = self._make_entity_entry(
+            f"{_UUID}_container_oldapp_cpu",
+            "sensor.server_oldapp_cpu",
+        )
+
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [
+            orphan_switch,
+            orphan_cpu,
+        ]
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan_switch, orphan_cpu],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
+
+        mock_reg.async_remove.assert_not_called()
+        assert f"{_UUID}_container_switch_oldapp" not in cleanup_module._missing_streaks
+        assert f"{_UUID}_container_oldapp_cpu" not in cleanup_module._missing_streaks
+
+    async def test_removes_all_containers_when_query_succeeded_empty(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Containers are removed when query succeeded and returned 0 containers."""
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(containers=[])
+        )
+        sys_coord.optional_query_status["containers"] = True
+        stor_coord = self._make_storage_coordinator()
+
+        orphan_switch = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp",
+            "switch.server_oldapp",
+        )
+
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [orphan_switch]
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan_switch],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
+
+        mock_reg.async_remove.assert_called_once_with("switch.server_oldapp")
+
+    async def test_skips_vm_ups_network_category_cleanup_when_queries_failed(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Category prune is skipped when VM/UPS/network queries failed."""
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(
+                vms=[],
+                ups_devices=[],
+                network_metrics=[],
+            )
+        )
+        sys_coord.optional_query_status["vms"] = False
+        sys_coord.optional_query_status["ups_devices"] = False
+        sys_coord.optional_query_status["network_metrics"] = False
+        stor_coord = self._make_storage_coordinator()
+
+        orphan_vm = self._make_entity_entry(
+            f"{_UUID}_vm_switch_win11",
+            "switch.server_vm_win11",
+        )
+        orphan_ups = self._make_entity_entry(
+            f"{_UUID}_ups_apc1_battery",
+            "sensor.server_ups_apc1_battery",
+        )
+        orphan_net = self._make_entity_entry(
+            f"{_UUID}_network_eth0_rx",
+            "sensor.server_network_eth0_rx",
+        )
+
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [
+            orphan_vm,
+            orphan_ups,
+            orphan_net,
+        ]
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan_vm, orphan_ups, orphan_net],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
+
+        mock_reg.async_remove.assert_not_called()
+        assert f"{_UUID}_vm_switch_win11" not in cleanup_module._missing_streaks
+        assert f"{_UUID}_ups_apc1_battery" not in cleanup_module._missing_streaks
+        assert f"{_UUID}_network_eth0_rx" not in cleanup_module._missing_streaks
 
     async def test_does_not_remove_existing_container_entity(
         self, hass: HomeAssistant
@@ -706,48 +899,17 @@ class TestAsyncCleanupStaleEntities:
 
         mock_reg.async_remove.assert_not_called()
 
-
-# =============================================================================
-# async_remove_config_entry_device (in __init__.py)
-# =============================================================================
-
-
-class TestAsyncRemoveConfigEntryDevice:
-    """Tests for the async_remove_config_entry_device function."""
-
-    async def test_main_server_device_cannot_be_removed(
-        self, hass: HomeAssistant
-    ) -> None:
-        """The Unraid server device must not be removable via the UI."""
-        from custom_components.unraid import async_remove_config_entry_device
-
-        entry = MagicMock()
-        entry.runtime_data.server_info = {"uuid": _UUID}
-
-        device = MagicMock()
-        device.identifiers = {(DOMAIN, _UUID)}
-
-        result = await async_remove_config_entry_device(hass, entry, device)
-        assert result is False
-
-    async def test_other_device_can_be_removed(self, hass: HomeAssistant) -> None:
-        """Any non-server device can be removed from the UI."""
-        from custom_components.unraid import async_remove_config_entry_device
-
-        entry = MagicMock()
-        entry.runtime_data.server_info = {"uuid": _UUID}
-
-        device = MagicMock()
-        device.identifiers = {(DOMAIN, "some-other-device-id")}
-
-        result = await async_remove_config_entry_device(hass, entry, device)
-        assert result is True
-
     async def test_first_missing_refresh_keeps_entity(
         self, hass: HomeAssistant
     ) -> None:
         """A single refresh without the resource must NOT remove its entities."""
-        sys_coord = self._make_system_coordinator(data_override=make_system_data())
+        from unraid_api.models import DockerContainer
+
+        other = MagicMock(spec=DockerContainer)
+        other.name = "otherapp"
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(containers=[other])
+        )
         stor_coord = self._make_storage_coordinator()
 
         orphan = self._make_entity_entry(
@@ -788,13 +950,15 @@ class TestAsyncRemoveConfigEntryDevice:
         """Alternating gaps must never reach the removal threshold."""
         from unraid_api.models import DockerContainer
 
+        other = MagicMock(spec=DockerContainer)
+        other.name = "otherapp"
         sys_coord_missing = self._make_system_coordinator(
-            data_override=make_system_data()
+            data_override=make_system_data(containers=[other])
         )
         container = MagicMock(spec=DockerContainer)
         container.name = "oldapp"
         sys_data_present = make_system_data()
-        sys_data_present.containers = [container]
+        sys_data_present.containers = [other, container]
         sys_coord_present = self._make_system_coordinator(
             data_override=sys_data_present
         )
@@ -833,8 +997,119 @@ class TestAsyncRemoveConfigEntryDevice:
                 sys_coord_missing,
                 sys_coord_missing,
             ):
-                async_cleanup_stale_entities(
-                    hass, "entry1", _UUID, coord, stor_coord
-                )
+                async_cleanup_stale_entities(hass, "entry1", _UUID, coord, stor_coord)
 
         mock_reg.async_remove.assert_not_called()
+
+    async def test_skips_when_storage_data_not_ready(self, hass: HomeAssistant) -> None:
+        """Cleanup is skipped when storage coordinator data is not UnraidStorageData."""
+        sys_coord = self._make_system_coordinator()
+        stor_coord = self._make_storage_coordinator(data_override=None)
+
+        orphan = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp", "switch.server_oldapp"
+        )
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [orphan]
+
+        with patch(
+            "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+        ):
+            async_cleanup_stale_entities(hass, "entry1", _UUID, sys_coord, stor_coord)
+
+        mock_reg.async_remove.assert_not_called()
+
+    async def test_removes_empty_orphaned_devices(self, hass: HomeAssistant) -> None:
+        """Empty devices without remaining entities are removed after cleanup."""
+        from unraid_api.models import DockerContainer
+
+        live_container = MagicMock(spec=DockerContainer)
+        live_container.name = "/liveapp"
+        live_container.id = "live-1"
+        live_container.is_running = True
+
+        sys_coord = self._make_system_coordinator(
+            data_override=make_system_data(containers=[live_container])
+        )
+        stor_coord = self._make_storage_coordinator()
+
+        orphan_switch = self._make_entity_entry(
+            f"{_UUID}_container_switch_oldapp",
+            "switch.server_oldapp",
+        )
+
+        mock_reg = MagicMock()
+        mock_reg.async_entries_for_config_entry.return_value = [orphan_switch]
+        mock_reg.async_entries_for_device.return_value = []
+
+        empty_dev = MagicMock()
+        empty_dev.id = "dev_oldapp_123"
+        empty_dev.name = "oldapp"
+
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = [empty_dev]
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan_switch],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_device",
+                return_value=[],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[empty_dev],
+            ),
+        ):
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
+
+        mock_dev_reg.async_remove_device.assert_called_once_with("dev_oldapp_123")
+
+
+# =============================================================================
+# async_remove_config_entry_device (in __init__.py)
+# =============================================================================
+
+
+class TestAsyncRemoveConfigEntryDevice:
+    """Tests for the async_remove_config_entry_device function."""
+
+    async def test_main_server_device_cannot_be_removed(
+        self, hass: HomeAssistant
+    ) -> None:
+        """The Unraid server device must not be removable via the UI."""
+        from custom_components.unraid import async_remove_config_entry_device
+
+        entry = MagicMock()
+        entry.runtime_data.server_info = {"uuid": _UUID}
+
+        device = MagicMock()
+        device.identifiers = {(DOMAIN, _UUID)}
+
+        result = await async_remove_config_entry_device(hass, entry, device)
+        assert result is False
+
+    async def test_other_device_can_be_removed(self, hass: HomeAssistant) -> None:
+        """Any non-server device can be removed from the UI."""
+        from custom_components.unraid import async_remove_config_entry_device
+
+        entry = MagicMock()
+        entry.runtime_data.server_info = {"uuid": _UUID}
+
+        device = MagicMock()
+        device.identifiers = {(DOMAIN, "some-other-device-id")}
+
+        result = await async_remove_config_entry_device(hass, entry, device)
+        assert result is True

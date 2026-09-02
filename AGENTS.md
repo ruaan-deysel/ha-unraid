@@ -105,6 +105,7 @@ class UnraidRuntimeData:
     infra_coordinator: UnraidInfraCoordinator
     server_info: dict
 
+
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 ```
 
@@ -114,7 +115,7 @@ Access in platform setup: `entry.runtime_data.system_coordinator`, etc.
 
 Each coordinator returns a typed dataclass:
 
-- `UnraidSystemData` — `info`, `metrics`, `containers`, `vms`, `ups_devices`, `notification_overview`
+- `UnraidSystemData` — `info`, `metrics`, `containers`, `vms`, `ups_devices`, `network_metrics`, `notification_overview`
 - `UnraidStorageData` — `array`, `shares`, `parity_history` (+ convenience properties: `array_state`, `capacity`, `parity_status`, `boot`, `disks`, `parities`, `caches`)
 - `UnraidInfraData` — `services`, `registration`, `cloud`, `remote_access`, `plugins`, `vars`
 
@@ -178,7 +179,7 @@ Key patterns:
 - Extend `DataUpdateCoordinator[UnraidXxxData]`
 - Authentication errors → `raise ConfigEntryAuthFailed`
 - Connection/timeout errors → `raise UpdateFailed`
-- Optional services (Docker, VMs, UPS) → fail gracefully with `_LOGGER.debug()`, return empty list
+- Optional services (Docker, VMs, UPS, network) → fail gracefully with `_LOGGER.debug()`, return `None` (preserving last known-good cache)
 - Log recovery when connection restored after previous failure
 - Pass `config_entry=` to `super().__init__()`
 

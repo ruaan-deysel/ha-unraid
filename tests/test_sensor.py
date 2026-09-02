@@ -198,6 +198,48 @@ def test_unraidsensorentity_sensor_availability_from_coordinator() -> None:
     assert entity.available is False
 
 
+def test_cpusensor_native_value_rounded() -> None:
+    """Test CPU sensor returns value rounded to 1 decimal place."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(cpu_percent=23.456789)
+
+    sensor = CpuSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.native_value == 23.5
+
+
+def test_temperature_sensor_native_value_rounded() -> None:
+    """Test temperature sensor returns value rounded to 1 decimal place."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(cpu_temps=[45.678])
+
+    sensor = TemperatureSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.native_value == 45.7
+
+
+def test_ram_usage_sensor_native_value_rounded() -> None:
+    """Test RAM usage sensor returns value rounded to 1 decimal place."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(memory_percent=67.89123)
+
+    sensor = RAMUsageSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    assert sensor.native_value == 67.9
+
+
 # =============================================================================
 # CPU Sensor Tests
 # =============================================================================
