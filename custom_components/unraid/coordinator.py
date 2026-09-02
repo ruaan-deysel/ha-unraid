@@ -195,6 +195,14 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         # Cached network metrics list to keep the last known-good value across
         # failed optional queries.
         self._cached_network_metrics: list[NetworkMetrics] = []
+        # Status of the last optional query per category (True if succeeded,
+        # False if failed).
+        self._optional_query_status: dict[str, bool] = {
+            "containers": True,
+            "vms": True,
+            "ups_devices": True,
+            "network_metrics": True,
+        }
         self._event_listeners: dict[
             str, list[Callable[[UnraidNotificationEventData], None]]
         ] = {}
@@ -233,8 +241,19 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         self, event_data: UnraidNotificationEventData
     ) -> None:
         """Notify listeners about a newly detected event."""
+        errors: list[Exception] = []
         for callback in self._event_listeners.get(event_data.event_type, []):
-            callback(event_data)
+            try:
+                callback(event_data)
+            except Exception as err:
+                _LOGGER.exception(
+                    "Error calling notification event listener for %s on %s",
+                    event_data.event_type,
+                    self._server_name,
+                )
+                errors.append(err)
+        if errors:
+            raise errors[0]
 
     async def _async_load_seen_notification_ids(self) -> None:
         """Load persisted seen notification IDs once."""
@@ -728,6 +747,7 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 self._query_optional_mover_status(),
                 self._query_optional_network_metrics(),
             )
+            self._optional_query_status["containers"] = docker_result is not None
             if docker_result is not None:
                 self._cached_containers = docker_result
             self._last_docker_refresh = time.monotonic()
@@ -745,10 +765,15 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 self._query_optional_network_metrics(),
             )
 
+        self._optional_query_status["vms"] = vms_result is not None
         if vms_result is not None:
             self._cached_vms = vms_result
+
+        self._optional_query_status["ups_devices"] = ups_result is not None
         if ups_result is not None:
             self._cached_ups_devices = ups_result
+
+        self._optional_query_status["network_metrics"] = network_result is not None
         if network_result is not None:
             self._cached_network_metrics = network_result
 
@@ -759,6 +784,11 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             mover_active,
             self._cached_network_metrics,
         )
+
+    @property
+    def optional_query_status(self) -> dict[str, bool]:
+        """Return the status of the last optional queries per category."""
+        return self._optional_query_status
 
     async def _async_update_data(self) -> UnraidSystemData:
         """

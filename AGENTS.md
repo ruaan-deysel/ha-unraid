@@ -179,7 +179,7 @@ Key patterns:
 - Extend `DataUpdateCoordinator[UnraidXxxData]`
 - Authentication errors → `raise ConfigEntryAuthFailed`
 - Connection/timeout errors → `raise UpdateFailed`
-- Optional services (Docker, VMs, UPS) → fail gracefully with `_LOGGER.debug()`, return empty list
+- Optional services (Docker, VMs, UPS, network) → fail gracefully with `_LOGGER.debug()`, return `None` (preserving last known-good cache)
 - Log recovery when connection restored after previous failure
 - Pass `config_entry=` to `super().__init__()`
 

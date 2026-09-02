@@ -287,7 +287,7 @@ def _collect_stale_dynamic_entities(
     server_uuid_prefix: str,
     registered: list[er.RegistryEntry],
     expected: frozenset[str],
-    empty_live_categories: dict[str, bool],
+    failed_categories: set[str],
 ) -> tuple[list[er.RegistryEntry], set[str]]:
     """Inspect registered entities and collect candidates for removal."""
     orphans: list[er.RegistryEntry] = []
@@ -307,16 +307,16 @@ def _collect_stale_dynamic_entities(
             continue
 
         category = _get_dynamic_resource_category(resource_id)
-        if category and empty_live_categories.get(category):
+        if category and category in failed_categories:
             if category not in skipped_categories:
                 _LOGGER.info(
-                    "Skipping %s entity cleanup for entry %s: live %s list is empty "
-                    "but registered entities exist",
+                    "Skipping %s entity cleanup for entry %s: query for %s failed",
                     category,
                     entry_id,
                     category,
                 )
                 skipped_categories.add(category)
+            present_uids.add(uid)
             continue
 
         if uid in expected:
@@ -404,19 +404,15 @@ def async_cleanup_stale_entities(
     ent_reg = er.async_get(hass)
     registered = er.async_entries_for_config_entry(ent_reg, entry_id)
 
-    empty_live_categories: dict[str, bool] = {
-        "containers": not bool(sys_data.containers),
-        "vms": not bool(sys_data.vms),
-        "ups_devices": not bool(sys_data.ups_devices),
-        "network_metrics": not bool(sys_data.network_metrics),
-    }
+    query_status = getattr(system_coordinator, "optional_query_status", {})
+    failed_categories = {cat for cat, success in query_status.items() if not success}
 
     orphans, present_uids = _collect_stale_dynamic_entities(
         entry_id=entry_id,
         server_uuid_prefix=f"{server_uuid}_",
         registered=registered,
         expected=expected,
-        empty_live_categories=empty_live_categories,
+        failed_categories=failed_categories,
     )
 
     # Reset streaks for resources that came back and drop counters for
