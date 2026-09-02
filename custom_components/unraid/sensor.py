@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
@@ -22,6 +23,7 @@ from homeassistant.const import (
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api import format_bytes
 
@@ -107,6 +109,27 @@ class UnraidSensorEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordi
             name=name,
             server_info=server_info,
         )
+
+    @property
+    def state(self) -> StateType | date | datetime | Decimal:
+        """
+        Return the state of the entity.
+
+        Rounds to suggested_display_precision if configured.
+        """
+        try:
+            value = super().state
+        except (ValueError, AttributeError):
+            value = self.native_value
+
+        precision = self.suggested_display_precision
+        if (
+            precision is not None
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
+            return round(value, precision)
+        return value
 
 
 class CpuSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
@@ -440,6 +463,7 @@ class TemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
 
     def __init__(
         self,
@@ -471,6 +495,7 @@ class SystemTemperatureSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
 
     def __init__(
         self,
@@ -611,6 +636,7 @@ class CpuPowerSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = "W"
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
 
     def __init__(
         self,
@@ -1420,6 +1446,7 @@ class DiskTemperatureSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
     _attr_entity_registry_enabled_default = False  # User enables per-disk as needed
 
     def __init__(
@@ -1676,6 +1703,7 @@ class UPSBatterySensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = "%"
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
 
     def __init__(
         self,
@@ -2781,6 +2809,7 @@ class ParitySpeedSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     _attr_translation_key = "parity_speed"
     _attr_native_unit_of_measurement = "MB/s"
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
     _attr_entity_registry_enabled_default = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 

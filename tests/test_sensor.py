@@ -198,6 +198,92 @@ def test_unraidsensorentity_sensor_availability_from_coordinator() -> None:
     assert entity.available is False
 
 
+def test_unraidsensorentity_state_rounding_with_precision() -> None:
+    """Test sensor state is rounded to suggested_display_precision."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(cpu_percent=23.456789)
+
+    sensor = CpuSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+    )
+
+    # native_value stays unrounded
+    assert sensor.native_value == 23.456789
+    # state is rounded to 1 decimal place (suggested_display_precision=1)
+    assert sensor.state == 23.5
+
+
+def test_unraidsensorentity_state_rounding_with_zero_precision() -> None:
+    """Test sensor state is rounded when suggested_display_precision is 0."""
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    disk = MagicMock(spec=ArrayDisk)
+    disk.id = "disk1"
+    disk.name = "Disk 1"
+    disk.temp = 35.6
+    disk.rotational = True
+    disk.transport = "sata"
+    disk.format = "xfs"
+    disk.numReads = 100
+    disk.numWrites = 50
+    disk.numErrors = 0
+    disk.color = "green"
+    disk.warning = 45
+    disk.critical = 55
+    disk.smartStatus = "PASSED"
+    coordinator.data = make_storage_data(disks=[disk])
+
+    sensor = DiskTemperatureSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        disk=disk,
+    )
+
+    assert sensor.native_value == 35.6
+    assert sensor.state == 36.0
+
+
+class _DummySensor(UnraidSensorEntity[UnraidSystemCoordinator]):
+    """Dummy sensor subclass for testing state rounding."""
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        val: Any,
+        precision: int | None = None,
+    ) -> None:
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid="test-uuid",
+            server_name="test-server",
+            resource_id="dummy",
+            name="Dummy Sensor",
+        )
+        self._val = val
+        if precision is not None:
+            self._attr_suggested_display_precision = precision
+
+    @property
+    def native_value(self) -> Any:
+        return self._val
+
+
+def test_unraidsensorentity_state_without_precision_hint() -> None:
+    """Test sensor without precision hint returns unrounded state."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    sensor = _DummySensor(coordinator, 12.3456)
+    assert sensor.state == 12.3456
+
+
+def test_unraidsensorentity_state_string_valued_unchanged() -> None:
+    """Test string-valued sensor state is unchanged even with precision hint."""
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    sensor = _DummySensor(coordinator, "running", precision=1)
+    assert sensor.state == "running"
+
+
 # =============================================================================
 # CPU Sensor Tests
 # =============================================================================

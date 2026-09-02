@@ -7,6 +7,11 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sensors Do Not Round Correctly in Templates and External Dashboards** ([#296](https://github.com/ruaan-deysel/ha-unraid/issues/296)): Sensor state values are now rounded to `suggested_display_precision` centrally in `UnraidSensorEntity.state`. Templates (e.g. `{{ states('sensor.tower_cpu_usage') }}`), external dashboards (Homarr, MQTT, Node-RED, REST), and automations now receive clean, expected numerical values matching the Home Assistant frontend display without requiring manual `| round(...)` filters in YAML.
+- **Dynamic Entity Pruning on Optional Query Failures** ([#297](https://github.com/ruaan-deysel/ha-unraid/issues/297)): Optional queries for Docker containers, VMs, UPS devices, and network metrics now return `None` on caught network/API errors rather than an empty list, allowing `UnraidSystemCoordinator` to retain last known-good cached data and preventing entity cleanup from incorrectly pruning active entities when an optional query fails.
+
 ## [2026.8.1] - 2026-08-31
 
 ### Fixed
