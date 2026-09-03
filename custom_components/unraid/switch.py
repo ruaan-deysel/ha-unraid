@@ -230,6 +230,7 @@ class DockerContainerAutostartSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]
 
     _attr_translation_key = "docker_container_autostart"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,

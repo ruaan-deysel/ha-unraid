@@ -1840,6 +1840,7 @@ def test_container_autostart_switch_properties() -> None:
     assert switch.translation_key == "docker_container_autostart"
     assert switch.translation_placeholders == {"name": "plex"}
     assert switch.unique_id == "uuid-1_container_autostart_plex"
+    assert switch.entity_registry_enabled_default is False
     assert switch.is_on is True
     assert switch.available is True
 
