@@ -44,7 +44,7 @@ The only sanctioned data flow is:
 | **Test path**        | `tests/`                                      |
 | **Python**           | 3.13+                                         |
 | **HA minimum**       | 2026.5.0                                      |
-| **Key dependency**   | `unraid-api>=1.13.0`                          |
+| **Key dependency**   | `unraid-api>=1.13.1`                          |
 | **iot_class**        | `local_polling`                               |
 | **Config flow**      | Yes (UI only, no YAML)                        |
 | **Platforms**        | `sensor`, `binary_sensor`, `switch`, `button` |

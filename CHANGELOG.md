@@ -9,7 +9,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Added
 
-- **Docker Container Autostart Switch**: Added a configuration switch (`switch.*_container_*_autostart`) for each Docker container allowing users to toggle whether a container starts automatically on Unraid array start, powered by `unraid-api` v1.13.0's `update_container_autostart` mutation.
+- **Docker Container Autostart Switch**: Added a configuration switch (`switch.*_container_*_autostart`) for each Docker container allowing users to toggle whether a container starts automatically on Unraid array start, powered by `unraid-api` v1.13.1's `update_container_autostart` mutation.
 - **Network Interface Link Binary Sensors**: Added connectivity diagnostic binary sensors (`binary_sensor.*_network_*_link`) for monitorable network interfaces (physical NICs, bonds, bridges, and VLANs) reporting operational link state (`up` / `down`) along with MAC address, IP address, duplex, MTU, speed, and interface type.
 - **Network Interface Speed & IP Sensors**: Added diagnostic sensors (`sensor.*_network_*_speed` in Mbit/s and `sensor.*_network_*_ip`) reporting negotiated link speeds and network IP addressing with IPv4/IPv6 details.
 - **Plugin Installation Status Binary Sensor**: Added diagnostic binary sensor (`binary_sensor.*_plugin_installation_in_progress`) reporting whether plugin installation or update operations are actively running on the Unraid server.
@@ -18,8 +18,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Changed
 
-- **Upgrade `unraid-api` to v1.13.0**: Upgraded dependency to `unraid-api>=1.13.0` which brings Unraid OS 7.3.x and GraphQL API 4.37.x schema compatibility, network interface queries, Docker organizer models, container autostart configuration mutations, individual array disk mount/unmount and statistics reset mutations, and server identity queries.
-- **Refactor Plugin Query to use Typed Client Method**: Replaced direct GraphQL query `query { installedUnraidPlugins }` in `UnraidInfraCoordinator` with the official typed `api_client.get_installed_unraid_plugins()` method provided in `unraid-api` v1.13.0, eliminating direct GraphQL usage and ensuring full adherence to the API boundary architecture.
+- **Upgrade `unraid-api` to v1.13.1**: Upgraded dependency to `unraid-api>=1.13.1` which brings Unraid OS 7.3.x and GraphQL API 4.37.x schema compatibility, network interface queries, Docker organizer models, container autostart configuration mutations (with GraphQL input type fix), individual array disk mount/unmount and statistics reset mutations, and server identity queries.
+- **Refactor Plugin Query to use Typed Client Method**: Replaced direct GraphQL query `query { installedUnraidPlugins }` in `UnraidInfraCoordinator` with the official typed `api_client.get_installed_unraid_plugins()` method provided in `unraid-api` v1.13.1, eliminating direct GraphQL usage and ensuring full adherence to the API boundary architecture.
 
 ## [2026.9.0] - 2026-09-02
 

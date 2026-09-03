@@ -23,7 +23,7 @@ Bypass `unraid-api`".
 - **Class prefix**: `Unraid`
 - **Code path**: `custom_components/unraid/`
 - **Test path**: `tests/`
-- **Python**: 3.13+ | **HA**: 2026.5.0+ | **Dep**: `unraid-api>=1.13.0`
+- **Python**: 3.13+ | **HA**: 2026.5.0+ | **Dep**: `unraid-api>=1.13.1`
 - **Platforms**: `sensor`, `binary_sensor`, `switch`, `button`
 - **iot_class**: `local_polling`
 

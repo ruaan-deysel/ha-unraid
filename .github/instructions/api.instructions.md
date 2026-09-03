@@ -89,6 +89,6 @@ data = await client.get_system_info()
 
 ## Dependency Management
 
-- Current runtime dependency: `unraid-api>=1.13.0`.
+- Current runtime dependency: `unraid-api>=1.13.1`.
 - Dependency upgrades require review first.
 - If upgraded, sync `manifest.json`, docs, and agent instructions in the same PR.
