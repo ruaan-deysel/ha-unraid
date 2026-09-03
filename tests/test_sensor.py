@@ -38,7 +38,7 @@ from unraid_api.models import (
     TemperatureSensor as TemperatureSensorModel,
 )
 
-from custom_components.unraid.const import DOMAIN
+from custom_components.unraid.const import DOMAIN, is_monitorable_interface
 from custom_components.unraid.coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -103,7 +103,6 @@ from custom_components.unraid.sensor import (
     UptimeSensor,
     _compute_disk_usage_percent,
     _compute_disk_used_bytes,
-    _is_monitorable_interface,
     _is_valid_system_temp_sensor,
     format_bytes,
 )
@@ -6782,7 +6781,7 @@ def test_network_interface_sensor_no_data() -> None:
 )
 def test_is_monitorable_interface(name: str | None, expected: bool) -> None:
     """Only physical NICs, bonds, and user bridges are monitorable."""
-    assert _is_monitorable_interface(name) is expected
+    assert is_monitorable_interface(name) is expected
 
 
 # =============================================================================

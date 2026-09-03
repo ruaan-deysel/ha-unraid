@@ -953,7 +953,9 @@ async def async_setup_entry(
         )
     )
 
-    # Per-disk statistics clear buttons: added dynamically when disks appear
+    # Per-disk statistics clear buttons: added dynamically when array disks appear.
+    # Excludes data.boot (flash USB drive) as clear_array_disk_statistics only
+    # applies to array/pool storage devices.
     def _get_all_disks() -> list[Any]:
         data = storage_coordinator.data
         if not data:
@@ -966,12 +968,6 @@ async def async_setup_entry(
         ]:
             if isinstance(getattr(disk, "id", None), str) and disk.id:
                 disks.append(disk)
-        if (
-            data.boot is not None
-            and isinstance(getattr(data.boot, "id", None), str)
-            and data.boot.id
-        ):
-            disks.append(data.boot)
         return disks
 
     entry.async_on_unload(

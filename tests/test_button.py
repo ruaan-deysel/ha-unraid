@@ -494,10 +494,13 @@ async def test_setup_entry_dynamic_clear_disk_statistics_buttons(hass):
     mock_api = MagicMock()
     disk1 = ArrayDisk(id="disk1", name="Disk 1")
     parity1 = ArrayDisk(id="parity", name="Parity")
+    boot_disk = ArrayDisk(id="boot", name="Flash")
 
     storage_coordinator = MagicMock()
     storage_coordinator.async_add_listener = MagicMock()
-    storage_coordinator.data = make_storage_data(disks=[disk1], parities=[parity1])
+    storage_coordinator.data = make_storage_data(
+        disks=[disk1], parities=[parity1], boot=boot_disk
+    )
 
     system_coordinator = MagicMock()
     system_coordinator.data = make_system_data()
@@ -525,6 +528,9 @@ async def test_setup_entry_dynamic_clear_disk_statistics_buttons(hass):
     assert {b.unique_id for b in disk_buttons} == {
         "test-uuid_disk_disk1_clear_statistics",
         "test-uuid_disk_parity_clear_statistics",
+    }
+    assert "test-uuid_disk_boot_clear_statistics" not in {
+        b.unique_id for b in disk_buttons
     }
 
 

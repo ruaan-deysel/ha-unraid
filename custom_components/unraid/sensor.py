@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -2619,21 +2618,6 @@ class DockerTotalMemoryBytesSensor(
 # Network Interface Sensors (metrics.network, Unraid API 4.35+)
 # =============================================================================
 
-# Only physical NICs, bonds, and user-configured bridges get entities —
-# Unraid names these ethN, bondN, brN/wlanN (plus VLAN sub-interfaces like
-# br0.5). Everything else is auto-generated plumbing that churns constantly
-# and carries no dashboard value: per-container veth pairs, VM vnet/tap
-# devices, loopback, and Docker/libvirt-created bridges and shims
-# (br-<hash>, docker0, shim-br0, virbr0).
-_MONITORABLE_INTERFACE_RE = re.compile(r"^(?:eth|bond|br|wlan)\d+(?:\.\d+)?$")
-
-
-def _is_monitorable_interface(name: str | None) -> bool:
-    """Return True if the interface should get sensor entities."""
-    if not name:
-        return False
-    return _MONITORABLE_INTERFACE_RE.match(name) is not None
-
 
 class NetworkInterfaceSensorBase(UnraidSensorEntity[UnraidSystemCoordinator]):
     """
@@ -3600,7 +3584,7 @@ async def async_setup_entry(
         interface_name = registry_entry.unique_id.removeprefix(
             network_uid_prefix
         ).rsplit("_", 1)[0]
-        if not _is_monitorable_interface(interface_name):
+        if not is_monitorable_interface(interface_name):
             _LOGGER.debug(
                 "Removing sensor for non-monitorable interface %s (%s)",
                 interface_name,
@@ -3623,7 +3607,7 @@ async def async_setup_entry(
                     else []
                 )
                 if interface.name is not None
-                and _is_monitorable_interface(interface.name)
+                and is_monitorable_interface(interface.name)
             ],
             get_key=lambda interface: interface.name or "",
             create_entities=lambda interface: [
