@@ -393,7 +393,10 @@ def create_mock_unraid_client(
     # Vars (returns Vars model)
     client.typed_get_vars = AsyncMock(return_value=vars_data)
 
-    # Installed plugins (returns list of plugin filenames via raw GraphQL query)
+    # Installed plugins (returns list of plugin filenames)
+    client.get_installed_unraid_plugins = AsyncMock(
+        return_value=installed_plugins or []
+    )
     client.query = AsyncMock(
         return_value={"installedUnraidPlugins": installed_plugins or []}
     )

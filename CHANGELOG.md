@@ -7,6 +7,11 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Changed
+
+- **Upgrade `unraid-api` to v1.13.0**: Upgraded dependency to `unraid-api>=1.13.0` which brings Unraid OS 7.3.x and GraphQL API 4.37.x schema compatibility, network interface queries, Docker organizer models, container autostart configuration mutations, individual array disk mount/unmount and statistics reset mutations, and server identity queries.
+- **Refactor Plugin Query to use Typed Client Method**: Replaced direct GraphQL query `query { installedUnraidPlugins }` in `UnraidInfraCoordinator` with the official typed `api_client.get_installed_unraid_plugins()` method provided in `unraid-api` v1.13.0, eliminating direct GraphQL usage and ensuring full adherence to the API boundary architecture.
+
 ## [2026.9.0] - 2026-09-02
 
 ### Fixed

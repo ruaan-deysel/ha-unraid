@@ -182,6 +182,7 @@ def mock_api_client():
     client.typed_get_connect = AsyncMock(return_value=None)
     client.typed_get_remote_access = AsyncMock(return_value=None)
     client.typed_get_vars = AsyncMock(return_value=None)
+    client.get_installed_unraid_plugins = AsyncMock(return_value=[])
     client.query = AsyncMock(return_value={"installedUnraidPlugins": []})
     client.typed_get_network = AsyncMock(return_value=None)
     client.typed_get_notifications = AsyncMock(return_value=[])
@@ -1074,7 +1075,7 @@ async def test_infra_coordinator_fetch_success(
     mock_api_client.typed_get_connect.assert_called_once()
     mock_api_client.typed_get_remote_access.assert_called_once()
     mock_api_client.typed_get_vars.assert_called_once()
-    mock_api_client.query.assert_called_once_with("query { installedUnraidPlugins }")
+    mock_api_client.get_installed_unraid_plugins.assert_called_once()
     mock_api_client.typed_get_network.assert_called_once()
 
 
@@ -2687,7 +2688,7 @@ async def test_storage_parity_history_auth_error_raises(
         "typed_get_remote_access",
         "typed_get_vars",
         "typed_get_network",
-        "query",
+        "get_installed_unraid_plugins",
     ],
 )
 async def test_infra_optional_queries_raise_auth_errors(
@@ -2702,7 +2703,7 @@ async def test_infra_optional_queries_raise_auth_errors(
         "typed_get_remote_access": "_query_optional_remote_access",
         "typed_get_vars": "_query_optional_vars",
         "typed_get_network": "_query_optional_network",
-        "query": "_query_installed_plugins",
+        "get_installed_unraid_plugins": "_query_installed_plugins",
     }
     setattr(
         mock_api_client,
@@ -2720,7 +2721,9 @@ async def test_infra_installed_plugins_api_error_returns_empty(
     hass, mock_api_client, mock_config_entry
 ):
     """Unraid API errors in the plugins query return an empty list."""
-    mock_api_client.query = AsyncMock(side_effect=UnraidAPIError("nope"))
+    mock_api_client.get_installed_unraid_plugins = AsyncMock(
+        side_effect=UnraidAPIError("nope")
+    )
     coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
 
     assert await coordinator._query_installed_plugins() == []
@@ -2730,18 +2733,18 @@ async def test_infra_installed_plugins_api_error_returns_empty(
 async def test_infra_installed_plugins_payload_shapes(
     hass, mock_api_client, mock_config_entry
 ):
-    """Plugins query handles dict payloads, data wrappers, and bad shapes."""
+    """Plugins query handles list payloads with None and bad shapes."""
     coordinator = _infra_coordinator(hass, mock_api_client, mock_config_entry)
 
-    mock_api_client.query = AsyncMock(
-        return_value={"data": {"installedUnraidPlugins": ["a", None, "b"]}}
+    mock_api_client.get_installed_unraid_plugins = AsyncMock(
+        return_value=["a", None, "b"]
     )
     assert await coordinator._query_installed_plugins() == ["a", "b"]
 
-    mock_api_client.query = AsyncMock(return_value={"installedUnraidPlugins": "bad"})
+    mock_api_client.get_installed_unraid_plugins = AsyncMock(return_value="bad")
     assert await coordinator._query_installed_plugins() == []
 
-    mock_api_client.query = AsyncMock(return_value=12345)
+    mock_api_client.get_installed_unraid_plugins = AsyncMock(return_value=12345)
     assert await coordinator._query_installed_plugins() == []
 
 

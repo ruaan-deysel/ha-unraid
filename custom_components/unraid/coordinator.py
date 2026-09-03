@@ -1125,25 +1125,9 @@ class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
     async def _query_installed_plugins(self) -> list[str]:
         """Query installed Unraid plugin filenames (fails gracefully)."""
         try:
-            result = await self.api_client.query("query { installedUnraidPlugins }")
-
-            payload: dict[str, Any] | None = None
-            if isinstance(result, dict):
-                data = result.get("data")
-                payload = data if isinstance(data, dict) else result
-            else:
-                data_attr = getattr(result, "data", None)
-                if isinstance(data_attr, dict):
-                    payload = data_attr
-
-            if payload is None:
-                return []
-
-            plugins = payload.get("installedUnraidPlugins", [])
-
+            plugins = await self.api_client.get_installed_unraid_plugins()
             if not isinstance(plugins, list):
                 return []
-
             return [str(plugin) for plugin in plugins if plugin is not None]
         except UnraidAuthenticationError:
             raise
