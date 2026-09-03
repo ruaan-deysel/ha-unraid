@@ -202,7 +202,7 @@ class UnraidEntity[CoordinatorT: DataUpdateCoordinator[Any] = UnraidCoordinator]
 
 def async_add_dynamic_resource_entities[ResourceT](
     *,
-    coordinator: UnraidSystemCoordinator,
+    coordinator: UnraidCoordinator,
     async_add_entities: Callable[[list[Any]], None],
     get_resources: Callable[[], list[ResourceT]],
     get_key: Callable[[ResourceT], str],

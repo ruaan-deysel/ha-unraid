@@ -111,6 +111,21 @@ class TestIsDynamicResourceId:
     def test_network_tx(self) -> None:
         assert _is_dynamic_resource_id("network_bond0_tx") is True
 
+    def test_network_link(self) -> None:
+        assert _is_dynamic_resource_id("network_eth0_link") is True
+
+    def test_network_speed(self) -> None:
+        assert _is_dynamic_resource_id("network_eth0_speed") is True
+
+    def test_network_ip(self) -> None:
+        assert _is_dynamic_resource_id("network_eth0_ip") is True
+
+    def test_container_autostart(self) -> None:
+        assert _is_dynamic_resource_id("container_autostart_myapp") is True
+
+    def test_disk_clear_statistics(self) -> None:
+        assert _is_dynamic_resource_id("disk_sda_clear_statistics") is True
+
     # ---- static patterns that MUST return False ----
 
     def test_cpu_usage(self) -> None:
@@ -172,6 +187,13 @@ class TestGetDynamicResourceCategory:
         assert _get_dynamic_resource_category("vm_switch_win") == "vms"
         assert _get_dynamic_resource_category("ups_apc_battery") == "ups_devices"
         assert _get_dynamic_resource_category("network_eth0_rx") == "network_metrics"
+        assert (
+            _get_dynamic_resource_category("network_eth0_link") == "network_interfaces"
+        )
+        assert (
+            _get_dynamic_resource_category("network_eth0_speed") == "network_interfaces"
+        )
+        assert _get_dynamic_resource_category("network_eth0_ip") == "network_interfaces"
         assert _get_dynamic_resource_category("disk_sda_temp") is None
         assert _get_dynamic_resource_category("container_updates_count") is None
         assert _get_dynamic_resource_category("network_access") is None
@@ -204,6 +226,7 @@ class TestBuildExpectedDynamicUniqueIds:
         result = build_expected_dynamic_unique_ids(_UUID, sys_data, stor_data)
 
         assert f"{_UUID}_container_switch_myapp" in result
+        assert f"{_UUID}_container_autostart_myapp" in result
         assert f"{_UUID}_container_restart_myapp" in result
         assert f"{_UUID}_container_myapp_cpu" in result
         assert f"{_UUID}_container_myapp_memory" in result
@@ -229,6 +252,21 @@ class TestBuildExpectedDynamicUniqueIds:
         assert f"{_UUID}_vm_pause_windows11" in result
         assert f"{_UUID}_vm_resume_windows11" in result
         assert f"{_UUID}_vm_reset_windows11" in result
+
+    def test_network_interface_info_ids(self) -> None:
+        from unraid_api.models import InfoNetworkInterface
+
+        iface = MagicMock(spec=InfoNetworkInterface)
+        iface.name = "eth0"
+        iface.id = "eth0"
+
+        sys_data = make_system_data(network_interfaces=[iface])
+        stor_data = make_storage_data()
+        result = build_expected_dynamic_unique_ids(_UUID, sys_data, stor_data)
+
+        assert f"{_UUID}_network_eth0_link" in result
+        assert f"{_UUID}_network_eth0_speed" in result
+        assert f"{_UUID}_network_eth0_ip" in result
 
     def test_single_ups(self) -> None:
         from unraid_api.models import UPSDevice
@@ -270,6 +308,7 @@ class TestBuildExpectedDynamicUniqueIds:
         assert f"{_UUID}_disk_sdb_usage" in result
         assert f"{_UUID}_disk_health_sdb" in result
         assert f"{_UUID}_disk_spin_sdb" in result
+        assert f"{_UUID}_disk_sdb_clear_statistics" in result
 
     def test_parity_disk_ids(self) -> None:
         from unraid_api.models import ArrayDisk

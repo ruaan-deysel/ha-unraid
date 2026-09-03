@@ -19,7 +19,9 @@ from unraid_api.models import (
     Cloud,
     CloudResponse,
     DockerContainer,
+    InfoNetworkInterface,
     ParityCheck,
+    PluginInstallOperation,
     RemoteAccess,
     Service,
     ServiceUptime,
@@ -41,10 +43,12 @@ from custom_components.unraid.binary_sensor import (
     DisksMissingBinarySensor,
     FilesystemsUnmountableBinarySensor,
     MoverActiveBinarySensor,
+    NetworkInterfaceLinkBinarySensor,
     ParityCheckPausedBinarySensor,
     ParityCheckRunningBinarySensor,
     ParityStatusBinarySensor,
     ParityValidBinarySensor,
+    PluginInstallingBinarySensor,
     RemoteAccessBinarySensor,
     SafeModeBinarySensor,
     ServiceBinarySensor,
@@ -2136,3 +2140,145 @@ def test_parity_check_paused_none_field() -> None:
         server_name="tower",
     )
     assert sensor.is_on is False
+
+
+# =============================================================================
+# NetworkInterfaceLinkBinarySensor Tests
+# =============================================================================
+
+
+def test_network_interface_link_properties_and_state() -> None:
+    """Test NetworkInterfaceLinkBinarySensor properties, state, and attributes."""
+    iface = InfoNetworkInterface(
+        id="eth0",
+        name="eth0",
+        operstate="up",
+        macAddress="00:11:22:33:44:55",
+        ipAddress="192.168.1.50",
+        duplex="full",
+        mtu=1500,
+        speed=1000,
+        vlanId=None,
+        virtual=False,
+        internal=False,
+        protocol="tcp",
+        type="ethernet",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface])
+    coordinator.last_update_success = True
+
+    sensor = NetworkInterfaceLinkBinarySensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="eth0",
+    )
+
+    assert sensor.translation_key == "network_interface_link"
+    assert sensor.translation_placeholders == {"name": "eth0"}
+    assert sensor.unique_id == "uuid-1_network_eth0_link"
+    assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
+    assert sensor.is_on is True
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["mac_address"] == "00:11:22:33:44:55"
+    assert attrs["ip_address"] == "192.168.1.50"
+    assert attrs["duplex"] == "full"
+    assert attrs["mtu"] == 1500
+    assert attrs["speed_mbps"] == 1000
+    assert attrs["virtual"] is False
+    assert attrs["internal"] is False
+    assert attrs["protocol"] == "tcp"
+    assert attrs["interface_type"] == "ethernet"
+
+
+def test_network_interface_link_down_or_missing() -> None:
+    """Test NetworkInterfaceLinkBinarySensor when down or missing from coordinator."""
+    iface_down = InfoNetworkInterface(id="eth0", name="eth0", operstate="down")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface_down])
+
+    sensor = NetworkInterfaceLinkBinarySensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="eth0",
+    )
+    assert sensor.is_on is False
+
+    # When interface is missing from list
+    coordinator.data = make_system_data(network_interfaces=[])
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {}
+
+    # When coordinator data is None
+    coordinator.data = None
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# PluginInstallingBinarySensor Tests
+# =============================================================================
+
+
+def test_plugin_installing_binary_sensor_active() -> None:
+    """Test PluginInstallingBinarySensor when an operation is running."""
+    op1 = PluginInstallOperation(
+        id="op-1",
+        name="community.applications.plg",
+        status="RUNNING",
+        url="https://example.com/ca.plg",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(plugin_operations=[op1])
+    coordinator.last_update_success = True
+
+    sensor = PluginInstallingBinarySensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+    )
+
+    assert sensor.translation_key == "plugin_installing"
+    assert sensor.unique_id == "uuid-1_plugin_installing"
+    assert sensor.device_class == BinarySensorDeviceClass.RUNNING
+    assert sensor.is_on is True
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["active_count"] == 1
+    assert attrs["total_operations"] == 1
+    assert attrs["active_operations"][0]["name"] == "community.applications.plg"
+
+
+def test_plugin_installing_binary_sensor_idle() -> None:
+    """Test PluginInstallingBinarySensor when no operations are active."""
+    op_done = PluginInstallOperation(
+        id="op-2",
+        name="unassigned.devices.plg",
+        status="COMPLETED",
+        url="https://example.com/ud.plg",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(plugin_operations=[op_done])
+
+    sensor = PluginInstallingBinarySensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+    )
+    assert sensor.is_on is False
+    attrs = sensor.extra_state_attributes
+    assert attrs["active_count"] == 0
+    assert attrs["total_operations"] == 1
+
+    # When plugin_operations is empty
+    coordinator.data = make_system_data(plugin_operations=[])
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes["active_count"] == 0
+
+    # When coordinator data is None
+    coordinator.data = None
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {}

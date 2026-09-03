@@ -17,6 +17,7 @@ from custom_components.unraid.coordinator import (
 from custom_components.unraid.switch import (
     ArraySwitch,
     DiskSpinSwitch,
+    DockerContainerAutostartSwitch,
     DockerContainerSwitch,
     ParityCheckSwitch,
     VirtualMachineSwitch,
@@ -1566,9 +1567,11 @@ async def test_setup_creates_container_switches(hass) -> None:
 
     await async_setup_entry(hass, mock_entry, mock_add_entities)
 
-    # Should have: ArraySwitch, ParityCheckSwitch, DockerContainerSwitch
-    assert len(added_entities) == 3
+    # Should have: ArraySwitch, ParityCheckSwitch, DockerContainerSwitch,
+    # and DockerContainerAutostartSwitch
+    assert len(added_entities) == 4
     assert any(isinstance(e, DockerContainerSwitch) for e in added_entities)
+    assert any(isinstance(e, DockerContainerAutostartSwitch) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -1813,3 +1816,112 @@ def test_diskspinswitch_returns_none_when_disk_missing() -> None:
 
     assert switch.is_on is None
     assert switch.extra_state_attributes == {}
+
+
+# =============================================================================
+# DockerContainerAutostartSwitch Tests
+# =============================================================================
+
+
+def test_container_autostart_switch_properties() -> None:
+    """Test DockerContainerAutostartSwitch properties and state."""
+    container = DockerContainer(id="c1", name="/plex", state="RUNNING", autoStart=True)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+    coordinator.last_update_success = True
+
+    switch = DockerContainerAutostartSwitch(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        container=container,
+    )
+
+    assert switch.translation_key == "docker_container_autostart"
+    assert switch.translation_placeholders == {"name": "plex"}
+    assert switch.unique_id == "uuid-1_container_autostart_plex"
+    assert switch.is_on is True
+    assert switch.available is True
+
+
+def test_container_autostart_switch_off_state() -> None:
+    """Test DockerContainerAutostartSwitch is_on when autostart is False or None."""
+    container = DockerContainer(id="c1", name="/plex", state="RUNNING", autoStart=False)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+
+    switch = DockerContainerAutostartSwitch(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        container=container,
+    )
+    assert switch.is_on is False
+
+    container_none = DockerContainer(
+        id="c2", name="/none", state="RUNNING", autoStart=None
+    )
+    coordinator.data = make_system_data(containers=[container_none])
+    switch_none = DockerContainerAutostartSwitch(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        container=container_none,
+    )
+    assert switch_none.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_container_autostart_switch_turn_on_and_off() -> None:
+    """Test turn_on and turn_off operations for DockerContainerAutostartSwitch."""
+    container = DockerContainer(id="c1", name="/plex", state="RUNNING", autoStart=False)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+    coordinator.async_update_container_autostart = AsyncMock()
+
+    switch = DockerContainerAutostartSwitch(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        container=container,
+    )
+
+    await switch.async_turn_on()
+    coordinator.async_update_container_autostart.assert_called_once_with(
+        "c1", auto_start=True
+    )
+
+    coordinator.async_update_container_autostart.reset_mock()
+    await switch.async_turn_off()
+    coordinator.async_update_container_autostart.assert_called_once_with(
+        "c1", auto_start=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_container_autostart_switch_error_handling() -> None:
+    """Test error handling in DockerContainerAutostartSwitch."""
+    container = DockerContainer(id="c1", name="/plex", state="RUNNING", autoStart=False)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(containers=[container])
+    coordinator.async_update_container_autostart = AsyncMock(
+        side_effect=UnraidAPIError("Mutation failed")
+    )
+
+    switch = DockerContainerAutostartSwitch(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        container=container,
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_on()
+
+    # When container is missing
+    coordinator.data = make_system_data(containers=[])
+    coordinator.async_update_container_autostart = AsyncMock()
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await switch.async_turn_on()
+    assert exc_info.value.translation_key == "container_not_found"
+    coordinator.async_update_container_autostart.assert_not_called()

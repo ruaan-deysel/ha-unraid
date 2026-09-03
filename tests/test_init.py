@@ -818,3 +818,20 @@ async def test_setup_entry_first_refresh_failure_closes_client(
             await async_setup_entry(hass, mock_config_entry)
 
     mock_unraid_client.close.assert_called_once()
+
+
+def test_is_monitorable_interface() -> None:
+    """Test is_monitorable_interface filter helper."""
+    from custom_components.unraid.const import is_monitorable_interface
+
+    assert is_monitorable_interface(None) is False
+    assert is_monitorable_interface("") is False
+    assert is_monitorable_interface("eth0") is True
+    assert is_monitorable_interface("eth1.5") is True
+    assert is_monitorable_interface("bond0") is True
+    assert is_monitorable_interface("br0") is True
+    assert is_monitorable_interface("wlan0") is True
+    assert is_monitorable_interface("docker0") is False
+    assert is_monitorable_interface("virbr0") is False
+    assert is_monitorable_interface("lo") is False
+    assert is_monitorable_interface("veth1234abc") is False

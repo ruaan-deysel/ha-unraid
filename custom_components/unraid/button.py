@@ -710,6 +710,112 @@ class DeleteAllArchivedNotificationsButton(UnraidButtonEntity[UnraidSystemCoordi
             ) from err
 
 
+class RecalculateNotificationsButton(UnraidButtonEntity[UnraidSystemCoordinator]):
+    """
+    Button to recalculate notification overview counts.
+
+    Forces the Unraid backend to recalculate notification overview counts.
+    Disabled by default - users enable when needed.
+    """
+
+    _attr_translation_key = "recalculate_notifications"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize recalculate notifications button."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id="recalculate_notifications",
+            name="Recalculate Notifications",
+            server_info=server_info,
+        )
+
+    async def async_press(self) -> None:
+        """Handle button press to recalculate notification counts."""
+        _LOGGER.info("Recalculating notifications on %s", self._server_name)
+        try:
+            await self.coordinator.async_recalculate_notifications()
+            _LOGGER.debug("Recalculate notifications command sent successfully")
+        except UnraidAPIError as err:
+            _LOGGER.error("Failed to recalculate notifications: %s", err)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="recalculate_notifications_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+
+class ClearDiskStatisticsButton(UnraidButtonEntity[UnraidStorageCoordinator]):
+    """
+    Button to clear read, write, and error statistics for an individual disk.
+
+    Resets the statistics counters on an individual array or pool disk.
+    Disabled by default - users enable per disk when needed.
+    """
+
+    _attr_translation_key = "disk_clear_statistics"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidStorageCoordinator,
+        server_uuid: str,
+        server_name: str,
+        disk_id: str,
+        disk_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize clear disk statistics button."""
+        self._disk_id = disk_id
+        self._disk_name = disk_name
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"disk_{disk_id}_clear_statistics",
+            name=f"Disk {self._disk_name} Clear Statistics",
+            server_info=server_info,
+        )
+        self._attr_translation_placeholders = {"name": self._disk_name}
+
+    async def async_press(self) -> None:
+        """Handle button press to clear disk statistics."""
+        _LOGGER.info(
+            "Clearing statistics for disk %s on %s",
+            self._disk_name,
+            self._server_name,
+        )
+        try:
+            await self.coordinator.async_clear_disk_statistics(self._disk_id)
+            _LOGGER.debug(
+                "Cleared statistics for disk %s successfully", self._disk_name
+            )
+        except UnraidAPIError as err:
+            _LOGGER.error(
+                "Failed to clear statistics for disk %s: %s",
+                self._disk_name,
+                err,
+            )
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="clear_disk_stats_failed",
+                translation_placeholders={
+                    "name": self._disk_name,
+                    "error": str(err),
+                },
+            ) from err
+
+
 # =============================================================================
 # Platform Setup
 # =============================================================================
@@ -764,6 +870,11 @@ async def async_setup_entry(
     )
     entities.append(
         DeleteAllArchivedNotificationsButton(
+            system_coordinator, server_uuid, server_name, server_info
+        )
+    )
+    entities.append(
+        RecalculateNotificationsButton(
             system_coordinator, server_uuid, server_name, server_info
         )
     )
@@ -838,6 +949,46 @@ async def async_setup_entry(
                 VMResetButton(
                     system_coordinator, server_uuid, server_name, vm, server_info
                 ),
+            ],
+        )
+    )
+
+    # Per-disk statistics clear buttons: added dynamically when disks appear
+    def _get_all_disks() -> list[Any]:
+        data = storage_coordinator.data
+        if not data:
+            return []
+        disks: list[Any] = []
+        for disk in [
+            *(data.disks or []),
+            *(data.parities or []),
+            *(data.caches or []),
+        ]:
+            if isinstance(getattr(disk, "id", None), str) and disk.id:
+                disks.append(disk)
+        if (
+            data.boot is not None
+            and isinstance(getattr(data.boot, "id", None), str)
+            and data.boot.id
+        ):
+            disks.append(data.boot)
+        return disks
+
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=storage_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=_get_all_disks,
+            get_key=lambda disk: disk.id,
+            create_entities=lambda disk: [
+                ClearDiskStatisticsButton(
+                    storage_coordinator,
+                    server_uuid,
+                    server_name,
+                    disk.id,
+                    disk.name or disk.id,
+                    server_info,
+                )
             ],
         )
     )

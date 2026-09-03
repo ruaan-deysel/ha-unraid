@@ -102,6 +102,18 @@
     "container_restart_failed": {
       "message": "Failed to restart container {name}: {error}"
     },
+    "container_autostart_failed": {
+      "message": "Failed to update autostart for container {name}: {error}"
+    },
+    "container_not_found": {
+      "message": "Container {name} not found"
+    },
+    "clear_disk_stats_failed": {
+      "message": "Failed to clear statistics for disk {name}: {error}"
+    },
+    "recalculate_notifications_failed": {
+      "message": "Failed to recalculate notification overview: {error}"
+    },
     "vm_start_failed": {
       "message": "Failed to start VM {name}: {error}"
     },
@@ -359,6 +371,12 @@
       },
       "network_interface_tx": {
         "name": "Network {name} outbound"
+      },
+      "network_interface_speed": {
+        "name": "Network {name} speed"
+      },
+      "network_interface_ip": {
+        "name": "Network {name} IP address"
       }
     },
     "binary_sensor": {
@@ -415,6 +433,12 @@
       },
       "filesystems_unmountable": {
         "name": "Filesystems unmountable"
+      },
+      "network_interface_link": {
+        "name": "Network {name} link"
+      },
+      "plugin_installing": {
+        "name": "Plugin installation in progress"
       }
     },
     "switch": {
@@ -429,6 +453,9 @@
       },
       "docker_container": {
         "name": "Container {name}"
+      },
+      "docker_container_autostart": {
+        "name": "Container {name} autostart"
       },
       "virtual_machine": {
         "name": "VM {name}"
@@ -473,6 +500,12 @@
       },
       "check_container_updates": {
         "name": "Check container updates"
+      },
+      "disk_clear_statistics": {
+        "name": "Disk {name} clear statistics"
+      },
+      "recalculate_notifications": {
+        "name": "Recalculate notifications"
       }
     },
     "update": {

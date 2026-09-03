@@ -185,6 +185,11 @@ def mock_api_client():
     client.get_installed_unraid_plugins = AsyncMock(return_value=[])
     client.query = AsyncMock(return_value={"installedUnraidPlugins": []})
     client.typed_get_network = AsyncMock(return_value=None)
+    client.typed_get_network_interfaces = AsyncMock(return_value=[])
+    client.get_plugin_install_operations = AsyncMock(return_value=[])
+    client.update_container_autostart = AsyncMock(return_value=True)
+    client.clear_array_disk_statistics = AsyncMock(return_value=True)
+    client.recalculate_notification_overview = AsyncMock(return_value=True)
     client.typed_get_notifications = AsyncMock(return_value=[])
     client.close = AsyncMock()
     client.archive_all_notifications = AsyncMock(return_value={})
@@ -2762,3 +2767,116 @@ async def test_infra_update_connection_error_raises_update_failed(
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+# =============================================================================
+# New 1.13.0 API Method Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_update_container_autostart(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test updating container autostart mutation and refresh triggers."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator.async_request_docker_refresh = AsyncMock()
+
+    await coordinator.async_update_container_autostart("c1", auto_start=True)
+    mock_api_client.update_container_autostart.assert_called_once_with(
+        [{"id": "c1", "autoStart": True}]
+    )
+    coordinator.async_request_docker_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_recalculate_notifications(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test recalculate notification overview mutation and refresh triggers."""
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+
+    await coordinator.async_recalculate_notifications()
+    mock_api_client.recalculate_notification_overview.assert_called_once()
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_clear_disk_statistics(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test clear disk statistics mutation and refresh triggers."""
+    coordinator = _storage_coordinator(hass, mock_api_client, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+
+    await coordinator.async_clear_disk_statistics("disk1")
+    mock_api_client.clear_array_disk_statistics.assert_called_once_with("disk1")
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_query_optional_network_interfaces(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional network interfaces query with caching."""
+    from unraid_api.exceptions import UnraidAPIError
+    from unraid_api.models import InfoNetworkInterface
+
+    iface = InfoNetworkInterface(id="eth0", name="eth0", speed=1000)
+    mock_api_client.typed_get_network_interfaces = AsyncMock(return_value=[iface])
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    # Direct query succeeds
+    result = await coordinator._query_optional_network_interfaces()
+    assert result == [iface]
+
+    # Optional system data fetch updates cache
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        ifaces,
+        _,
+    ) = await coordinator._async_fetch_optional_system_data()
+    assert ifaces == [iface]
+    assert coordinator._cached_network_interfaces == [iface]
+
+    # Subsequent error falls back to cache
+    mock_api_client.typed_get_network_interfaces = AsyncMock(
+        side_effect=UnraidAPIError("API failure")
+    )
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        fallback_ifaces,
+        _,
+    ) = await coordinator._async_fetch_optional_system_data()
+    assert fallback_ifaces == [iface]
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_query_optional_plugin_operations(
+    hass, mock_api_client, mock_config_entry
+):
+    """Test optional plugin operations query in system coordinator."""
+    from unraid_api.models import PluginInstallOperation
+
+    op = PluginInstallOperation(id="op1", name="test.plg", status="RUNNING")
+    mock_api_client.get_plugin_install_operations = AsyncMock(return_value=[op])
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+
+    result = await coordinator._query_optional_plugin_operations()
+    assert result == [op]
+
+    # Error handling returns None on failure
+    mock_api_client.get_plugin_install_operations = AsyncMock(
+        side_effect=Exception("API error")
+    )
+    fallback = await coordinator._query_optional_plugin_operations()
+    assert fallback is None
