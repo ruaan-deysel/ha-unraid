@@ -1080,10 +1080,12 @@ class NetworkInterfaceLinkBinarySensor(
         return None
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return True if the interface operational state is up."""
         iface = self._get_interface()
-        if iface is None or not iface.operstate:
+        if iface is None:
+            return None
+        if not iface.operstate:
             return False
         return iface.operstate.lower() == "up"
 
@@ -1147,10 +1149,12 @@ class PluginInstallingBinarySensor(UnraidBinarySensorEntity[UnraidSystemCoordina
         )
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return True if any plugin installation operation is active."""
         data: UnraidSystemData | None = self.coordinator.data
-        if data is None or not data.plugin_operations:
+        if data is None:
+            return None
+        if not data.plugin_operations:
             return False
         return any(
             op.status is not None

@@ -2207,14 +2207,19 @@ def test_network_interface_link_down_or_missing() -> None:
     )
     assert sensor.is_on is False
 
+    # When interface exists but operstate is empty
+    iface_empty = InfoNetworkInterface(id="eth0", name="eth0", operstate="")
+    coordinator.data = make_system_data(network_interfaces=[iface_empty])
+    assert sensor.is_on is False
+
     # When interface is missing from list
     coordinator.data = make_system_data(network_interfaces=[])
-    assert sensor.is_on is False
+    assert sensor.is_on is None
     assert sensor.extra_state_attributes == {}
 
     # When coordinator data is None
     coordinator.data = None
-    assert sensor.is_on is False
+    assert sensor.is_on is None
     assert sensor.extra_state_attributes == {}
 
 
@@ -2280,5 +2285,5 @@ def test_plugin_installing_binary_sensor_idle() -> None:
 
     # When coordinator data is None
     coordinator.data = None
-    assert sensor.is_on is False
+    assert sensor.is_on is None
     assert sensor.extra_state_attributes == {}
