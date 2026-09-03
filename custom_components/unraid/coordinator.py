@@ -733,7 +733,7 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         *,
         auto_start: bool,
     ) -> None:
-        """Update container autostart configuration (API 4.36+ / unraid-api 1.13+)."""
+        """Update container autostart configuration (API 4.37.0+ / unraid-api 1.13+)."""
         await self.api_client.update_container_autostart(
             [{"id": container_id, "autoStart": auto_start}]
         )
