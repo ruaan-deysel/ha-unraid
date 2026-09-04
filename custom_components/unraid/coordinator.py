@@ -36,11 +36,13 @@ from unraid_api.models import (
     Cloud,
     Connect,
     DockerContainer,
+    InfoNetworkInterface,
     Network,
     NetworkMetrics,
     NotificationOverview,
     ParityCheck,
     ParityHistoryEntry,
+    PluginInstallOperation,
     Registration,
     RemoteAccess,
     Service,
@@ -76,6 +78,8 @@ class UnraidSystemData:
     notifications_unread: int = 0
     mover_active: bool | None = None
     network_metrics: list[NetworkMetrics] = field(default_factory=list)
+    network_interfaces: list[InfoNetworkInterface] = field(default_factory=list)
+    plugin_operations: list[PluginInstallOperation] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,12 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         # Cached network metrics list to keep the last known-good value across
         # failed optional queries.
         self._cached_network_metrics: list[NetworkMetrics] = []
+        # Cached network interfaces list to keep the last known-good value across
+        # failed optional queries.
+        self._cached_network_interfaces: list[InfoNetworkInterface] = []
+        # Cached plugin operations list to keep the last known-good value across
+        # failed optional queries.
+        self._cached_plugin_operations: list[PluginInstallOperation] = []
         # Status of the last optional query per category (True if succeeded,
         # False if failed).
         self._optional_query_status: dict[str, bool] = {
@@ -202,6 +212,8 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             "vms": True,
             "ups_devices": True,
             "network_metrics": True,
+            "network_interfaces": True,
+            "plugin_operations": True,
         }
         self._event_listeners: dict[
             str, list[Callable[[UnraidNotificationEventData], None]]
@@ -631,6 +643,24 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             _LOGGER.debug("Network metrics not available: %s", err)
             return None
 
+    async def _query_optional_network_interfaces(
+        self,
+    ) -> list[InfoNetworkInterface] | None:
+        """
+        Query per-interface network details (fails gracefully).
+
+        Returns:
+            list[InfoNetworkInterface] on success, or None if the query failed.
+
+        """
+        try:
+            return await self.api_client.typed_get_network_interfaces()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+            _LOGGER.debug("Network interfaces not available: %s", err)
+            return None
+
     async def _query_optional_mover_status(self) -> bool | None:
         """Query mover active status (fails gracefully)."""
         try:
@@ -642,6 +672,27 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
             raise
         except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
             _LOGGER.debug("Mover status data not available: %s", err)
+            return None
+
+    async def _query_optional_plugin_operations(
+        self,
+    ) -> list[PluginInstallOperation] | None:
+        """
+        Query in-progress plugin operations (fails gracefully).
+
+        Returns:
+            list[PluginInstallOperation] on success, or None if the query failed.
+
+        """
+        try:
+            return await self.api_client.get_plugin_install_operations()
+        except UnraidAuthenticationError:
+            raise
+        except (UnraidAPIError, UnraidConnectionError, UnraidTimeoutError) as err:
+            _LOGGER.debug("Plugin operations not available: %s", err)
+            return None
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Plugin operations query failed: %s", err)
             return None
 
     async def async_request_docker_refresh(self) -> None:
@@ -675,6 +726,18 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
     async def async_update_all_containers(self) -> None:
         """Update every container with a pending image update (API 4.35+)."""
         await self.api_client.update_all_containers()
+
+    async def async_update_container_autostart(
+        self,
+        container_id: str,
+        *,
+        auto_start: bool,
+    ) -> None:
+        """Update container autostart configuration (API 4.37.0+ / unraid-api 1.13+)."""
+        await self.api_client.update_container_autostart(
+            [{"id": container_id, "autoStart": auto_start}]
+        )
+        await self.async_request_docker_refresh()
 
     async def async_refresh_docker_digests(self) -> None:
         """Force a re-check of remote image digests (the WebGUI 'check for updates')."""
@@ -716,6 +779,11 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         """Delete all archived notifications."""
         await self.api_client.delete_all_notifications()
 
+    async def async_recalculate_notifications(self) -> None:
+        """Recalculate notification overview counts (unraid-api 1.13+)."""
+        await self.api_client.recalculate_notification_overview()
+        await self.async_request_refresh()
+
     async def _async_fetch_optional_system_data(
         self,
     ) -> tuple[
@@ -724,6 +792,8 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         list[UPSDevice],
         bool | None,
         list[NetworkMetrics],
+        list[InfoNetworkInterface],
+        list[PluginInstallOperation],
     ]:
         """Fetch optional system data with throttling and cache fallback."""
         fetch_docker = self._force_docker_refresh or (
@@ -731,17 +801,20 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         )
         if fetch_docker:
             (
-                docker_result,
-                vms_result,
-                ups_result,
-                mover_active,
-                network_result,
+                (docker_result, vms_result, ups_result, mover_active),
+                (network_result, network_ifaces_result, plugin_ops_result),
             ) = await asyncio.gather(
-                self._query_optional_docker(),
-                self._query_optional_vms(),
-                self._query_optional_ups(),
-                self._query_optional_mover_status(),
-                self._query_optional_network_metrics(),
+                asyncio.gather(
+                    self._query_optional_docker(),
+                    self._query_optional_vms(),
+                    self._query_optional_ups(),
+                    self._query_optional_mover_status(),
+                ),
+                asyncio.gather(
+                    self._query_optional_network_metrics(),
+                    self._query_optional_network_interfaces(),
+                    self._query_optional_plugin_operations(),
+                ),
             )
             self._optional_query_status["containers"] = docker_result is not None
             if docker_result is not None:
@@ -754,11 +827,15 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 ups_result,
                 mover_active,
                 network_result,
+                network_ifaces_result,
+                plugin_ops_result,
             ) = await asyncio.gather(
                 self._query_optional_vms(),
                 self._query_optional_ups(),
                 self._query_optional_mover_status(),
                 self._query_optional_network_metrics(),
+                self._query_optional_network_interfaces(),
+                self._query_optional_plugin_operations(),
             )
 
         self._optional_query_status["vms"] = vms_result is not None
@@ -773,12 +850,24 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         if network_result is not None:
             self._cached_network_metrics = network_result
 
+        self._optional_query_status["network_interfaces"] = (
+            network_ifaces_result is not None
+        )
+        if network_ifaces_result is not None:
+            self._cached_network_interfaces = network_ifaces_result
+
+        self._optional_query_status["plugin_operations"] = plugin_ops_result is not None
+        if plugin_ops_result is not None:
+            self._cached_plugin_operations = plugin_ops_result
+
         return (
             self._cached_containers,
             self._cached_vms,
             self._cached_ups_devices,
             mover_active,
             self._cached_network_metrics,
+            self._cached_network_interfaces,
+            self._cached_plugin_operations,
         )
 
     @property
@@ -816,6 +905,8 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 ups_devices,
                 mover_active,
                 network_metrics,
+                network_interfaces,
+                plugin_operations,
             ) = await self._async_fetch_optional_system_data()
 
             # Log recovery if previously unavailable
@@ -852,6 +943,8 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
                 else 0,
                 mover_active=mover_active,
                 network_metrics=network_metrics,
+                network_interfaces=network_interfaces,
+                plugin_operations=plugin_operations,
             )
 
         except UnraidAuthenticationError as err:
@@ -966,6 +1059,11 @@ class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]
         """Spin down a disk."""
         await self.api_client.spin_down_disk(disk_id)
 
+    async def async_clear_disk_statistics(self, disk_id: str) -> None:
+        """Clear read, write, and error statistics for an array disk."""
+        await self.api_client.clear_array_disk_statistics(disk_id)
+        await self.async_request_refresh()
+
     async def _async_update_data(self) -> UnraidStorageData:
         """
         Fetch storage data from Unraid server using library typed methods.
@@ -1063,7 +1161,7 @@ class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
         self._previously_unavailable = False
 
     async def _query_optional_services(self) -> list[Service]:
-        """Query services (fails gracefully)."""
+        """Query services status (fails gracefully)."""
         try:
             return await self.api_client.typed_get_services()
         except UnraidAuthenticationError:
@@ -1083,7 +1181,7 @@ class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
             return None
 
     async def _query_optional_cloud(self) -> Cloud | None:
-        """Query cloud status (fails gracefully)."""
+        """Query Unraid Cloud connection (fails gracefully)."""
         try:
             return await self.api_client.typed_get_cloud()
         except UnraidAuthenticationError:
@@ -1093,7 +1191,7 @@ class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
             return None
 
     async def _query_optional_connect(self) -> Connect | None:
-        """Query connect status (fails gracefully)."""
+        """Query Unraid Connect plugin info (fails gracefully)."""
         try:
             return await self.api_client.typed_get_connect()
         except UnraidAuthenticationError:
@@ -1125,25 +1223,9 @@ class UnraidInfraCoordinator(TimestampDataUpdateCoordinator[UnraidInfraData]):
     async def _query_installed_plugins(self) -> list[str]:
         """Query installed Unraid plugin filenames (fails gracefully)."""
         try:
-            result = await self.api_client.query("query { installedUnraidPlugins }")
-
-            payload: dict[str, Any] | None = None
-            if isinstance(result, dict):
-                data = result.get("data")
-                payload = data if isinstance(data, dict) else result
-            else:
-                data_attr = getattr(result, "data", None)
-                if isinstance(data_attr, dict):
-                    payload = data_attr
-
-            if payload is None:
-                return []
-
-            plugins = payload.get("installedUnraidPlugins", [])
-
+            plugins = await self.api_client.get_installed_unraid_plugins()
             if not isinstance(plugins, list):
                 return []
-
             return [str(plugin) for plugin in plugins if plugin is not None]
         except UnraidAuthenticationError:
             raise

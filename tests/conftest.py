@@ -19,11 +19,13 @@ from unraid_api.models import (
     Cloud,
     Connect,
     DockerContainer,
+    InfoNetworkInterface,
     NetworkMetrics,
     NotificationOverview,
     NotificationOverviewCounts,
     ParityCheck,
     ParityHistoryEntry,
+    PluginInstallOperation,
     Registration,
     RemoteAccess,
     ServerInfo,
@@ -125,6 +127,8 @@ def make_system_data(
     temperature: TemperatureMetrics | None = None,
     mover_active: bool | None = None,
     network_metrics: list[NetworkMetrics] | None = None,
+    network_interfaces: list[InfoNetworkInterface] | None = None,
+    plugin_operations: list[PluginInstallOperation] | None = None,
 ) -> UnraidSystemData:
     """Create a UnraidSystemData instance for testing."""
     from datetime import datetime
@@ -168,6 +172,8 @@ def make_system_data(
         notifications_unread=notifications_unread,
         mover_active=mover_active,
         network_metrics=network_metrics or [],
+        network_interfaces=network_interfaces or [],
+        plugin_operations=plugin_operations or [],
     )
 
 
@@ -393,13 +399,31 @@ def create_mock_unraid_client(
     # Vars (returns Vars model)
     client.typed_get_vars = AsyncMock(return_value=vars_data)
 
-    # Installed plugins (returns list of plugin filenames via raw GraphQL query)
+    # Installed plugins (returns list of plugin filenames)
+    client.get_installed_unraid_plugins = AsyncMock(
+        return_value=installed_plugins or []
+    )
     client.query = AsyncMock(
         return_value={"installedUnraidPlugins": installed_plugins or []}
     )
 
     # Network (returns Network model)
     client.typed_get_network = AsyncMock(return_value=None)
+
+    # Network interfaces (returns list of InfoNetworkInterface)
+    client.typed_get_network_interfaces = AsyncMock(return_value=[])
+
+    # Container autostart mutation
+    client.update_container_autostart = AsyncMock(return_value=True)
+
+    # Disk statistics mutation
+    client.clear_array_disk_statistics = AsyncMock(return_value=True)
+
+    # Notification recalculate mutation
+    client.recalculate_notification_overview = AsyncMock(return_value=True)
+
+    # Plugin install operations query
+    client.get_plugin_install_operations = AsyncMock(return_value=[])
 
     return client
 

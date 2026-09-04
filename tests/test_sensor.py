@@ -15,6 +15,9 @@ from unraid_api.models import (
     ArrayDisk,
     CapacityKilobytes,
     DockerContainer,
+    InfoNetworkInterface,
+    InfoNetworkIpv4Address,
+    InfoNetworkIpv6Address,
     NotificationOverview,
     NotificationOverviewCounts,
     ParityCheck,
@@ -35,7 +38,7 @@ from unraid_api.models import (
     TemperatureSensor as TemperatureSensorModel,
 )
 
-from custom_components.unraid.const import DOMAIN
+from custom_components.unraid.const import DOMAIN, is_monitorable_interface
 from custom_components.unraid.coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -60,7 +63,9 @@ from custom_components.unraid.sensor import (
     InstalledPluginsSensor,
     LastParityCheckDateSensor,
     LastParityCheckErrorsSensor,
+    NetworkInterfaceIpSensor,
     NetworkInterfaceRxSensor,
+    NetworkInterfaceSpeedSensor,
     NetworkInterfaceTxSensor,
     NotificationArchivedTotalSensor,
     NotificationUnreadAlertSensor,
@@ -98,7 +103,6 @@ from custom_components.unraid.sensor import (
     UptimeSensor,
     _compute_disk_usage_percent,
     _compute_disk_used_bytes,
-    _is_monitorable_interface,
     _is_valid_system_temp_sensor,
     format_bytes,
 )
@@ -6777,7 +6781,7 @@ def test_network_interface_sensor_no_data() -> None:
 )
 def test_is_monitorable_interface(name: str | None, expected: bool) -> None:
     """Only physical NICs, bonds, and user bridges are monitorable."""
-    assert _is_monitorable_interface(name) is expected
+    assert is_monitorable_interface(name) is expected
 
 
 # =============================================================================
@@ -7353,3 +7357,128 @@ def test_is_valid_system_temp_sensor_filters() -> None:
     assert _is_valid_system_temp_sensor(_make_temp_sensor(name="AUXTIN3")) is False
     assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=0.5)) is False
     assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=180.0)) is False
+
+
+# =============================================================================
+# NetworkInterfaceSpeedSensor & NetworkInterfaceIpSensor Tests
+# =============================================================================
+
+
+def test_network_interface_speed_sensor_properties_and_state() -> None:
+    """Test NetworkInterfaceSpeedSensor properties, native_value, and attributes."""
+    iface = InfoNetworkInterface(
+        id="eth0",
+        name="eth0",
+        speed=1000,
+        duplex="full",
+        operstate="up",
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface])
+    coordinator.last_update_success = True
+
+    sensor = NetworkInterfaceSpeedSensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="eth0",
+    )
+
+    assert sensor.translation_key == "network_interface_speed"
+    assert sensor.translation_placeholders == {"name": "eth0"}
+    assert sensor.unique_id == "uuid-1_network_eth0_speed"
+    assert sensor.device_class == SensorDeviceClass.DATA_RATE
+    assert sensor.native_value == 1000
+    assert sensor.extra_state_attributes == {"duplex": "full", "operstate": "up"}
+
+
+def test_network_interface_speed_sensor_missing_or_none() -> None:
+    """Test NetworkInterfaceSpeedSensor when interface is missing or data is None."""
+    iface = InfoNetworkInterface(id="eth0", name="eth0", speed=None)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface])
+
+    sensor = NetworkInterfaceSpeedSensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="eth0",
+    )
+    assert sensor.native_value is None
+
+    # When interface missing from coordinator data
+    coordinator.data = make_system_data(network_interfaces=[])
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    # When coordinator data is None
+    coordinator.data = None
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_network_interface_ip_sensor_properties_and_state() -> None:
+    """Test NetworkInterfaceIpSensor properties, native_value, and attributes."""
+    iface = InfoNetworkInterface(
+        id="br0",
+        name="br0",
+        ipAddress="192.168.20.21",
+        macAddress="00:11:22:33:44:55",
+        netmask="255.255.255.0",
+        gateway="192.168.20.1",
+        ipv4Addresses=[
+            InfoNetworkIpv4Address(address="192.168.20.21", netmask="255.255.255.0")
+        ],
+        ipv6Address="fe80::1",
+        ipv6Addresses=[InfoNetworkIpv6Address(address="fe80::1", prefixLength=64)],
+    )
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface])
+    coordinator.last_update_success = True
+
+    sensor = NetworkInterfaceIpSensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="br0",
+    )
+
+    assert sensor.translation_key == "network_interface_ip"
+    assert sensor.translation_placeholders == {"name": "br0"}
+    assert sensor.unique_id == "uuid-1_network_br0_ip"
+    assert sensor.native_value == "192.168.20.21"
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["mac_address"] == "00:11:22:33:44:55"
+    assert attrs["netmask"] == "255.255.255.0"
+    assert attrs["gateway"] == "192.168.20.1"
+    assert attrs["ipv4_addresses"] == [
+        {"address": "192.168.20.21", "netmask": "255.255.255.0"}
+    ]
+    assert attrs["ipv6_address"] == "fe80::1"
+    assert attrs["ipv6_addresses"] == [{"address": "fe80::1", "prefix_length": 64}]
+
+
+def test_network_interface_ip_sensor_missing_or_none() -> None:
+    """Test NetworkInterfaceIpSensor when interface is missing or ipAddress is None."""
+    iface = InfoNetworkInterface(id="br0", name="br0", ipAddress=None)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(network_interfaces=[iface])
+
+    sensor = NetworkInterfaceIpSensor(
+        coordinator=coordinator,
+        server_uuid="uuid-1",
+        server_name="tower",
+        interface_name="br0",
+    )
+    assert sensor.native_value is None
+
+    # When interface missing from coordinator data
+    coordinator.data = make_system_data(network_interfaces=[])
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    # When coordinator data is None
+    coordinator.data = None
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}

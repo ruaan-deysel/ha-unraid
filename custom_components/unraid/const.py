@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Final
 
 # =============================================================================
@@ -35,6 +36,7 @@ __all__ = [
     "CONTAINER_STATE_EXITED",
     "CONTAINER_STATE_PAUSED",
     "CONTAINER_STATE_RUNNING",
+    "MONITORABLE_INTERFACE_RE",
     "VM_STATE_IDLE",
     "VM_STATE_PAUSED",
     "VM_STATE_RUNNING",
@@ -43,6 +45,7 @@ __all__ = [
     "UnraidAuthenticationError",
     "UnraidConnectionError",
     "UnraidTimeoutError",
+    "is_monitorable_interface",
 ]
 
 # =============================================================================
@@ -105,3 +108,21 @@ WS_REFRESH_DEBOUNCE_SECONDS: Final = 10  # seconds
 # Repair Issue IDs
 # =============================================================================
 REPAIR_AUTH_FAILED: Final = "auth_failed"
+
+# =============================================================================
+# Network Interface Filters
+# =============================================================================
+# Only physical NICs, bonds, and user-configured bridges get entities —
+# Unraid names these ethN, bondN, brN/wlanN (plus VLAN sub-interfaces like
+# br0.5). Everything else is auto-generated plumbing that churns constantly
+# and carries no dashboard value: per-container veth pairs, VM vnet/tap
+# devices, loopback, and Docker/libvirt-created bridges and shims
+# (br-<hash>, docker0, shim-br0, virbr0).
+MONITORABLE_INTERFACE_RE: Final = re.compile(r"^(?:eth|bond|br|wlan)\d+(?:\.\d+)?$")
+
+
+def is_monitorable_interface(name: str | None) -> bool:
+    """Return True if the interface should get entities."""
+    if not name:
+        return False
+    return MONITORABLE_INTERFACE_RE.match(name) is not None

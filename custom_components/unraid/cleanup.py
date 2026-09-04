@@ -75,6 +75,7 @@ _missing_streaks: dict[str, int] = {}
 # "temp_" covers per-hardware-temperature-sensor entities (not "temperature_average").
 _DYNAMIC_RESOURCE_ID_PREFIXES: Final[tuple[str, ...]] = (
     "container_switch_",  # per-container switch
+    "container_autostart_",  # per-container autostart switch
     "container_restart_",  # per-container restart button
     "container_update_",  # per-container update entity (update platform)
     "vm_switch_",  # per-VM switch
@@ -97,10 +98,15 @@ _STATIC_CONTAINER_RESOURCE_IDS: Final[frozenset[str]] = frozenset(
 # Static resource ids that start with "network_" (and must not be cleaned up)
 _STATIC_NETWORK_RESOURCE_IDS: Final[frozenset[str]] = frozenset({"network_access"})
 
-# Network-interface sensors use resource_id = "network_{name}_{rx|tx}".
+# Network-metrics throughput sensors use resource_id = "network_{name}_{rx|tx}".
+_NETWORK_METRICS_RESOURCE_ID_RE: Final = re.compile(
+    r"^network_(?P<name>.+?)_(?:rx|tx)$"
+)
+
+# Network-interface state/speed/ip entities use "network_{name}_{link|speed|ip}".
 # This pattern distinguishes them from the static "network_access" sensor.
 _NETWORK_INTERFACE_RESOURCE_ID_RE: Final = re.compile(
-    r"^network_(?P<name>.+?)_(?:rx|tx)$"
+    r"^network_(?P<name>.+?)_(?:link|speed|ip)$"
 )
 
 
@@ -124,12 +130,15 @@ def _is_dynamic_resource_id(resource_id: str) -> bool:
     ):
         return True
 
-    # Network-interface throughput sensors: network_{interface}_{rx|tx}
+    # Network-interface throughput and state sensors
     # Only those NOT in the static allow-list count as dynamic.
     return (
         resource_id.startswith("network_")
         and resource_id not in _STATIC_NETWORK_RESOURCE_IDS
-        and bool(_NETWORK_INTERFACE_RESOURCE_ID_RE.match(resource_id))
+        and bool(
+            _NETWORK_METRICS_RESOURCE_ID_RE.match(resource_id)
+            or _NETWORK_INTERFACE_RESOURCE_ID_RE.match(resource_id)
+        )
     )
 
 
@@ -147,9 +156,11 @@ def _get_dynamic_resource_category(resource_id: str) -> str | None:
     if (
         resource_id.startswith("network_")
         and resource_id not in _STATIC_NETWORK_RESOURCE_IDS
-        and bool(_NETWORK_INTERFACE_RESOURCE_ID_RE.match(resource_id))
     ):
-        return "network_metrics"
+        if bool(_NETWORK_METRICS_RESOURCE_ID_RE.match(resource_id)):
+            return "network_metrics"
+        if bool(_NETWORK_INTERFACE_RESOURCE_ID_RE.match(resource_id)):
+            return "network_interfaces"
     return None
 
 
@@ -165,6 +176,7 @@ def _build_system_dynamic_unique_ids(
         expected.update(
             {
                 f"{pfx}container_switch_{name}",
+                f"{pfx}container_autostart_{name}",
                 f"{pfx}container_restart_{name}",
                 f"{pfx}container_{name}_cpu",
                 f"{pfx}container_{name}_memory",
@@ -217,6 +229,16 @@ def _build_system_dynamic_unique_ids(
                 }
             )
 
+    for iface in sys_data.network_interfaces or []:
+        if iface.name is not None:
+            expected.update(
+                {
+                    f"{pfx}network_{iface.name}_link",
+                    f"{pfx}network_{iface.name}_speed",
+                    f"{pfx}network_{iface.name}_ip",
+                }
+            )
+
     return expected
 
 
@@ -242,6 +264,7 @@ def _build_storage_dynamic_unique_ids(
                 f"{pfx}disk_{disk.id}_usage",
                 f"{pfx}disk_health_{disk.id}",
                 f"{pfx}disk_spin_{disk.id}",
+                f"{pfx}disk_{disk.id}_clear_statistics",
             }
         )
 

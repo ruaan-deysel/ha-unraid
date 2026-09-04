@@ -22,7 +22,7 @@ from unraid_api.const import (
     DISK_STATUS_WRONG,
 )
 
-from .const import ARRAY_STATE_STARTED
+from .const import ARRAY_STATE_STARTED, is_monitorable_interface
 from .coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -36,7 +36,13 @@ from .entity import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from unraid_api.models import ArrayDisk, DockerContainer, Service, UPSDevice
+    from unraid_api.models import (
+        ArrayDisk,
+        DockerContainer,
+        InfoNetworkInterface,
+        Service,
+        UPSDevice,
+    )
 
     from . import UnraidConfigEntry
     from .coordinator import (
@@ -1029,6 +1035,152 @@ class FilesystemsUnmountableBinarySensor(
         return {"count": data.vars.fs_num_unmountable}
 
 
+class NetworkInterfaceLinkBinarySensor(
+    UnraidBinarySensorEntity[UnraidSystemCoordinator]
+):
+    """
+    Binary sensor representing network interface operational link status.
+
+    ON = Interface link is UP
+    OFF = Interface link is DOWN or other state
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "network_interface_link"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize network interface link binary sensor."""
+        self._interface_name = interface_name
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"network_{interface_name}_link",
+            name=f"Network {interface_name} Link",
+            server_info=server_info,
+        )
+        self._attr_translation_placeholders = {"name": interface_name}
+
+    def _get_interface(self) -> InfoNetworkInterface | None:
+        """Get current network interface from coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        for iface in data.network_interfaces:
+            if iface.name == self._interface_name:
+                return iface
+        return None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the interface operational state is up."""
+        iface = self._get_interface()
+        if iface is None:
+            return None
+        if not iface.operstate:
+            return False
+        return iface.operstate.lower() == "up"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return interface attributes."""
+        iface = self._get_interface()
+        if iface is None:
+            return {}
+        attrs: dict[str, Any] = {}
+        if iface.macAddress:
+            attrs["mac_address"] = iface.macAddress
+        if iface.ipAddress:
+            attrs["ip_address"] = iface.ipAddress
+        if iface.duplex:
+            attrs["duplex"] = iface.duplex
+        if iface.mtu is not None:
+            attrs["mtu"] = iface.mtu
+        if iface.speed is not None:
+            attrs["speed_mbps"] = iface.speed
+        if iface.vlanId is not None:
+            attrs["vlan_id"] = iface.vlanId
+        if iface.virtual is not None:
+            attrs["virtual"] = iface.virtual
+        if iface.internal is not None:
+            attrs["internal"] = iface.internal
+        if iface.protocol:
+            attrs["protocol"] = iface.protocol
+        if iface.type:
+            attrs["interface_type"] = iface.type
+        return attrs
+
+
+class PluginInstallingBinarySensor(UnraidBinarySensorEntity[UnraidSystemCoordinator]):
+    """
+    Binary sensor indicating whether an Unraid plugin installation/update is active.
+
+    ON = Plugin installation is in progress
+    OFF = Idle (no operations in progress)
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "plugin_installing"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize plugin installing binary sensor."""
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id="plugin_installing",
+            name="Plugin Installation in Progress",
+            server_info=server_info,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if any plugin installation operation is active."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        if not data.plugin_operations:
+            return False
+        return any(
+            op.status is not None
+            and op.status.upper() in ("RUNNING", "PENDING", "IN_PROGRESS")
+            for op in data.plugin_operations
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return active plugin operations metadata."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return {}
+        active = [
+            {"id": op.id, "name": op.name, "status": op.status, "url": op.url}
+            for op in data.plugin_operations
+            if op.status is not None
+            and op.status.upper() in ("RUNNING", "PENDING", "IN_PROGRESS")
+        ]
+        return {
+            "active_operations": active,
+            "active_count": len(active),
+            "total_operations": len(data.plugin_operations),
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
     entry: UnraidConfigEntry,
@@ -1150,6 +1302,13 @@ async def async_setup_entry(
         ]
     )
 
+    # Plugin installation in progress binary sensor
+    entities.append(
+        PluginInstallingBinarySensor(
+            system_coordinator, server_uuid, server_name, server_info
+        )
+    )
+
     _LOGGER.debug("Adding %d binary_sensor entities", len(entities))
     async_add_entities(entities)
 
@@ -1167,6 +1326,33 @@ async def async_setup_entry(
             create_entities=lambda container: [
                 ContainerUpdateAvailableBinarySensor(
                     system_coordinator, server_uuid, server_name, container
+                )
+            ],
+        )
+    )
+
+    # Network interface link status binary sensors (Unraid API 4.35+ / unraid-api 1.13+)
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: [
+                iface
+                for iface in (
+                    system_coordinator.data.network_interfaces
+                    if system_coordinator.data
+                    else []
+                )
+                if iface.name and is_monitorable_interface(iface.name)
+            ],
+            get_key=lambda iface: iface.name or "",
+            create_entities=lambda iface: [
+                NetworkInterfaceLinkBinarySensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    iface.name or "",
+                    server_info,
                 )
             ],
         )

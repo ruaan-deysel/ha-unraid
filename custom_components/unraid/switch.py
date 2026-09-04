@@ -225,6 +225,132 @@ class DockerContainerSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]):
         await self.coordinator.async_request_docker_refresh()
 
 
+class DockerContainerAutostartSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]):
+    """Docker container autostart configuration switch."""
+
+    _attr_translation_key = "docker_container_autostart"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        container: DockerContainer,
+    ) -> None:
+        """Initialize docker container autostart switch."""
+        self._container_name = container.name.lstrip("/")
+        self._container_id = container.id
+        self._cached_container: DockerContainer | None = None
+        self._cache_data: UnraidSystemData | None = None
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"container_autostart_{self._container_name}",
+            name=f"Container {self._container_name} autostart",
+        )
+        self._attr_translation_placeholders = {"name": self._container_name}
+
+    def _get_container(self) -> DockerContainer | None:
+        """Get current container from coordinator data with caching."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+
+        if data is self._cache_data and self._cached_container is not None:
+            return self._cached_container
+
+        container_map = {c.name.lstrip("/"): c for c in data.containers}
+        self._cached_container = container_map.get(self._container_name)
+        self._cache_data = data
+
+        if self._cached_container is not None:
+            self._container_id = self._cached_container.id
+
+        return self._cached_container
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if container autostart is enabled."""
+        container = self._get_container()
+        if container is None or container.autoStart is None:
+            return False
+        return bool(container.autoStart)
+
+    @property
+    def available(self) -> bool:
+        """Return True if coordinator is available and container exists."""
+        return super().available and self._get_container() is not None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable container autostart."""
+        container = self._get_container()
+        if container is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="container_not_found",
+                translation_placeholders={"name": self._container_name},
+            )
+        try:
+            await self.coordinator.async_update_container_autostart(
+                self._container_id, auto_start=True
+            )
+            _LOGGER.debug(
+                "Enabled autostart for container %s (%s)",
+                self._container_name,
+                self._container_id,
+            )
+        except UnraidAPIError as err:
+            _LOGGER.error(
+                "Failed to enable autostart for container %s: %s",
+                self._container_name,
+                err,
+            )
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="container_autostart_failed",
+                translation_placeholders={
+                    "name": self._container_name,
+                    "error": str(err),
+                },
+            ) from err
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable container autostart."""
+        container = self._get_container()
+        if container is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="container_not_found",
+                translation_placeholders={"name": self._container_name},
+            )
+        try:
+            await self.coordinator.async_update_container_autostart(
+                self._container_id, auto_start=False
+            )
+            _LOGGER.debug(
+                "Disabled autostart for container %s (%s)",
+                self._container_name,
+                self._container_id,
+            )
+        except UnraidAPIError as err:
+            _LOGGER.error(
+                "Failed to disable autostart for container %s: %s",
+                self._container_name,
+                err,
+            )
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="container_autostart_failed",
+                translation_placeholders={
+                    "name": self._container_name,
+                    "error": str(err),
+                },
+            ) from err
+
+
 class VirtualMachineSwitch(UnraidSwitchEntity[UnraidSystemCoordinator]):
     """Virtual machine control switch."""
 
@@ -725,7 +851,13 @@ async def async_setup_entry(
                     server_uuid,
                     server_name,
                     container,
-                )
+                ),
+                DockerContainerAutostartSwitch(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container,
+                ),
             ],
         )
     )

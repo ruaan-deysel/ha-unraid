@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +29,7 @@ from .const import (
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
+    is_monitorable_interface,
 )
 from .coordinator import (
     UnraidInfraCoordinator,
@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from unraid_api.models import (
         ArrayDisk,
         DockerContainerStats,
+        InfoNetworkInterface,
         NetworkMetrics,
         ParityHistoryEntry,
         Share,
@@ -2617,21 +2618,6 @@ class DockerTotalMemoryBytesSensor(
 # Network Interface Sensors (metrics.network, Unraid API 4.35+)
 # =============================================================================
 
-# Only physical NICs, bonds, and user-configured bridges get entities —
-# Unraid names these ethN, bondN, brN/wlanN (plus VLAN sub-interfaces like
-# br0.5). Everything else is auto-generated plumbing that churns constantly
-# and carries no dashboard value: per-container veth pairs, VM vnet/tap
-# devices, loopback, and Docker/libvirt-created bridges and shims
-# (br-<hash>, docker0, shim-br0, virbr0).
-_MONITORABLE_INTERFACE_RE = re.compile(r"^(?:eth|bond|br|wlan)\d+(?:\.\d+)?$")
-
-
-def _is_monitorable_interface(name: str | None) -> bool:
-    """Return True if the interface should get sensor entities."""
-    if not name:
-        return False
-    return _MONITORABLE_INTERFACE_RE.match(name) is not None
-
 
 class NetworkInterfaceSensorBase(UnraidSensorEntity[UnraidSystemCoordinator]):
     """
@@ -2776,6 +2762,141 @@ class NetworkInterfaceTxSensor(NetworkInterfaceSensorBase):
             attrs["transmit_errors"] = interface.transmitErrors
         if interface.transmitDropped is not None:
             attrs["transmit_dropped"] = interface.transmitDropped
+        return attrs
+
+
+class NetworkInterfaceSpeedSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
+    """Network interface negotiated link speed sensor."""
+
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "network_interface_speed"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize network interface speed sensor."""
+        self._interface_name = interface_name
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"network_{interface_name}_speed",
+            name=f"Network {interface_name} Speed",
+            server_info=server_info,
+        )
+        self._attr_translation_placeholders = {"name": interface_name}
+
+    def _get_interface(self) -> InfoNetworkInterface | None:
+        """Look up this interface in the current coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        for interface in data.network_interfaces:
+            if interface.name == self._interface_name:
+                return interface
+        return None
+
+    @property
+    def native_value(self) -> int | None:
+        """Return negotiated link speed in Mbps."""
+        interface = self._get_interface()
+        if interface is None or interface.speed is None:
+            return None
+        return interface.speed
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return duplex and operational state."""
+        interface = self._get_interface()
+        if interface is None:
+            return {}
+        attrs: dict[str, Any] = {}
+        if interface.duplex:
+            attrs["duplex"] = interface.duplex
+        if interface.operstate:
+            attrs["operstate"] = interface.operstate
+        return attrs
+
+
+class NetworkInterfaceIpSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
+    """Network interface IP address diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "network_interface_ip"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        interface_name: str,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize network interface IP sensor."""
+        self._interface_name = interface_name
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"network_{interface_name}_ip",
+            name=f"Network {interface_name} IP",
+            server_info=server_info,
+        )
+        self._attr_translation_placeholders = {"name": interface_name}
+
+    def _get_interface(self) -> InfoNetworkInterface | None:
+        """Look up this interface in the current coordinator data."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+        for interface in data.network_interfaces:
+            if interface.name == self._interface_name:
+                return interface
+        return None
+
+    @property
+    def native_value(self) -> str | None:
+        """Return primary IP address."""
+        interface = self._get_interface()
+        if interface is None or not interface.ipAddress:
+            return None
+        return interface.ipAddress
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return full network addressing attributes."""
+        interface = self._get_interface()
+        if interface is None:
+            return {}
+        attrs: dict[str, Any] = {}
+        if interface.macAddress:
+            attrs["mac_address"] = interface.macAddress
+        if interface.netmask:
+            attrs["netmask"] = interface.netmask
+        if interface.gateway:
+            attrs["gateway"] = interface.gateway
+        if interface.ipv4Addresses:
+            attrs["ipv4_addresses"] = [
+                {"address": addr.address, "netmask": addr.netmask}
+                for addr in interface.ipv4Addresses
+                if addr.address
+            ]
+        if interface.ipv6Address:
+            attrs["ipv6_address"] = interface.ipv6Address
+        if interface.ipv6Addresses:
+            attrs["ipv6_addresses"] = [
+                {"address": addr.address, "prefix_length": addr.prefixLength}
+                for addr in interface.ipv6Addresses
+                if addr.address
+            ]
         return attrs
 
 
@@ -3463,7 +3584,7 @@ async def async_setup_entry(
         interface_name = registry_entry.unique_id.removeprefix(
             network_uid_prefix
         ).rsplit("_", 1)[0]
-        if not _is_monitorable_interface(interface_name):
+        if not is_monitorable_interface(interface_name):
             _LOGGER.debug(
                 "Removing sensor for non-monitorable interface %s (%s)",
                 interface_name,
@@ -3486,7 +3607,7 @@ async def async_setup_entry(
                     else []
                 )
                 if interface.name is not None
-                and _is_monitorable_interface(interface.name)
+                and is_monitorable_interface(interface.name)
             ],
             get_key=lambda interface: interface.name or "",
             create_entities=lambda interface: [
@@ -3501,6 +3622,40 @@ async def async_setup_entry(
                     server_uuid,
                     server_name,
                     interface.name or "",
+                ),
+            ],
+        )
+    )
+
+    # Network interface speed and IP sensors (Unraid API 4.35+ / unraid-api 1.13+)
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: [
+                iface
+                for iface in (
+                    system_coordinator.data.network_interfaces
+                    if system_coordinator.data
+                    else []
+                )
+                if iface.name and is_monitorable_interface(iface.name)
+            ],
+            get_key=lambda iface: iface.name or "",
+            create_entities=lambda iface: [
+                NetworkInterfaceSpeedSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    iface.name or "",
+                    server_info,
+                ),
+                NetworkInterfaceIpSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    iface.name or "",
+                    server_info,
                 ),
             ],
         )

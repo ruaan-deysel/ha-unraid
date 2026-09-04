@@ -192,6 +192,12 @@
       },
       "network_interface_tx": {
         "default": "mdi:upload-network"
+      },
+      "network_interface_speed": {
+        "default": "mdi:speedometer"
+      },
+      "network_interface_ip": {
+        "default": "mdi:ip-network"
       }
     },
     "binary_sensor": {
@@ -248,11 +254,20 @@
       },
       "filesystems_unmountable": {
         "default": "mdi:harddisk-remove"
+      },
+      "network_interface_link": {
+        "default": "mdi:ethernet"
+      },
+      "plugin_installing": {
+        "default": "mdi:progress-download"
       }
     },
     "switch": {
       "docker_container": {
         "default": "mdi:docker"
+      },
+      "docker_container_autostart": {
+        "default": "mdi:play-box-multiple"
       },
       "virtual_machine": {
         "default": "mdi:desktop-tower"
@@ -306,6 +321,12 @@
       },
       "check_container_updates": {
         "default": "mdi:package-down"
+      },
+      "disk_clear_statistics": {
+        "default": "mdi:broom"
+      },
+      "recalculate_notifications": {
+        "default": "mdi:bell-badge-outline"
       }
     },
     "update": {

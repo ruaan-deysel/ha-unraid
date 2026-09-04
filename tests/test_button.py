@@ -9,11 +9,13 @@ from unraid_api.exceptions import UnraidAPIError
 from custom_components.unraid.button import (
     ArchiveAllNotificationsButton,
     CheckContainerUpdatesButton,
+    ClearDiskStatisticsButton,
     DeleteAllArchivedNotificationsButton,
     DockerContainerRestartButton,
     ParityCheckPauseButton,
     ParityCheckResumeButton,
     ParityCheckStartCorrectionButton,
+    RecalculateNotificationsButton,
     UpdateAllContainersButton,
     VMForceStopButton,
     VMPauseButton,
@@ -244,14 +246,15 @@ async def test_setup_entry_creates_parity_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 2 server-wide docker update buttons
-    assert len(entities) == 7
+    # 3 parity + 3 notification + 2 server-wide docker update buttons
+    assert len(entities) == 8
     entity_types = [type(e).__name__ for e in entities]
     assert "ParityCheckStartCorrectionButton" in entity_types
     assert "ParityCheckPauseButton" in entity_types
     assert "ParityCheckResumeButton" in entity_types
     assert "ArchiveAllNotificationsButton" in entity_types
     assert "DeleteAllArchivedNotificationsButton" in entity_types
+    assert "RecalculateNotificationsButton" in entity_types
 
 
 @pytest.mark.asyncio
@@ -277,7 +280,7 @@ async def test_setup_entry_with_missing_server_uuid(hass):
     await async_setup_entry(hass, mock_entry, capture_entities)
 
     # Check that entities were created with "unknown" uuid
-    assert len(entities) == 7
+    assert len(entities) == 8
     assert entities[0].unique_id.startswith("unknown_")
 
 
@@ -303,8 +306,8 @@ async def test_setup_entry_uses_host_as_fallback_name(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should still create 3 parity + 2 notification + 2 docker update buttons
-    assert len(entities) == 7
+    # Should still create 3 parity + 3 notification + 2 docker update buttons
+    assert len(entities) == 8
 
 
 # =============================================================================
@@ -443,8 +446,8 @@ async def test_setup_entry_creates_container_restart_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 2 container restart + 2 docker update = 9
-    assert len(entities) == 9
+    # 3 parity + 3 notification + 2 container restart + 2 docker update = 10
+    assert len(entities) == 10
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("DockerContainerRestartButton") == 2
     assert entity_types.count("CheckContainerUpdatesButton") == 1
@@ -477,8 +480,58 @@ async def test_setup_entry_no_containers(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 2 docker update buttons, no container buttons
-    assert len(entities) == 7
+    # 3 parity + 3 notification + 2 docker update buttons, no container buttons
+    assert len(entities) == 8
+
+
+@pytest.mark.asyncio
+async def test_setup_entry_dynamic_clear_disk_statistics_buttons(hass):
+    """Test dynamic registration of ClearDiskStatisticsButton for disks."""
+    from unraid_api.models import ArrayDisk
+
+    from tests.conftest import make_storage_data, make_system_data
+
+    mock_api = MagicMock()
+    disk1 = ArrayDisk(id="disk1", name="Disk 1")
+    parity1 = ArrayDisk(id="parity", name="Parity")
+    boot_disk = ArrayDisk(id="boot", name="Flash")
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.async_add_listener = MagicMock()
+    storage_coordinator.data = make_storage_data(
+        disks=[disk1], parities=[parity1], boot=boot_disk
+    )
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = make_system_data()
+    system_coordinator.async_add_listener = MagicMock()
+
+    runtime_data = MagicMock()
+    runtime_data.api_client = mock_api
+    runtime_data.server_info = {"uuid": "test-uuid", "name": "Test Server"}
+    runtime_data.system_coordinator = system_coordinator
+    runtime_data.storage_coordinator = storage_coordinator
+
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = runtime_data
+    mock_entry.data = {"host": "192.168.1.100"}
+
+    entities = []
+
+    def capture_entities(ents) -> None:
+        entities.extend(ents)
+
+    await async_setup_entry(hass, mock_entry, capture_entities)
+
+    disk_buttons = [e for e in entities if isinstance(e, ClearDiskStatisticsButton)]
+    assert len(disk_buttons) == 2
+    assert {b.unique_id for b in disk_buttons} == {
+        "test-uuid_disk_disk1_clear_statistics",
+        "test-uuid_disk_parity_clear_statistics",
+    }
+    assert "test-uuid_disk_boot_clear_statistics" not in {
+        b.unique_id for b in disk_buttons
+    }
 
 
 # =============================================================================
@@ -790,8 +843,8 @@ async def test_setup_entry_creates_vm_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 2 docker update + 2 VMs * 5 buttons each = 17
-    assert len(entities) == 17
+    # 3 parity + 3 notification + 2 docker update + 2 VMs * 5 buttons each = 18
+    assert len(entities) == 18
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("VMForceStopButton") == 2
     assert entity_types.count("VMRebootButton") == 2
@@ -837,9 +890,9 @@ async def test_setup_entry_creates_container_and_vm_buttons(hass):
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # 3 parity + 2 notification + 1 container restart + 2 docker update
-    # + 1 VM * 5 buttons = 13
-    assert len(entities) == 13
+    # 3 parity + 3 notification + 1 container restart + 2 docker update
+    # + 1 VM * 5 buttons = 14
+    assert len(entities) == 14
     entity_types = [type(e).__name__ for e in entities]
     assert entity_types.count("DockerContainerRestartButton") == 1
     assert entity_types.count("CheckContainerUpdatesButton") == 1
@@ -1069,3 +1122,99 @@ async def test_check_container_updates_button_error(mock_coordinator, mock_serve
         await button.async_press()
     assert exc_info.value.translation_key == "check_container_updates_failed"
     mock_coordinator.async_request_docker_refresh.assert_not_called()
+
+
+# =============================================================================
+# RecalculateNotificationsButton Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_recalculate_notifications_button_press(
+    mock_coordinator, mock_server_info
+):
+    """Test pressing recalculate notifications button calls coordinator method."""
+    mock_coordinator.async_recalculate_notifications = AsyncMock()
+
+    button = RecalculateNotificationsButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    assert button.translation_key == "recalculate_notifications"
+    assert button.unique_id == "test-uuid_recalculate_notifications"
+
+    await button.async_press()
+    mock_coordinator.async_recalculate_notifications.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_recalculate_notifications_button_error(
+    mock_coordinator, mock_server_info
+):
+    """Test recalculate notifications button error handling."""
+    mock_coordinator.async_recalculate_notifications = AsyncMock(
+        side_effect=UnraidAPIError("API failure")
+    )
+
+    button = RecalculateNotificationsButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        server_info=mock_server_info,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+    assert exc_info.value.translation_key == "recalculate_notifications_failed"
+
+
+# =============================================================================
+# ClearDiskStatisticsButton Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_clear_disk_statistics_button_press(mock_coordinator, mock_server_info):
+    """Test pressing clear disk statistics button calls storage coordinator method."""
+    mock_coordinator.async_clear_disk_statistics = AsyncMock()
+
+    button = ClearDiskStatisticsButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        disk_id="disk1",
+        disk_name="Disk 1",
+        server_info=mock_server_info,
+    )
+
+    assert button.translation_key == "disk_clear_statistics"
+    assert button.translation_placeholders == {"name": "Disk 1"}
+    assert button.unique_id == "test-uuid_disk_disk1_clear_statistics"
+    assert button.entity_registry_enabled_default is False
+
+    await button.async_press()
+    mock_coordinator.async_clear_disk_statistics.assert_called_once_with("disk1")
+
+
+@pytest.mark.asyncio
+async def test_clear_disk_statistics_button_error(mock_coordinator, mock_server_info):
+    """Test clear disk statistics button error handling."""
+    mock_coordinator.async_clear_disk_statistics = AsyncMock(
+        side_effect=UnraidAPIError("API failure")
+    )
+
+    button = ClearDiskStatisticsButton(
+        coordinator=mock_coordinator,
+        server_uuid="test-uuid",
+        server_name="Test Server",
+        disk_id="disk1",
+        disk_name="Disk 1",
+        server_info=mock_server_info,
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+    assert exc_info.value.translation_key == "clear_disk_stats_failed"
