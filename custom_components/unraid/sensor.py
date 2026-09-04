@@ -3639,15 +3639,6 @@ class VirtualMachineStatusSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
         }
         if vm.state:
             attrs["raw_state"] = vm.state
-        for attr, key in (
-            ("memory", "memory"),
-            ("vcpu", "vcpu"),
-            ("autostart", "auto_start"),
-            ("primaryGpu", "primary_gpu"),
-        ):
-            value = getattr(vm, attr, None)
-            if value is not None:
-                attrs[key] = value
         return attrs
 
 

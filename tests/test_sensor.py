@@ -7728,10 +7728,6 @@ def test_vm_status_sensor_states(raw_state: str, expected_state: str) -> None:
 def test_vm_status_sensor_attributes() -> None:
     """Test VirtualMachineStatusSensor extra state attributes."""
     vm = VmDomain(id="vm:1", name="Ubuntu", state="RUNNING")
-    object.__setattr__(vm, "memory", 4096)
-    object.__setattr__(vm, "vcpu", 4)
-    object.__setattr__(vm, "autostart", True)
-    object.__setattr__(vm, "primaryGpu", "0000:01:00.0")
 
     coordinator = MagicMock(spec=UnraidSystemCoordinator)
     coordinator.data = make_system_data(vms=[vm])
@@ -7747,10 +7743,6 @@ def test_vm_status_sensor_attributes() -> None:
     attrs = sensor.extra_state_attributes
     assert attrs["vm_id"] == "vm:1"
     assert attrs["raw_state"] == "RUNNING"
-    assert attrs["memory"] == 4096
-    assert attrs["vcpu"] == 4
-    assert attrs["auto_start"] is True
-    assert attrs["primary_gpu"] == "0000:01:00.0"
 
 
 def test_vm_status_sensor_none_state_or_missing_vm() -> None:

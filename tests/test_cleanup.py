@@ -55,9 +55,11 @@ class TestIsDynamicResourceId:
         assert _is_dynamic_resource_id("container_myapp_memory_pct") is True
 
     def test_container_memory_used_sensor(self) -> None:
+        """Dynamic container memory used resource ID is recognized."""
         assert _is_dynamic_resource_id("container_myapp_memory_used") is True
 
     def test_container_memory_limit_sensor(self) -> None:
+        """Dynamic container memory limit resource ID is recognized."""
         assert _is_dynamic_resource_id("container_myapp_memory_limit") is True
 
     def test_container_update_sensor(self) -> None:
@@ -67,6 +69,7 @@ class TestIsDynamicResourceId:
         assert _is_dynamic_resource_id("vm_switch_myvm") is True
 
     def test_vm_status(self) -> None:
+        """Dynamic VM status resource ID is recognized."""
         assert _is_dynamic_resource_id("vm_status_myvm") is True
 
     def test_vm_force_stop(self) -> None:
