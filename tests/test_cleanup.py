@@ -54,11 +54,20 @@ class TestIsDynamicResourceId:
     def test_container_memory_pct_sensor(self) -> None:
         assert _is_dynamic_resource_id("container_myapp_memory_pct") is True
 
+    def test_container_memory_used_sensor(self) -> None:
+        assert _is_dynamic_resource_id("container_myapp_memory_used") is True
+
+    def test_container_memory_limit_sensor(self) -> None:
+        assert _is_dynamic_resource_id("container_myapp_memory_limit") is True
+
     def test_container_update_sensor(self) -> None:
         assert _is_dynamic_resource_id("container_myapp_update") is True
 
     def test_vm_switch(self) -> None:
         assert _is_dynamic_resource_id("vm_switch_myvm") is True
+
+    def test_vm_status(self) -> None:
+        assert _is_dynamic_resource_id("vm_status_myvm") is True
 
     def test_vm_force_stop(self) -> None:
         assert _is_dynamic_resource_id("vm_force_stop_myvm") is True
@@ -231,6 +240,8 @@ class TestBuildExpectedDynamicUniqueIds:
         assert f"{_UUID}_container_myapp_cpu" in result
         assert f"{_UUID}_container_myapp_memory" in result
         assert f"{_UUID}_container_myapp_memory_pct" in result
+        assert f"{_UUID}_container_myapp_memory_used" in result
+        assert f"{_UUID}_container_myapp_memory_limit" in result
         assert f"{_UUID}_container_myapp_update" in result
         # update platform entity (different pattern from binary_sensor)
         assert f"{_UUID}_container_update_myapp" in result
@@ -247,6 +258,7 @@ class TestBuildExpectedDynamicUniqueIds:
         result = build_expected_dynamic_unique_ids(_UUID, sys_data, stor_data)
 
         assert f"{_UUID}_vm_switch_windows11" in result
+        assert f"{_UUID}_vm_status_windows11" in result
         assert f"{_UUID}_vm_force_stop_windows11" in result
         assert f"{_UUID}_vm_reboot_windows11" in result
         assert f"{_UUID}_vm_pause_windows11" in result
