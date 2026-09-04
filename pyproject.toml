@@ -143,7 +143,7 @@ environments = ["python_full_version >= '3.14.2'"]
 # - cryptography GHSA-m959-cc7f-wv43 (incomplete DNS name constraint)
 # - cryptography GHSA-p423-j2cm-9vmq (buffer overflow non-contiguous buffers)
 # - cryptography GHSA-537c-gmf6-5ccf (vulnerable OpenSSL in wheels)
-# - pip PYSEC-2026-196
+# - pip PYSEC-2026-196 / CVE-2026-13346 / GHSA-qwm4-qh6w-59xr (doubly-encoded package URLs)
 # - uv GHSA-pjjw-68hj-v9mw (arbitrary file deletion through RECORD entries)
 # - Pygments CVE-2026-4539 / GHSA-5239-wwwm-4pmq (ReDoS in GUID regex)
 #
@@ -156,9 +156,9 @@ environments = ["python_full_version >= '3.14.2'"]
 override-dependencies = [
     "aiohttp>=3.14.1",
     "pyjwt>=2.13.0",
-    "pyopenssl>=26.0.0",
+    "pyopenssl>=26.4.0",
     "cryptography>=48.0.1",
-    "pip>=26.1.2",
+    "pip>=26.2.0",
     "uv>=0.11.6",
     "pygments>=2.20.0",
 ]
