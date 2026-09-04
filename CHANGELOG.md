@@ -7,6 +7,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+## [2026.9.1] - 2026-09-04
+
 ### Added
 
 - **Docker Container Autostart Switch**: Added a configuration switch (`switch.*_container_*_autostart`, disabled by default) for each Docker container allowing users to toggle whether a container starts automatically on Unraid array start, powered by `unraid-api` v1.13.1's `update_container_autostart` mutation.
@@ -417,7 +419,11 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.3...HEAD
+[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.9.1...HEAD
+[2026.9.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.9.0...v2026.9.1
+[2026.9.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.8.1...v2026.9.0
+[2026.8.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.8.0...v2026.8.1
+[2026.8.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.3...v2026.8.0
 [2026.6.3]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.2...v2026.6.3
 [2026.6.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.1...v2026.6.2
 [2026.6.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.0...v2026.6.1
