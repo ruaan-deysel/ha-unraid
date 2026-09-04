@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.const import UnitOfInformation
 from homeassistant.helpers.entity import EntityCategory
 from unraid_api.models import (
     ArrayCapacity,
@@ -33,6 +34,7 @@ from unraid_api.models import (
     UPSBattery,
     UPSDevice,
     UPSPower,
+    VmDomain,
 )
 from unraid_api.models import (
     TemperatureSensor as TemperatureSensorModel,
@@ -50,8 +52,10 @@ from custom_components.unraid.sensor import (
     ArrayStateSensor,
     ArrayUsageSensor,
     ContainerCpuSensor,
+    ContainerMemoryLimitSensor,
     ContainerMemoryPercentSensor,
     ContainerMemoryUsageSensor,
+    ContainerMemoryUsedSensor,
     ContainerUpdatesCountSensor,
     CpuPowerSensor,
     CpuSensor,
@@ -101,10 +105,12 @@ from custom_components.unraid.sensor import (
     UPSRuntimeSensor,
     UPSStatusSensor,
     UptimeSensor,
+    VirtualMachineStatusSensor,
     _compute_disk_usage_percent,
     _compute_disk_used_bytes,
     _is_valid_system_temp_sensor,
     format_bytes,
+    parse_docker_mem_usage,
 )
 from tests.conftest import make_infra_data, make_storage_data, make_system_data
 
@@ -7482,3 +7488,360 @@ def test_network_interface_ip_sensor_missing_or_none() -> None:
     coordinator.data = None
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# Docker Memory String Parser Tests
+# =============================================================================
+
+
+def test_parse_docker_mem_usage_iec_units() -> None:
+    """Test parsing Docker memory strings with binary/IEC units."""
+    used, limit = parse_docker_mem_usage("245.5MiB / 15.61GiB")
+    assert used == int(245.5 * 1024 * 1024)
+    assert limit == int(15.61 * 1024 * 1024 * 1024)
+
+    used, limit = parse_docker_mem_usage("512KiB / 1TiB")
+    assert used == 512 * 1024
+    assert limit == 1024**4
+
+    used, limit = parse_docker_mem_usage("100B / 1PiB")
+    assert used == 100
+    assert limit == 1024**5
+
+
+def test_parse_docker_mem_usage_si_units() -> None:
+    """Test parsing Docker memory strings with decimal/SI units."""
+    used, limit = parse_docker_mem_usage("10kB / 100MB")
+    assert used == 10 * 1000
+    assert limit == 100 * 1000 * 1000
+
+    used, limit = parse_docker_mem_usage("1.5GB / 2TB")
+    assert used == int(1.5 * 1000**3)
+    assert limit == 2 * 1000**4
+
+    used, limit = parse_docker_mem_usage("1PB / 2PB")
+    assert used == 1000**5
+    assert limit == 2 * 1000**5
+
+
+def test_parse_docker_mem_usage_zero_and_unitless() -> None:
+    """Test parsing Docker memory strings with zero values."""
+    used, limit = parse_docker_mem_usage("0B / 0B")
+    assert used == 0
+    assert limit == 0
+
+    used, limit = parse_docker_mem_usage("0 / 0")
+    assert used == 0
+    assert limit == 0
+
+
+def test_parse_docker_mem_usage_invalid() -> None:
+    """Test parsing invalid, empty, or malformed memory strings."""
+    assert parse_docker_mem_usage(None) == (None, None)
+    assert parse_docker_mem_usage("") == (None, None)
+    assert parse_docker_mem_usage("invalid") == (None, None)
+    assert parse_docker_mem_usage("512MiB") == (None, None)
+    assert parse_docker_mem_usage("512MiB / abc") == (536870912, None)
+    assert parse_docker_mem_usage("abc / 1GiB") == (None, 1073741824)
+    assert parse_docker_mem_usage("1.2.3MiB / 1GiB") == (None, 1073741824)
+    assert parse_docker_mem_usage("512XYZ / 1GiB") == (None, 1073741824)
+
+
+# =============================================================================
+# Container Memory Used & Limit Sensor Tests
+# =============================================================================
+
+
+def test_container_memory_used_sensor_properties() -> None:
+    """Test ContainerMemoryUsedSensor metadata and properties."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "memUsage": "512MiB / 16GiB"}},
+    )
+    sensor = ContainerMemoryUsedSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.unique_id == "test-uuid_container_plex_memory_used"
+    assert sensor.translation_key == "container_memory_used"
+    assert sensor.translation_placeholders == {"name": "plex"}
+    assert sensor.device_class == SensorDeviceClass.DATA_SIZE
+    assert sensor.native_unit_of_measurement == UnitOfInformation.BYTES
+    assert sensor.suggested_unit_of_measurement == UnitOfInformation.MEGABYTES
+    assert sensor.suggested_display_precision == 1
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
+    assert sensor.entity_registry_enabled_default is False
+    assert sensor.native_value == 536870912
+
+
+def test_container_memory_limit_sensor_properties() -> None:
+    """Test ContainerMemoryLimitSensor metadata and properties."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "memUsage": "512MiB / 16GiB"}},
+    )
+    sensor = ContainerMemoryLimitSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert sensor.unique_id == "test-uuid_container_plex_memory_limit"
+    assert sensor.translation_key == "container_memory_limit"
+    assert sensor.translation_placeholders == {"name": "plex"}
+    assert sensor.device_class == SensorDeviceClass.DATA_SIZE
+    assert sensor.native_unit_of_measurement == UnitOfInformation.BYTES
+    assert sensor.suggested_unit_of_measurement == UnitOfInformation.MEGABYTES
+    assert sensor.suggested_display_precision == 1
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
+    assert sensor.entity_registry_enabled_default is False
+    assert sensor.native_value == 17179869184
+
+
+def test_container_memory_sensors_stopped_container() -> None:
+    """Stopped containers report 0 for used and limit memory."""
+    coordinator = _stats_coordinator(
+        [_make_docker_container("plex", "c1", state="EXITED")]
+    )
+    ws = _make_ws_manager(
+        stats={"c1": {"id": "c1", "memUsage": "512MiB / 16GiB"}},
+    )
+    used_sensor = ContainerMemoryUsedSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+    limit_sensor = ContainerMemoryLimitSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert used_sensor.native_value == 0
+    assert limit_sensor.native_value == 0
+
+
+def test_container_memory_sensors_missing_stats() -> None:
+    """Missing stats yield None."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(stats={})
+    used_sensor = ContainerMemoryUsedSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+    limit_sensor = ContainerMemoryLimitSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert used_sensor.native_value is None
+    assert limit_sensor.native_value is None
+
+
+def test_container_memory_sensors_empty_mem_usage() -> None:
+    """Empty or unparsable memUsage yields None."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "c1")])
+    ws = _make_ws_manager(stats={"c1": {"id": "c1", "memUsage": ""}})
+    used_sensor = ContainerMemoryUsedSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+    limit_sensor = ContainerMemoryLimitSensor(
+        coordinator, "test-uuid", "tower", "plex", "c1", ws
+    )
+
+    assert used_sensor.native_value is None
+    assert limit_sensor.native_value is None
+
+
+def test_container_memory_sensors_dynamic_name_lookup_and_fallback() -> None:
+    """Container memory sensors resolve stats by name and fall back to frozen ID."""
+    coordinator = _stats_coordinator([_make_docker_container("plex", "recreated-id")])
+    ws = _make_ws_manager(
+        stats={"recreated-id": {"id": "recreated-id", "memUsage": "1GiB / 8GiB"}},
+    )
+    used_sensor = ContainerMemoryUsedSensor(
+        coordinator, "test-uuid", "tower", "plex", "old-id", ws
+    )
+    assert used_sensor.native_value == 1024**3
+
+    # Fall back to frozen ID when coordinator data is None
+    coordinator.data = None
+    ws_fallback = _make_ws_manager(
+        stats={"old-id": {"id": "old-id", "memUsage": "2GiB / 8GiB"}},
+    )
+    limit_sensor = ContainerMemoryLimitSensor(
+        coordinator, "test-uuid", "tower", "plex", "old-id", ws_fallback
+    )
+    assert limit_sensor.native_value == 8 * 1024**3
+
+
+# =============================================================================
+# Virtual Machine Status Sensor Tests
+# =============================================================================
+
+
+def test_vm_status_sensor_properties() -> None:
+    """Test VirtualMachineStatusSensor creation and metadata."""
+    vm = VmDomain(id="vm:1", name="Ubuntu", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(vms=[vm])
+    coordinator.last_update_success = True
+
+    sensor = VirtualMachineStatusSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm,
+        server_info={"manufacturer": "Lime Tech", "model": "Unraid"},
+    )
+
+    assert sensor.unique_id == "test-uuid_vm_status_Ubuntu"
+    assert sensor.translation_key == "virtual_machine_status"
+    assert sensor.translation_placeholders == {"name": "Ubuntu"}
+    assert sensor.entity_registry_enabled_default is True
+    assert sensor.native_value == "running"
+    assert sensor.available is True
+
+
+@pytest.mark.parametrize(
+    ("raw_state", "expected_state"),
+    [
+        ("RUNNING", "running"),
+        ("PAUSED", "paused"),
+        ("SHUTOFF", "shutoff"),
+        ("PMSUSPENDED", "pmsuspended"),
+        ("CRASHED", "crashed"),
+        ("IDLE", "idle"),
+        ("BLOCKED", "blocked"),
+    ],
+)
+def test_vm_status_sensor_states(raw_state: str, expected_state: str) -> None:
+    """Test VirtualMachineStatusSensor state translation."""
+    vm = VmDomain(id="vm:1", name="Ubuntu", state=raw_state)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(vms=[vm])
+    coordinator.last_update_success = True
+
+    sensor = VirtualMachineStatusSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm,
+    )
+
+    assert sensor.native_value == expected_state
+
+
+def test_vm_status_sensor_attributes() -> None:
+    """Test VirtualMachineStatusSensor extra state attributes."""
+    vm = VmDomain(id="vm:1", name="Ubuntu", state="RUNNING")
+
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(vms=[vm])
+    coordinator.last_update_success = True
+
+    sensor = VirtualMachineStatusSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm,
+    )
+
+    attrs = sensor.extra_state_attributes
+    assert attrs["vm_id"] == "vm:1"
+    assert attrs["raw_state"] == "RUNNING"
+
+
+def test_vm_status_sensor_none_state_or_missing_vm() -> None:
+    """Test VirtualMachineStatusSensor when VM state is None or VM is not in data."""
+    vm = VmDomain(id="vm:1", name="Ubuntu", state=None)
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(vms=[vm])
+    coordinator.last_update_success = True
+
+    sensor = VirtualMachineStatusSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm,
+    )
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {"vm_id": "vm:1"}
+
+    # VM missing from coordinator data
+    coordinator.data = make_system_data(vms=[])
+    assert sensor.native_value is None
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+    # Coordinator data is None
+    coordinator.data = None
+    assert sensor.native_value is None
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_vm_status_sensor_caching_and_id_update() -> None:
+    """Test VirtualMachineStatusSensor caching behavior and VM ID update."""
+    vm1 = VmDomain(id="vm:1", name="Ubuntu", state="RUNNING")
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(vms=[vm1])
+    coordinator.last_update_success = True
+
+    sensor = VirtualMachineStatusSensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="test-server",
+        vm=vm1,
+    )
+
+    # First access caches VM
+    assert sensor._get_vm() is vm1
+    # Repeated access with identical data returns cached instance without rebuilding map
+    assert sensor._get_vm() is vm1
+
+    # New coordinator data with updated VM ID
+    vm2 = VmDomain(id="vm:2", name="Ubuntu", state="PAUSED")
+    coordinator.data = make_system_data(vms=[vm2])
+    assert sensor._get_vm() is vm2
+    assert sensor._vm_id == "vm:2"
+    assert sensor.native_value == "paused"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_registers_vm_and_container_ram_sensors(
+    hass,
+) -> None:
+    """Test async_setup_entry creates VM status and container memory sensors."""
+    from custom_components.unraid import UnraidRuntimeData
+    from custom_components.unraid.sensor import async_setup_entry
+
+    vm = VmDomain(id="vm:1", name="Ubuntu", state="RUNNING")
+    container = _make_docker_container("plex", "c1")
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = make_system_data(vms=[vm], containers=[container])
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+
+    ws_manager = MagicMock()
+    ws_manager.container_stats.stats = {}
+
+    mock_entry = MagicMock()
+    mock_entry.data = {"host": "192.168.1.100"}
+    mock_entry.options = {}
+    mock_entry.runtime_data = UnraidRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
+        server_info={"uuid": "test-uuid", "name": "tower"},
+        websocket_manager=ws_manager,
+    )
+
+    added_entities = []
+
+    def mock_add_entities(entities) -> None:
+        added_entities.extend(entities)
+
+    await async_setup_entry(hass, mock_entry, mock_add_entities)
+
+    entity_types = {type(e).__name__ for e in added_entities}
+    assert "VirtualMachineStatusSensor" in entity_types
+    assert "ContainerMemoryUsedSensor" in entity_types
+    assert "ContainerMemoryLimitSensor" in entity_types
