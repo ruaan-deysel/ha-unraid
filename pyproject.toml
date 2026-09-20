@@ -39,7 +39,7 @@ dev = [
     "ha-unraid[test]",
 
     # Linting and formatting
-    "ruff==0.16.6",
+    "ruff==0.16.7",
     "pre-commit>=4.6.2",
 
     # Type checking
