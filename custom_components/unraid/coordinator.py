@@ -995,8 +995,12 @@ class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]
         self.api_client = api_client
         self._server_name = server_name
         self._previously_unavailable = False
+        # Shares are optional: preserve the last known-good list when the
+        # separate shares query fails so cleanup cannot prune healthy entities.
+        self._cached_shares: list[Share] = []
+        self._optional_query_status: dict[str, bool] = {"shares": True}
 
-    async def _query_optional_shares(self) -> list[Share]:
+    async def _query_optional_shares(self) -> list[Share] | None:
         """
         Query shares separately to handle servers with problematic shares.
 
@@ -1014,7 +1018,12 @@ class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]
             _LOGGER.debug(
                 "Shares query failed (will continue without share data): %s", err
             )
-            return []
+            return None
+
+    @property
+    def optional_query_status(self) -> dict[str, bool]:
+        """Return the status of the last optional queries per category."""
+        return self._optional_query_status
 
     async def _query_optional_parity_history(self) -> list[ParityHistoryEntry]:
         """Query parity history (fails gracefully)."""
@@ -1080,10 +1089,13 @@ class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]
             array = await self.api_client.typed_get_array()
 
             # Phase 2: Optional queries — run concurrently; each fails gracefully
-            shares, parity_history = await asyncio.gather(
+            shares_result, parity_history = await asyncio.gather(
                 self._query_optional_shares(),
                 self._query_optional_parity_history(),
             )
+            self._optional_query_status["shares"] = shares_result is not None
+            if shares_result is not None:
+                self._cached_shares = shares_result
 
             # Log recovery if previously unavailable
             if self._previously_unavailable:
@@ -1094,7 +1106,9 @@ class UnraidStorageCoordinator(TimestampDataUpdateCoordinator[UnraidStorageData]
                 self._previously_unavailable = False
 
             return UnraidStorageData(
-                array=array, shares=shares, parity_history=parity_history
+                array=array,
+                shares=self._cached_shares,
+                parity_history=parity_history,
             )
 
         except UnraidAuthenticationError as err:
