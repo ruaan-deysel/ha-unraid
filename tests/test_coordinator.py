@@ -953,10 +953,33 @@ async def test_storage_coordinator_handles_shares_query_failure(
     )
     data = await coordinator._async_update_data()
 
-    # Should still return data with empty shares list
+    # Should still return data while marking the optional query as failed.
     assert data is not None
     assert data.shares == []
     assert data.array is not None
+    assert coordinator.optional_query_status["shares"] is False
+
+
+@pytest.mark.asyncio
+async def test_storage_coordinator_preserves_cached_shares_on_query_failure(
+    hass, mock_api_client, mock_config_entry
+):
+    """A failed optional shares query must not discard the last good snapshot."""
+    shares = [make_share(name="media")]
+    mock_api_client.typed_get_shares.return_value = shares
+    coordinator = UnraidStorageCoordinator(
+        hass, mock_api_client, "tower", mock_config_entry
+    )
+
+    first_data = await coordinator._async_update_data()
+    assert first_data.shares == shares
+    assert coordinator.optional_query_status["shares"] is True
+
+    mock_api_client.typed_get_shares.side_effect = UnraidAPIError("Shares query failed")
+    second_data = await coordinator._async_update_data()
+
+    assert second_data.shares == shares
+    assert coordinator.optional_query_status["shares"] is False
 
 
 @pytest.mark.asyncio

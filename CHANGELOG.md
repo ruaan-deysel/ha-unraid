@@ -7,6 +7,13 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Share Entity Cleanup on Transient API Failures**: Optional share queries now
+  retain the last known-good snapshot and tell entity cleanup when the query
+  failed, preventing healthy share entities from being pruned after temporary
+  API errors.
+
 ## [2026.9.1] - 2026-09-04
 
 ### Added
