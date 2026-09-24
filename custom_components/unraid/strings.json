@@ -336,6 +336,12 @@
       "container_memory_percent": {
         "name": "Container {name} memory %"
       },
+      "container_memory_used": {
+        "name": "Container {name} memory used"
+      },
+      "container_memory_limit": {
+        "name": "Container {name} memory limit"
+      },
       "docker_total_cpu": {
         "name": "Docker total CPU"
       },
@@ -356,6 +362,9 @@
       },
       "ups_status": {
         "name": "UPS {name} status"
+      },
+      "virtual_machine_status": {
+        "name": "VM {name} status"
       },
       "container_updates_count": {
         "name": "Container updates available"

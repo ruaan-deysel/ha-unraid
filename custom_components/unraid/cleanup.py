@@ -79,6 +79,7 @@ _DYNAMIC_RESOURCE_ID_PREFIXES: Final[tuple[str, ...]] = (
     "container_restart_",  # per-container restart button
     "container_update_",  # per-container update entity (update platform)
     "vm_switch_",  # per-VM switch
+    "vm_status_",  # per-VM status sensor
     "vm_force_stop_",  # per-VM force-stop button
     "vm_reboot_",  # per-VM reboot button
     "vm_pause_",  # per-VM pause button
@@ -181,6 +182,8 @@ def _build_system_dynamic_unique_ids(
                 f"{pfx}container_{name}_cpu",
                 f"{pfx}container_{name}_memory",
                 f"{pfx}container_{name}_memory_pct",
+                f"{pfx}container_{name}_memory_used",
+                f"{pfx}container_{name}_memory_limit",
                 f"{pfx}container_{name}_update",
                 f"{pfx}container_update_{name}",
             }
@@ -190,6 +193,7 @@ def _build_system_dynamic_unique_ids(
         expected.update(
             {
                 f"{pfx}vm_switch_{vm.name}",
+                f"{pfx}vm_status_{vm.name}",
                 f"{pfx}vm_force_stop_{vm.name}",
                 f"{pfx}vm_reboot_{vm.name}",
                 f"{pfx}vm_pause_{vm.name}",

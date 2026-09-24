@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -15,6 +16,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfDataRate,
     UnitOfEnergy,
+    UnitOfInformation,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
         ParityHistoryEntry,
         Share,
         UPSDevice,
+        VmDomain,
     )
     from unraid_api.models import (
         TemperatureSensor as TemperatureSensorModel,
@@ -2235,6 +2238,61 @@ class ShareUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
 # to these sensor entities.
 
 
+# Multipliers for parsing Docker memory strings to bytes
+_DOCKER_MEM_MULTIPLIERS: Final[dict[str, int]] = {
+    "b": 1,
+    "k": 1024,
+    "kb": 1000,
+    "kib": 1024,
+    "m": 1024**2,
+    "mb": 1000**2,
+    "mib": 1024**2,
+    "g": 1024**3,
+    "gb": 1000**3,
+    "gib": 1024**3,
+    "t": 1024**4,
+    "tb": 1000**4,
+    "tib": 1024**4,
+    "p": 1024**5,
+    "pb": 1000**5,
+    "pib": 1024**5,
+}
+
+_DOCKER_MEM_RE: Final = re.compile(r"^([\d.]+)\s*([a-zA-Z]+)?$")
+
+
+def _parse_size_to_bytes(size_str: str) -> int | None:
+    """Parse human-readable size string (e.g., '245.5MiB') into integer bytes."""
+    match = _DOCKER_MEM_RE.match(size_str.strip())
+    if not match:
+        return None
+    val_str, unit_str = match.groups()
+    try:
+        val = float(val_str)
+    except ValueError:
+        return None
+    if not unit_str:
+        return int(val)
+    mult = _DOCKER_MEM_MULTIPLIERS.get(unit_str.lower())
+    if mult is None:
+        return None
+    return int(val * mult)
+
+
+def parse_docker_mem_usage(mem_usage: str | None) -> tuple[int | None, int | None]:
+    """
+    Parse Docker memory usage string into (used_bytes, limit_bytes).
+
+    Example inputs:
+        '245.5MiB / 15.61GiB' -> (257425408, 16761109872)
+        '0B / 0B' -> (0, 0)
+    """
+    if not mem_usage or "/" not in mem_usage:
+        return (None, None)
+    parts = mem_usage.split("/", 1)
+    return (_parse_size_to_bytes(parts[0]), _parse_size_to_bytes(parts[1]))
+
+
 class _ContainerStatsMixin:
     """
     Shared lookup logic for per-container WebSocket stat sensors.
@@ -2431,6 +2489,104 @@ class ContainerMemoryPercentSensor(
         if stats is None or stats.memPercent is None:
             return None
         return round(stats.memPercent, 1)
+
+
+class ContainerMemoryUsedSensor(
+    _ContainerStatsMixin, UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
+    """Container memory used in bytes (WebSocket-powered)."""
+
+    _attr_translation_key = "container_memory_used"
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.BYTES
+    _attr_suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_suggested_display_precision = 1
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        container_name: str,
+        container_id: str,
+        ws_manager: UnraidWebSocketManager,
+    ) -> None:
+        """Initialize container memory used sensor."""
+        self._container_name = container_name
+        self._container_id = container_id
+        self._ws_manager = ws_manager
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"container_{container_name}_memory_used",
+            name=f"Container {container_name} Memory Used",
+        )
+        self._attr_translation_placeholders = {
+            "name": container_name,
+        }
+
+    @property
+    def native_value(self) -> int | None:
+        """Return container memory used in bytes (0 when stopped)."""
+        if self._is_container_stopped():
+            return 0
+        stats = self._get_current_stats()
+        if stats is None or not stats.memUsage:
+            return None
+        used, _ = parse_docker_mem_usage(stats.memUsage)
+        return used
+
+
+class ContainerMemoryLimitSensor(
+    _ContainerStatsMixin, UnraidBaseEntity[UnraidSystemCoordinator], SensorEntity
+):
+    """Container memory limit in bytes (WebSocket-powered)."""
+
+    _attr_translation_key = "container_memory_limit"
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.BYTES
+    _attr_suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_suggested_display_precision = 1
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        container_name: str,
+        container_id: str,
+        ws_manager: UnraidWebSocketManager,
+    ) -> None:
+        """Initialize container memory limit sensor."""
+        self._container_name = container_name
+        self._container_id = container_id
+        self._ws_manager = ws_manager
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"container_{container_name}_memory_limit",
+            name=f"Container {container_name} Memory Limit",
+        )
+        self._attr_translation_placeholders = {
+            "name": container_name,
+        }
+
+    @property
+    def native_value(self) -> int | None:
+        """Return container memory limit in bytes (0 when stopped)."""
+        if self._is_container_stopped():
+            return 0
+        stats = self._get_current_stats()
+        if stats is None or not stats.memUsage:
+            return None
+        _, limit = parse_docker_mem_usage(stats.memUsage)
+        return limit
 
 
 # =============================================================================
@@ -3408,6 +3564,84 @@ def _get_valid_temperature_sensors(
     ]
 
 
+# =============================================================================
+# Virtual Machine Sensors
+# =============================================================================
+
+
+class VirtualMachineStatusSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
+    """Sensor tracking virtual machine state."""
+
+    _attr_translation_key = "virtual_machine_status"
+
+    def __init__(
+        self,
+        coordinator: UnraidSystemCoordinator,
+        server_uuid: str,
+        server_name: str,
+        vm: VmDomain,
+        server_info: dict | None = None,
+    ) -> None:
+        """Initialize virtual machine status sensor."""
+        self._vm_name = vm.name
+        self._vm_id = vm.id
+        self._cached_vm: VmDomain | None = None
+        self._cache_data: UnraidSystemData | None = None
+        super().__init__(
+            coordinator=coordinator,
+            server_uuid=server_uuid,
+            server_name=server_name,
+            resource_id=f"vm_status_{self._vm_name}",
+            name=f"VM {vm.name} Status",
+            server_info=server_info,
+        )
+        self._attr_translation_placeholders = {"name": self._vm_name}
+
+    def _get_vm(self) -> VmDomain | None:
+        """Get current VM from coordinator data with caching."""
+        data: UnraidSystemData | None = self.coordinator.data
+        if data is None:
+            return None
+
+        if data is self._cache_data and self._cached_vm is not None:
+            return self._cached_vm
+
+        vm_map = {v.name: v for v in data.vms}
+        self._cached_vm = vm_map.get(self._vm_name)
+        self._cache_data = data
+
+        if self._cached_vm is not None:
+            self._vm_id = self._cached_vm.id
+
+        return self._cached_vm
+
+    @property
+    def available(self) -> bool:
+        """Return True if coordinator updated successfully and VM exists."""
+        return super().available and self._get_vm() is not None
+
+    @property
+    def native_value(self) -> str | None:
+        """Return VM state."""
+        vm = self._get_vm()
+        if vm is None or vm.state is None:
+            return None
+        return vm.state.lower()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        vm = self._get_vm()
+        if vm is None:
+            return {}
+        attrs: dict[str, Any] = {
+            "vm_id": self._vm_id,
+        }
+        if vm.state:
+            attrs["raw_state"] = vm.state
+        return attrs
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: UnraidConfigEntry,
@@ -3561,6 +3795,44 @@ async def async_setup_entry(
                     container.name.lstrip("/"),
                     container.id or container.name.lstrip("/"),
                     ws_manager,
+                ),
+                ContainerMemoryUsedSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container.name.lstrip("/"),
+                    container.id or container.name.lstrip("/"),
+                    ws_manager,
+                ),
+                ContainerMemoryLimitSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    container.name.lstrip("/"),
+                    container.id or container.name.lstrip("/"),
+                    ws_manager,
+                ),
+            ],
+        )
+    )
+
+    # Virtual machine status sensors. VMs created after setup get sensors on
+    # the next coordinator refresh — no reload needed.
+    entry.async_on_unload(
+        async_add_dynamic_resource_entities(
+            coordinator=system_coordinator,
+            async_add_entities=async_add_entities,
+            get_resources=lambda: (
+                system_coordinator.data.vms if system_coordinator.data else []
+            ),
+            get_key=lambda vm: vm.name,
+            create_entities=lambda vm: [
+                VirtualMachineStatusSensor(
+                    system_coordinator,
+                    server_uuid,
+                    server_name,
+                    vm,
+                    server_info,
                 ),
             ],
         )

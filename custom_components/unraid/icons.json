@@ -157,6 +157,12 @@
       "container_memory_percent": {
         "default": "mdi:docker"
       },
+      "container_memory_used": {
+        "default": "mdi:docker"
+      },
+      "container_memory_limit": {
+        "default": "mdi:docker"
+      },
       "docker_total_cpu": {
         "default": "mdi:docker"
       },
@@ -177,6 +183,9 @@
       },
       "ups_status": {
         "default": "mdi:battery-alert-variant-outline"
+      },
+      "virtual_machine_status": {
+        "default": "mdi:desktop-tower"
       },
       "container_updates_count": {
         "default": "mdi:package-up"
