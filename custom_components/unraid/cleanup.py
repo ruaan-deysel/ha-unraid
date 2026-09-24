@@ -152,8 +152,8 @@ def _get_dynamic_resource_category(resource_id: str) -> str | None:
         return "containers"
     if resource_id.startswith("vm_"):
         return "vms"
-    if resource_id.startswith("ups_"):
-        return "ups_devices"
+    if resource_id.startswith(("ups_", "share_")):
+        return "ups_devices" if resource_id.startswith("ups_") else "shares"
     if (
         resource_id.startswith("network_")
         and resource_id not in _STATIC_NETWORK_RESOURCE_IDS
@@ -435,11 +435,13 @@ def async_cleanup_stale_entities(
     ent_reg = er.async_get(hass)
     registered = er.async_entries_for_config_entry(ent_reg, entry_id)
 
-    failed_categories = {
-        cat
-        for cat, success in system_coordinator.optional_query_status.items()
-        if not success
-    }
+    failed_categories: set[str] = set()
+    for coordinator in (system_coordinator, storage_coordinator):
+        statuses = getattr(coordinator, "optional_query_status", {})
+        if isinstance(statuses, dict):
+            failed_categories.update(
+                cat for cat, success in statuses.items() if not success
+            )
 
     orphans, present_uids = _collect_stale_dynamic_entities(
         entry_id=entry_id,

@@ -105,6 +105,9 @@ class TestIsDynamicResourceId:
     def test_share_usage(self) -> None:
         assert _is_dynamic_resource_id("share_media_usage") is True
 
+    def test_share_category(self) -> None:
+        assert _get_dynamic_resource_category("share_media_usage") == "shares"
+
     def test_ups_battery(self) -> None:
         assert _is_dynamic_resource_id("ups_ups1_battery") is True
 
@@ -862,6 +865,47 @@ class TestAsyncCleanupStaleEntities:
         mock_reg.async_remove.assert_called_once_with(
             "sensor.server_share_movies_usage"
         )
+
+    async def test_skips_share_cleanup_when_query_failed(
+        self, hass: HomeAssistant
+    ) -> None:
+        """A failed optional shares query must not prune persisted entities."""
+        sys_coord = self._make_system_coordinator()
+        stor_coord = self._make_storage_coordinator(
+            data_override=make_storage_data(shares=[])
+        )
+        stor_coord.optional_query_status = {"shares": False}
+        orphan_share = self._make_entity_entry(
+            f"{_UUID}_share_movies_usage",
+            "sensor.server_share_movies_usage",
+        )
+        mock_reg = MagicMock()
+        mock_dev_reg = MagicMock()
+        mock_dev_reg.async_entries_for_config_entry.return_value = []
+
+        with (
+            patch(
+                "custom_components.unraid.cleanup.er.async_get", return_value=mock_reg
+            ),
+            patch(
+                "custom_components.unraid.cleanup.er.async_entries_for_config_entry",
+                return_value=[orphan_share],
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_get",
+                return_value=mock_dev_reg,
+            ),
+            patch(
+                "custom_components.unraid.cleanup.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            for _ in range(_MISSING_STREAK_THRESHOLD):
+                async_cleanup_stale_entities(
+                    hass, "entry1", _UUID, sys_coord, stor_coord
+                )
+
+        mock_reg.async_remove.assert_not_called()
 
     async def test_static_entities_never_removed(self, hass: HomeAssistant) -> None:
         """Static entities (cpu_usage, array_state, etc.) must never be pruned."""

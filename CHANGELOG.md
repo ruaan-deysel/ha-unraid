@@ -12,6 +12,13 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - **VM Status Sensors** ([#268](https://github.com/ruaan-deysel/ha-unraid/issues/268)): Added dedicated sensor entities (`sensor.*_vm_status_*`) for virtual machines reporting their current state (e.g. `running`, `paused`, `shutoff`, `pmsuspended`, `crashed`, `idle`, `blocked`) along with `vm_id` and `raw_state` attributes.
 - **Docker Container Memory Used and Limit Sensors** ([#283](https://github.com/ruaan-deysel/ha-unraid/issues/283)): Added numeric memory sensors (`sensor.*_container_*_memory_used` and `sensor.*_container_*_memory_limit`, disabled by default) for Docker containers reporting exact memory usage and limit in bytes (with suggested unit MB) parsed from container WebSocket statistics, enabling numeric threshold automations (such as restarting leaking containers).
 
+### Fixed
+
+- **Share Entity Cleanup on Transient API Failures**: Optional share queries now
+  retain the last known-good snapshot and tell entity cleanup when the query
+  failed, preventing healthy share entities from being pruned after temporary
+  API errors.
+
 ## [2026.9.1] - 2026-09-04
 
 ### Added
