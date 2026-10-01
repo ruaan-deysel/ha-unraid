@@ -9,17 +9,13 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Added
 
-- **Custom Lovelace Dashboard Cards Suite** ([#317](https://github.com/ruaan-deysel/ha-unraid/pull/317)): Added an official, modular Lovelace dashboard cards suite bundled directly into the integration, modeled after the UI/UX architecture in `ha-unifi-insights`:
+- **Custom Lovelace Dashboard Cards Suite** ([#317](https://github.com/ruaan-deysel/ha-unraid/pull/317)): Added an official, modular Lovelace dashboard cards suite bundled directly into the integration:
   - `unraid-server-card`: System uptime, Unraid OS version, registration badge, CPU/RAM utilization progress rings and gradient bars, motherboard/CPU temperatures, and network throughput.
   - `unraid-storage-card`: Storage matrix showing array status, parity sync status and history, capacity progress rings, and individual disk health (temperatures, spin states, and read/write I/O).
   - `unraid-docker-card`: Container manager displaying active containers, status badges, CPU/memory footprints, autostart toggles, and start/stop/restart actions, with configurable grid and list views.
   - `unraid-ups-card`: Power & UPS monitor with battery charge rings, electrical load, AC voltages, estimated runtime, and adaptive status coloring.
   - `unraid-vm-card`: Virtual machine manager with state pills, memory allocation, CPU assignments, and lifecycle controls.
   - `unraid-dashboard-card`: Unified tabbed container providing single-card access to all specialized views with borderless embedded styling.
-  - Interactive visual Lovelace card editor with automatic server discovery dropdown.
-  - Automated non-blocking frontend asset serving and Lovelace module resource registration with content hash cache-busting.
-  - Built with modern TypeScript 6, Vite 8, Vitest 5, Lit 3.3.3, and `@mdi/js`.
-  - Zero external dependencies and strict compliance with the `unraid-api` boundary (native Home Assistant entity states and service calls only).
 
 ## [2026.9.2] - 2026-09-28
 
