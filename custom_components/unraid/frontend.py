@@ -46,6 +46,13 @@ def _frontend_digest(path: Path) -> str:
     return hasher.hexdigest()[:8]
 
 
+def _frontend_assets_info(path: Path, files: tuple[str, ...]) -> tuple[str, list[str]]:
+    """Return content hash and existing entry filenames off the event loop."""
+    digest = _frontend_digest(path)
+    existing = [filename for filename in files if (path / filename).is_file()]
+    return digest, existing
+
+
 async def async_register_frontend(hass: HomeAssistant) -> None:
     """
     Serve card bundles and register them as Lovelace resources once.
@@ -74,11 +81,10 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
             hass.data[_STATIC_REGISTERED] = True
 
         urls: dict[str, str] = {}
-        digest = await hass.async_add_executor_job(_frontend_digest, FRONTEND_PATH)
-        for filename in CARD_FILES:
-            path = FRONTEND_PATH / filename
-            if not path.is_file():
-                continue
+        digest, existing_files = await hass.async_add_executor_job(
+            _frontend_assets_info, FRONTEND_PATH, CARD_FILES
+        )
+        for filename in existing_files:
             url = f"{FRONTEND_URL_BASE}/{filename}"
             urls[url] = f"{url}?v={integration.version}-{digest}"
 

@@ -20,7 +20,6 @@ interface VmItem {
   status: string;
   switchEntityId: string;
   rebootEntityId?: string;
-  forceStopEntityId?: string;
 }
 
 function extractEntityVmSlug(entityId: string): string {
@@ -29,8 +28,6 @@ function extractEntityVmSlug(entityId: string): string {
     objectId
       .replace(/^.*?_vm_reboot_/, "")
       .replace(/^vm_reboot_/, "")
-      .replace(/^.*?_vm_force_stop_/, "")
-      .replace(/^vm_force_stop_/, "")
       .replace(/^.*?_virtual_machine_status_/, "")
       .replace(/^virtual_machine_status_/, "")
       .replace(/^.*?_virtual_machine_/, "")
@@ -56,7 +53,6 @@ export class UnraidVmCard extends BaseUnraidCard {
     const switches = this.getEntities("virtual_machine", "switch");
     const statuses = this.getEntities("virtual_machine_status", "sensor");
     const reboots = this.getEntities("vm_reboot", "button");
-    const forceStops = this.getEntities("vm_force_stop", "button");
 
     const list: VmItem[] = [];
 
@@ -71,9 +67,6 @@ export class UnraidVmCard extends BaseUnraidCard {
       const reboot = reboots.find(
         (r) => extractEntityVmSlug(r.entity_id) === slug
       );
-      const forceStop = forceStops.find(
-        (f) => extractEntityVmSlug(f.entity_id) === slug
-      );
 
       list.push({
         id: slug,
@@ -82,7 +75,6 @@ export class UnraidVmCard extends BaseUnraidCard {
         status,
         switchEntityId: sw.entity_id,
         rebootEntityId: reboot?.entity_id,
-        forceStopEntityId: forceStop?.entity_id,
       });
     }
 
