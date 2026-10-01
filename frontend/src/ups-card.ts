@@ -22,29 +22,29 @@ export class UnraidUpsCard extends BaseUnraidCard {
     const voltageOut = this.getEntity("ups_output_voltage");
     const healthState = this.getEntity("ups_battery_health");
 
-    const hasStatus = !!(statusState && statusState.state !== "unavailable" && statusState.state !== "unknown");
-    const status = hasStatus ? statusState.state : (statusState?.state || "Unavailable");
+    const hasStatus = Boolean(statusState && statusState.state !== "unavailable" && statusState.state !== "unknown");
+    const status = hasStatus && statusState ? statusState.state : (statusState?.state || "Unavailable");
     const isOnline = hasStatus && status.toLowerCase().includes("online");
     const isBattery = hasStatus && (status.toLowerCase().includes("battery") || status.toLowerCase().includes("discharge"));
     const isUnavailable = !hasStatus || status === "Unavailable" || status === "unavailable";
 
-    const hasBattery = !!(batteryState && batteryState.state !== "unavailable" && batteryState.state !== "unknown");
-    const batteryPct = hasBattery ? Math.round(Number(batteryState.state) || 0) : null;
+    const hasBattery = Boolean(batteryState && batteryState.state !== "unavailable" && batteryState.state !== "unknown");
+    const batteryPct = hasBattery && batteryState ? Math.round(Number(batteryState.state) || 0) : null;
 
-    const hasLoad = !!(loadState && loadState.state !== "unavailable" && loadState.state !== "unknown");
-    const loadPct = hasLoad ? Math.round(Number(loadState.state) || 0) : null;
+    const hasLoad = Boolean(loadState && loadState.state !== "unavailable" && loadState.state !== "unknown");
+    const loadPct = hasLoad && loadState ? Math.round(Number(loadState.state) || 0) : null;
 
-    const hasPower = !!(powerState && powerState.state !== "unavailable" && powerState.state !== "unknown");
-    const powerW = hasPower ? `${powerState.state} W` : null;
+    const hasPower = Boolean(powerState && powerState.state !== "unavailable" && powerState.state !== "unknown");
+    const powerW = hasPower && powerState ? `${powerState.state} W` : null;
 
-    const hasRuntime = !!(runtimeState && runtimeState.state !== "unavailable" && runtimeState.state !== "unknown");
-    const runtimeMin = hasRuntime ? `${runtimeState.state} min` : null;
+    const hasRuntime = Boolean(runtimeState && runtimeState.state !== "unavailable" && runtimeState.state !== "unknown");
+    const runtimeMin = hasRuntime && runtimeState ? `${runtimeState.state} min` : null;
 
-    const hasVoltage = !!(voltageOut && voltageOut.state !== "unavailable" && voltageOut.state !== "unknown");
-    const voltageV = hasVoltage ? `${voltageOut.state} V` : null;
+    const hasVoltage = Boolean(voltageOut && voltageOut.state !== "unavailable" && voltageOut.state !== "unknown");
+    const voltageV = hasVoltage && voltageOut ? `${voltageOut.state} V` : null;
 
-    const hasHealth = !!(healthState && healthState.state !== "unavailable" && healthState.state !== "unknown");
-    const health = hasHealth ? healthState.state : null;
+    const hasHealth = Boolean(healthState && healthState.state !== "unavailable" && healthState.state !== "unknown");
+    const health = hasHealth && healthState ? healthState.state : null;
 
     const badge = html`
       <span class="badge ${isUnavailable ? "badge-standby" : isOnline ? "badge-online" : isBattery ? "badge-warning" : "badge-error"}">

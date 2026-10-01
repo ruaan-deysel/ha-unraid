@@ -17,17 +17,18 @@ export class UnraidServerCard extends BaseUnraidCard {
 
   private formatUptime(secondsOrIso: string | undefined): string {
     if (!secondsOrIso) return "Unknown";
+    const trimmed = secondsOrIso.trim();
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      const days = Math.floor(num / 86400);
+      const hours = Math.floor((num % 86400) / 3600);
+      return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+    }
     const date = new Date(secondsOrIso);
     if (!isNaN(date.getTime())) {
       const diffMs = Date.now() - date.getTime();
       const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
-      return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
-    }
-    const num = Number(secondsOrIso);
-    if (!isNaN(num) && num > 0) {
-      const days = Math.floor(num / 86400);
-      const hours = Math.floor((num % 86400) / 3600);
       return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
     }
     return secondsOrIso;

@@ -73,7 +73,12 @@ export class UnraidDockerCard extends BaseUnraidCard {
   override willUpdate(changedProperties: PropertyValues<this>): void {
     super.willUpdate(changedProperties);
     if (changedProperties.has("config") && this.config.view_mode) {
-      this._viewMode = this.config.view_mode;
+      const previous = changedProperties.get("config") as
+        | { view_mode?: "grid" | "list" }
+        | undefined;
+      if (previous?.view_mode !== this.config.view_mode) {
+        this._viewMode = this.config.view_mode;
+      }
     }
   }
 
@@ -87,9 +92,12 @@ export class UnraidDockerCard extends BaseUnraidCard {
   }
 
   private getContainers(): ContainerItem[] {
-    const switches = this.getEntities("docker_container", "switch");
-    const restarts = this.getEntities("docker_container_restart", "button");
     const autostarts = this.getEntities("docker_container_autostart", "switch");
+    const autostartIds = new Set(autostarts.map((a) => a.entity_id));
+    const switches = this.getEntities("docker_container", "switch").filter(
+      (s) => !autostartIds.has(s.entity_id)
+    );
+    const restarts = this.getEntities("docker_container_restart", "button");
     const cpus = this.getEntities("container_cpu");
     const mems = this.getEntities("container_memory_usage");
     const updates = this.getEntities("docker_container_update", "update");

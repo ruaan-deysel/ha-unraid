@@ -137,10 +137,18 @@ describe("Unraid Custom Cards", () => {
     expect(tags).toContain("unraid-dashboard-card");
   });
 
-  it("renders UnraidServerCard with mock hass data", async () => {
+  it("renders UnraidServerCard with mock hass data and formats numeric uptime", async () => {
     const card = new UnraidServerCard();
     card.setConfig({ type: "custom:unraid-server-card" });
-    card.hass = createMockHass();
+    const hass = createMockHass();
+    hass.states["sensor.cube_uptime"] = {
+      entity_id: "sensor.cube_uptime",
+      state: "90000",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = hass;
     document.body.appendChild(card);
     await card.updateComplete;
 
@@ -149,6 +157,7 @@ describe("Unraid Custom Cards", () => {
     expect(card.shadowRoot?.innerHTML).toContain("CUBE");
     expect(card.shadowRoot?.innerHTML).toContain("CPU Load");
     expect(card.shadowRoot?.innerHTML).toContain("15%");
+    expect(card.shadowRoot?.innerHTML).toContain("1d 1h");
     document.body.removeChild(card);
   });
 
@@ -165,15 +174,24 @@ describe("Unraid Custom Cards", () => {
     document.body.removeChild(card);
   });
 
-  it("renders UnraidDockerCard and container list", async () => {
+  it("renders UnraidDockerCard and container list excluding autostart switches", async () => {
     const card = new UnraidDockerCard();
     card.setConfig({ type: "custom:unraid-docker-card", view_mode: "list" });
-    card.hass = createMockHass();
+    const hass = createMockHass();
+    hass.states["switch.cube_docker_container_autostart_plex"] = {
+      entity_id: "switch.cube_docker_container_autostart_plex",
+      state: "on",
+      attributes: { friendly_name: "plex Autostart" },
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = hass;
     document.body.appendChild(card);
     await card.updateComplete;
 
     expect(card.shadowRoot?.innerHTML).toContain("Docker Containers");
     expect(card.shadowRoot?.innerHTML).toContain("plex");
+    expect(card.shadowRoot?.innerHTML).not.toContain("plex Autostart");
     document.body.removeChild(card);
   });
 
