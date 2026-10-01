@@ -1,9 +1,9 @@
 {
   "domain": "unraid",
   "name": "Unraid",
+  "after_dependencies": ["http", "frontend", "lovelace"],
   "codeowners": ["@ruaan-deysel"],
   "config_flow": true,
-  "after_dependencies": ["http", "frontend", "lovelace"],
   "dependencies": [],
   "documentation": "https://github.com/ruaan-deysel/ha-unraid",
   "homekit": {},
