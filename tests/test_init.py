@@ -16,8 +16,10 @@ from unraid_api.exceptions import (
 )
 
 from custom_components.unraid import (
+    CONFIG_SCHEMA,
     PLATFORMS,
     UnraidRuntimeData,
+    async_setup,
     async_setup_entry,
     async_unload_entry,
 )
@@ -835,3 +837,17 @@ def test_is_monitorable_interface() -> None:
     assert is_monitorable_interface("virbr0") is False
     assert is_monitorable_interface("lo") is False
     assert is_monitorable_interface("veth1234abc") is False
+
+
+async def test_async_setup_and_config_schema(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test async_setup and CONFIG_SCHEMA."""
+    with patch("custom_components.unraid.async_register_frontend") as mock_reg:
+        result = await async_setup(hass, {})
+        assert result is True
+        mock_reg.assert_awaited_once_with(hass)
+
+    assert CONFIG_SCHEMA({}) == {}
+    CONFIG_SCHEMA({DOMAIN: {"host": "192.168.1.1"}})
+    assert "The unraid integration does not support YAML setup" in caplog.text

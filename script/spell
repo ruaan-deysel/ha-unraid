@@ -38,7 +38,7 @@ spell_exit=0
 codespell \
     --write-changes \
     --ignore-words-list=hass \
-    --skip="./.*,*.csv,*.json,*.ambr,uv.lock" \
+    --skip="./.*,*.csv,*.json,*.ambr,uv.lock,*.js,*.js.map" \
     --quiet-level=2 \
     custom_components/ \
     README.md \

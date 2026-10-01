@@ -179,3 +179,7 @@ coverage.xml
 config/*
 !config/configuration.yaml
 !config/blueprints/
+
+# Frontend
+frontend/node_modules/
+frontend/coverage/

@@ -1,0 +1,273 @@
+import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { type CardConfig } from "./config";
+import { dashboardCardStyles } from "./dashboard-cards-styles";
+import {
+  fireEvent,
+  type DeviceRegistryEntry,
+  type HassEntity,
+  type HomeAssistant,
+} from "./ha-types";
+import { iconTemplate } from "./icons";
+
+export abstract class BaseUnraidCard extends LitElement {
+  static override styles = dashboardCardStyles;
+  static editorTag = "";
+
+  static async getConfigElement(this: {
+    editorTag: string;
+  }): Promise<HTMLElement> {
+    return document.createElement(this.editorTag);
+  }
+
+  static override properties = {
+    hass: { attribute: false },
+    config: { state: true },
+  };
+
+  declare hass?: HomeAssistant;
+  declare config: CardConfig;
+
+  constructor() {
+    super();
+    this.config = { type: "" };
+  }
+
+  override willUpdate(changedProperties: PropertyValues<this>): void {
+    super.willUpdate(changedProperties);
+    if (changedProperties.has("config")) {
+      if (this.config.embedded) {
+        this.setAttribute("embedded", "");
+      } else {
+        this.removeAttribute("embedded");
+      }
+    }
+  }
+
+  setConfig(config: CardConfig): void {
+    if (!config || typeof config.type !== "string") {
+      throw new Error("Invalid card configuration");
+    }
+    this.config = { ...config };
+    if (this.config.embedded) {
+      this.setAttribute("embedded", "");
+    } else {
+      this.removeAttribute("embedded");
+    }
+  }
+
+  getCardSize(): number {
+    return 4;
+  }
+
+  getGridOptions() {
+    return { columns: 6, rows: 4, min_columns: 3, min_rows: 3 };
+  }
+
+  /** Get all Unraid server devices registered in Home Assistant */
+  protected getUnraidDevices(): DeviceRegistryEntry[] {
+    if (!this.hass?.devices) return [];
+    return Object.values(this.hass.devices).filter((device) =>
+      device.identifiers?.some(([domain]) => domain === "unraid")
+    );
+  }
+
+  /** Resolve the active Unraid device based on config or default */
+  protected getActiveDevice(): DeviceRegistryEntry | undefined {
+    const devices = this.getUnraidDevices();
+    if (devices.length === 0) return undefined;
+
+    if (this.config.server) {
+      const match = devices.find(
+        (d) =>
+          d.id === this.config.server ||
+          d.name?.toLowerCase() === this.config.server?.toLowerCase() ||
+          d.name_by_user?.toLowerCase() === this.config.server?.toLowerCase()
+      );
+      if (match) return match;
+    }
+    return devices[0];
+  }
+
+  /**
+   * Find an entity by translation key or entity_id suffix.
+   */
+  protected getEntity(
+    translationKey: string,
+    domain?: string
+  ): HassEntity | undefined {
+    if (!this.hass?.states) return undefined;
+    const device = this.getActiveDevice();
+    const deviceId = device?.id;
+
+    // Check entity registry if available
+    if (this.hass.entities && deviceId) {
+      for (const ent of Object.values(this.hass.entities)) {
+        if (
+          ent.device_id === deviceId &&
+          ent.translation_key === translationKey &&
+          (!domain || ent.entity_id.startsWith(`${domain}.`))
+        ) {
+          const stateObj = this.hass.states[ent.entity_id];
+          if (stateObj) return stateObj;
+        }
+      }
+    }
+
+    // Fallback: search states by naming patterns
+    const states = Object.values(this.hass.states);
+    return states.find((s) => {
+      if (domain && !s.entity_id.startsWith(`${domain}.`)) return false;
+      if (this.hass?.entities) {
+        const reg = this.hass.entities[s.entity_id];
+        if (reg && reg.platform !== "unraid") return false;
+      }
+      const objectId = s.entity_id.split(".")[1] || "";
+      const keyMatch =
+        objectId.endsWith(`_${translationKey}`) || objectId === translationKey;
+      if (device?.name) {
+        const cleanName = device.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+        return keyMatch && objectId.includes(cleanName);
+      }
+      return keyMatch;
+    });
+  }
+
+  /**
+   * Find all entities matching a translation key (e.g. disks, docker containers).
+   */
+  protected getEntities(
+    translationKey: string,
+    domain?: string
+  ): HassEntity[] {
+    if (!this.hass?.states) return [];
+    const device = this.getActiveDevice();
+    const deviceId = device?.id;
+
+    if (this.hass.entities && deviceId) {
+      const matches: HassEntity[] = [];
+      for (const ent of Object.values(this.hass.entities)) {
+        if (
+          ent.device_id === deviceId &&
+          ent.translation_key === translationKey &&
+          (!domain || ent.entity_id.startsWith(`${domain}.`))
+        ) {
+          const stateObj = this.hass.states[ent.entity_id];
+          if (stateObj) matches.push(stateObj);
+        }
+      }
+      if (matches.length > 0) return matches;
+    }
+
+    // Fallback to name pattern
+    const cleanName = device?.name
+      ? device.name.toLowerCase().replace(/[^a-z0-9]/g, "_")
+      : undefined;
+
+    const matchesTranslation = (s: HassEntity) => {
+      if (this.hass?.entities) {
+        const reg = this.hass.entities[s.entity_id];
+        if (reg && reg.platform !== "unraid") return false;
+      }
+      if (translationKey === "disk_usage") {
+        return (
+          (s.entity_id.includes("_disk_") ||
+            s.entity_id.includes("_cache") ||
+            s.entity_id.includes("_parity") ||
+            s.entity_id.includes("_boot") ||
+            s.entity_id.includes("_flash")) &&
+          s.entity_id.endsWith("_usage") &&
+          !s.entity_id.includes("_array_usage") &&
+          !s.entity_id.includes("_share_")
+        );
+      }
+      if (translationKey === "disk_temperature") {
+        return (
+          (s.entity_id.includes("_disk_") ||
+            s.entity_id.includes("_cache") ||
+            s.entity_id.includes("_parity") ||
+            s.entity_id.includes("_boot")) &&
+          (s.entity_id.endsWith("_temperature") || s.entity_id.includes("_temp"))
+        );
+      }
+      if (translationKey === "disk_spin") {
+        return (
+          (s.entity_id.includes("_disk_") ||
+            s.entity_id.includes("_cache") ||
+            s.entity_id.includes("_parity")) &&
+          s.entity_id.includes("_spin")
+        );
+      }
+      return (
+        s.entity_id.includes(`_${translationKey}`) ||
+        s.entity_id.includes(`.${translationKey}`)
+      );
+    };
+
+    const states = Object.values(this.hass.states);
+    const domainStates = domain
+      ? states.filter((s) => s.entity_id.startsWith(`${domain}.`))
+      : states;
+
+    if (cleanName) {
+      return domainStates.filter(
+        (s) => s.entity_id.includes(cleanName) && matchesTranslation(s)
+      );
+    }
+
+    return domainStates.filter((s) => matchesTranslation(s));
+  }
+
+  /**
+   * Find an entity by exact or regex pattern
+   */
+  protected findEntity(pattern: RegExp | string): HassEntity | undefined {
+    if (!this.hass?.states) return undefined;
+    if (typeof pattern === "string") {
+      return this.hass.states[pattern];
+    }
+    return Object.values(this.hass.states).find((s) =>
+      pattern.test(s.entity_id)
+    );
+  }
+
+  /** Toggle switch service call */
+  protected async toggleEntity(entityId: string): Promise<void> {
+    if (!this.hass) return;
+    const domain = entityId.split(".")[0] || "homeassistant";
+    await this.hass.callService(domain, "toggle", { entity_id: entityId });
+  }
+
+  /** Press button service call */
+  protected async pressButton(entityId: string): Promise<void> {
+    if (!this.hass) return;
+    await this.hass.callService("button", "press", { entity_id: entityId });
+  }
+
+  /** Open more info popup */
+  protected openMoreInfo(entityId: string): void {
+    fireEvent(this, "hass-more-info", { entityId });
+  }
+
+  protected renderHeader(
+    title: string,
+    subtitle: string,
+    iconPath: string,
+    badgeContent?: TemplateResult
+  ): TemplateResult | typeof nothing {
+    if (this.config.embedded || this.config.hide_header) {
+      return nothing;
+    }
+    return html`
+      <div class="header">
+        <div class="header-main">
+          <div class="header-icon">${iconTemplate(iconPath, 22)}</div>
+          <div class="header-titles">
+            <span class="header-title">${title}</span>
+            <span class="header-subtitle">${subtitle}</span>
+          </div>
+        </div>
+        ${badgeContent ? html`<div class="header-actions">${badgeContent}</div>` : ""}
+      </div>
+    `;
+  }
+}

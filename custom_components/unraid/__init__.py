@@ -20,6 +20,7 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -45,13 +46,17 @@ from .coordinator import (
     UnraidStorageCoordinator,
     UnraidSystemCoordinator,
 )
+from .frontend import async_register_frontend
 from .websocket import UnraidWebSocketManager
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -269,6 +274,12 @@ async def _async_refresh_coordinators(
     except (ConfigEntryAuthFailed, ConfigEntryNotReady):
         await api_client.close()
         raise
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001
+    """Set up the Unraid component and register dashboard frontend."""
+    await async_register_frontend(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:

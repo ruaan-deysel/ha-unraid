@@ -36,7 +36,7 @@ fi
 log_header "Checking spelling with codespell"
 codespell \
     --ignore-words-list=hass \
-    --skip="./.*,*.csv,*.json,*.ambr,uv.lock" \
+    --skip="./.*,*.csv,*.json,*.ambr,uv.lock,*.js,*.js.map" \
     --quiet-level=2 \
     custom_components/ \
     README.md \
