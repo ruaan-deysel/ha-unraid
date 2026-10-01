@@ -21,7 +21,7 @@ export abstract class BaseUnraidCard extends LitElement {
 
   static override properties = {
     hass: { attribute: false },
-    config: { state: true },
+    config: { attribute: false },
   };
 
   declare hass?: HomeAssistant;
@@ -197,9 +197,12 @@ export abstract class BaseUnraidCard extends LitElement {
           s.entity_id.includes("_spin")
         );
       }
+      const objectId = s.entity_id.split(".")[1] || "";
       return (
-        s.entity_id.includes(`_${translationKey}`) ||
-        s.entity_id.includes(`.${translationKey}`)
+        objectId === translationKey ||
+        objectId.endsWith(`_${translationKey}`) ||
+        objectId.includes(`_${translationKey}_`) ||
+        objectId.startsWith(`${translationKey}_`)
       );
     };
 

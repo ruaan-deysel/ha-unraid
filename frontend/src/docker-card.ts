@@ -132,7 +132,10 @@ export class UnraidDockerCard extends BaseUnraidCard {
         switchEntityId: sw.entity_id,
         restartEntityId: restart?.entity_id,
         autostartEntityId: autostart?.entity_id,
-        cpuPct: cpu?.state ? parseFloat(cpu.state) : undefined,
+        cpuPct:
+          cpu?.state && Number.isFinite(parseFloat(cpu.state))
+            ? parseFloat(cpu.state)
+            : undefined,
         memoryUsage:
           mem?.state && mem.state !== "unavailable"
             ? `${mem.state} ${mem.attributes.unit_of_measurement || "B"}`
