@@ -25,11 +25,11 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.14.2
 
       - name: Install dependencies
         run: |
-          uv venv --python 3.13
+          uv venv --python 3.14.2
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
           uv pip install . ".[dev]" homeassistant
 
