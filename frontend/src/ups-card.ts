@@ -104,11 +104,13 @@ export class UnraidUpsCard extends BaseUnraidCard {
           badge
         )}
         <div class="rings-grid" style="grid-template-columns: repeat(2, 1fr);">
-
           <div
             class="ring-card"
+            role="${batteryState ? "button" : "none"}"
+            tabindex="${batteryState ? "0" : "-1"}"
             style="${batteryState ? "cursor: pointer;" : ""}"
             @click=${() => batteryState && this.openMoreInfo(batteryState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && batteryState && (e.preventDefault(), this.openMoreInfo(batteryState.entity_id))}
             title="Click to view Battery details"
           >
             <div
@@ -122,8 +124,11 @@ export class UnraidUpsCard extends BaseUnraidCard {
           </div>
           <div
             class="ring-card"
+            role="${loadState ? "button" : "none"}"
+            tabindex="${loadState ? "0" : "-1"}"
             style="${loadState ? "cursor: pointer;" : ""}"
             @click=${() => loadState && this.openMoreInfo(loadState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && loadState && (e.preventDefault(), this.openMoreInfo(loadState.entity_id))}
             title="Click to view Load details"
           >
             <div
@@ -141,8 +146,11 @@ export class UnraidUpsCard extends BaseUnraidCard {
         <div class="detail-grid">
           <div
             class="detail-item"
+            role="${runtimeState ? "button" : "none"}"
+            tabindex="${runtimeState ? "0" : "-1"}"
             style="${runtimeState ? "cursor: pointer;" : ""}"
             @click=${() => runtimeState && this.openMoreInfo(runtimeState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && runtimeState && (e.preventDefault(), this.openMoreInfo(runtimeState.entity_id))}
             title="Click to view Runtime details"
           >
             <span class="detail-label">Runtime Remaining</span>
@@ -150,8 +158,11 @@ export class UnraidUpsCard extends BaseUnraidCard {
           </div>
           <div
             class="detail-item"
+            role="${powerState ? "button" : "none"}"
+            tabindex="${powerState ? "0" : "-1"}"
             style="${powerState ? "cursor: pointer;" : ""}"
             @click=${() => powerState && this.openMoreInfo(powerState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && powerState && (e.preventDefault(), this.openMoreInfo(powerState.entity_id))}
             title="Click to view Power details"
           >
             <span class="detail-label">Power Consumption</span>
@@ -159,8 +170,11 @@ export class UnraidUpsCard extends BaseUnraidCard {
           </div>
           <div
             class="detail-item"
+            role="${voltageOut ? "button" : "none"}"
+            tabindex="${voltageOut ? "0" : "-1"}"
             style="${voltageOut ? "cursor: pointer;" : ""}"
             @click=${() => voltageOut && this.openMoreInfo(voltageOut.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && voltageOut && (e.preventDefault(), this.openMoreInfo(voltageOut.entity_id))}
             title="Click to view Voltage details"
           >
             <span class="detail-label">Output Voltage</span>
@@ -168,8 +182,11 @@ export class UnraidUpsCard extends BaseUnraidCard {
           </div>
           <div
             class="detail-item"
+            role="${healthState ? "button" : "none"}"
+            tabindex="${healthState ? "0" : "-1"}"
             style="${healthState ? "cursor: pointer;" : ""}"
             @click=${() => healthState && this.openMoreInfo(healthState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && healthState && (e.preventDefault(), this.openMoreInfo(healthState.entity_id))}
             title="Click to view Battery Health details"
           >
             <span class="detail-label">Battery Health</span>

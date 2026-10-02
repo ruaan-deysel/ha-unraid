@@ -159,6 +159,11 @@ export const dashboardCardStyles = [
       gap: 6px;
     }
 
+    .ring-card[role="button"]:focus-visible {
+      outline: 2px solid var(--unraid-primary);
+      outline-offset: 2px;
+    }
+
     .ring-gauge {
       width: 54px;
       height: 54px;
@@ -372,6 +377,12 @@ export const dashboardCardStyles = [
       display: flex;
       flex-direction: column;
       gap: 2px;
+    }
+
+    .detail-item[role="button"]:focus-visible {
+      outline: 2px solid var(--unraid-primary);
+      outline-offset: 2px;
+      border-radius: 4px;
     }
 
     .detail-label {

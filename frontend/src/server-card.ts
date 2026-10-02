@@ -131,8 +131,11 @@ export class UnraidServerCard extends BaseUnraidCard {
         <div class="rings-grid">
           <div
             class="ring-card"
+            role="${cpuState ? "button" : "none"}"
+            tabindex="${cpuState ? "0" : "-1"}"
             style="${cpuState ? "cursor: pointer;" : ""}"
             @click=${() => cpuState && this.openMoreInfo(cpuState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && cpuState && (e.preventDefault(), this.openMoreInfo(cpuState.entity_id))}
             title="Click to view CPU details"
           >
             <div
@@ -148,8 +151,11 @@ export class UnraidServerCard extends BaseUnraidCard {
           </div>
           <div
             class="ring-card"
+            role="${ramState ? "button" : "none"}"
+            tabindex="${ramState ? "0" : "-1"}"
             style="${ramState ? "cursor: pointer;" : ""}"
             @click=${() => ramState && this.openMoreInfo(ramState.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && ramState && (e.preventDefault(), this.openMoreInfo(ramState.entity_id))}
             title="Click to view Memory details"
           >
             <div
@@ -163,8 +169,11 @@ export class UnraidServerCard extends BaseUnraidCard {
           </div>
           <div
             class="ring-card"
+            role="${arrayUsage ? "button" : "none"}"
+            tabindex="${arrayUsage ? "0" : "-1"}"
             style="${arrayUsage ? "cursor: pointer;" : ""}"
             @click=${() => arrayUsage && this.openMoreInfo(arrayUsage.entity_id)}
+            @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && arrayUsage && (e.preventDefault(), this.openMoreInfo(arrayUsage.entity_id))}
             title="Click to view Array storage details"
           >
             <div
@@ -192,8 +201,11 @@ export class UnraidServerCard extends BaseUnraidCard {
                 </div>
                 <div
                   class="detail-item"
+                  role="${uptimeState ? "button" : "none"}"
+                  tabindex="${uptimeState ? "0" : "-1"}"
                   style="${uptimeState ? "cursor: pointer;" : ""}"
                   @click=${() => uptimeState && this.openMoreInfo(uptimeState.entity_id)}
+                  @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && uptimeState && (e.preventDefault(), this.openMoreInfo(uptimeState.entity_id))}
                   title="Click to view Uptime details"
                 >
                   <span class="detail-label">System Uptime</span>
@@ -201,8 +213,11 @@ export class UnraidServerCard extends BaseUnraidCard {
                 </div>
                 <div
                   class="detail-item"
+                  role="${primaryIface?.rx || ipState ? "button" : "none"}"
+                  tabindex="${primaryIface?.rx || ipState ? "0" : "-1"}"
                   style="${primaryIface?.rx || ipState ? "cursor: pointer;" : ""}"
                   @click=${() => (primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : ipState && this.openMoreInfo(ipState.entity_id))}
+                  @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (primaryIface?.rx || ipState) && (e.preventDefault(), primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : ipState && this.openMoreInfo(ipState.entity_id))}
                   title="Click to view Network details"
                 >
                   <span class="detail-label">Primary Network</span>
@@ -212,8 +227,11 @@ export class UnraidServerCard extends BaseUnraidCard {
                 </div>
                 <div
                   class="detail-item"
+                  role="${primaryIface?.rx || primaryIface?.speed ? "button" : "none"}"
+                  tabindex="${primaryIface?.rx || primaryIface?.speed ? "0" : "-1"}"
                   style="${primaryIface?.rx || primaryIface?.speed ? "cursor: pointer;" : ""}"
                   @click=${() => (primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : primaryIface?.speed && this.openMoreInfo(primaryIface.speed.entity_id))}
+                  @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (primaryIface?.rx || primaryIface?.speed) && (e.preventDefault(), primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : primaryIface?.speed && this.openMoreInfo(primaryIface.speed.entity_id))}
                   title="Click to view Network traffic details"
                 >
                   <span class="detail-label">Network Traffic</span>
@@ -221,8 +239,11 @@ export class UnraidServerCard extends BaseUnraidCard {
                 </div>
                 <div
                   class="detail-item"
+                  role="${bootDisk ? "button" : "none"}"
+                  tabindex="${bootDisk ? "0" : "-1"}"
                   style="${bootDisk ? "cursor: pointer;" : ""}"
                   @click=${() => bootDisk && this.openMoreInfo(bootDisk.entity_id)}
+                  @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && bootDisk && (e.preventDefault(), this.openMoreInfo(bootDisk.entity_id))}
                   title="Click to view Boot device details"
                 >
                   <span class="detail-label">Boot Device</span>
@@ -230,8 +251,11 @@ export class UnraidServerCard extends BaseUnraidCard {
                 </div>
                 <div
                   class="detail-item"
+                  role="${alertsState ? "button" : "none"}"
+                  tabindex="${alertsState ? "0" : "-1"}"
                   style="${alertsState ? "cursor: pointer;" : ""}"
                   @click=${() => alertsState && this.openMoreInfo(alertsState.entity_id)}
+                  @keydown=${(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && alertsState && (e.preventDefault(), this.openMoreInfo(alertsState.entity_id))}
                   title="Click to view Notifications"
                 >
                   <span class="detail-label">System Health</span>

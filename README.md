@@ -213,71 +213,99 @@ The integration includes a suite of 8 modern custom Lovelace cards bundled direc
 
 Clicking on CPU, RAM, or Storage rings, as well as uptime, network, and battery metrics, automatically opens Home Assistant's native **More-Info dialog** with historical usage graphs, attributes, and settings.
 
-### Dashboard Layout & Native Subviews (2026+ Best Practice)
+### Dashboard Layout & Native View Tabs (2026+ Best Practice)
 
-For the best experience across mobile and desktop, configure your Unraid dashboard using Home Assistant's **Sections view** and **Native Subviews** (`subview: true`):
+For the best experience across mobile and desktop, configure your Unraid dashboard using Home Assistant's **Sections view** combined with the unified `custom:unraid-dashboard-card` or dedicated view tabs/subviews.
+
+> **Entity ID Placeholders**: Replace `<your_server>` with your server name (e.g., `cube`, `tower`) and `<model>` with your UPS model (e.g., `pr1000elcdrt1u`). You can check your exact entity IDs under **Settings → Devices & Services → Unraid**.
 
 ```yaml
 views:
   - title: Overview
     path: overview
+    icon: mdi:server
     type: sections
+    max_columns: 2
     badges:
-      - entity: sensor.unraid_tower_array_state
+      - type: entity
+        entity: sensor.<your_server>_array_state
+        show_name: true
+        show_state: true
         color: green
-      - entity: sensor.unraid_tower_ups_battery
+      - type: entity
+        entity: sensor.<your_server>_ups_<model>_battery
+        show_name: true
+        show_state: true
         color: accent
-      - entity: sensor.unraid_tower_unread_notifications_total
+      - type: entity
+        entity: sensor.<your_server>_unread_notifications_total
+        show_name: true
+        show_state: true
         color: red
         visibility:
           - condition: numeric_state
-            entity: sensor.unraid_tower_unread_notifications_total
+            entity: sensor.<your_server>_unread_notifications_total
             above: 0
     sections:
       - type: grid
+        column_span: 2
         cards:
-          - type: heading
-            heading: Server Overview
-            icon: mdi:server
-          - type: custom:unraid-server-card
-      - type: grid
-        cards:
-          - type: heading
-            heading: Subsystems
-            icon: mdi:view-dashboard-outline
-          - type: grid
-            columns: 3
-            cards:
-              - type: button
-                name: Storage & Disks
-                icon: mdi:harddisk
-                tap_action:
-                  action: navigate
-                  navigation_path: /dashboard-unraid/storage
-              - type: button
-                name: Containers
-                icon: mdi:docker
-                tap_action:
-                  action: navigate
-                  navigation_path: /dashboard-unraid/docker
-              - type: button
-                name: Power & UPS
-                icon: mdi:flash
-                tap_action:
-                  action: navigate
-                  navigation_path: /dashboard-unraid/ups
+          - type: custom:unraid-dashboard-card
+            grid_options:
+              columns: full
+              rows: auto
 
-  # Dedicated Subviews with native back navigation:
+  # Dedicated views accessible via top tabs or subviews:
   - title: Storage & Disks
     path: storage
-    subview: true
-    back_path: /dashboard-unraid/overview
+    icon: mdi:harddisk
     type: sections
     sections:
       - type: grid
+        column_span: 2
         cards:
           - type: custom:unraid-storage-card
           - type: custom:unraid-shares-card
+
+  - title: Docker
+    path: docker
+    icon: mdi:docker
+    type: sections
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:unraid-docker-card
+
+  - title: VMs
+    path: vms
+    icon: mdi:monitor
+    type: sections
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:unraid-vm-card
+
+  - title: Network
+    path: network
+    icon: mdi:lan-connect
+    type: sections
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:unraid-network-card
+
+  - title: Power & UPS
+    path: ups
+    icon: mdi:flash
+    type: sections
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:unraid-ups-card
 ```
 
 ## Troubleshooting
