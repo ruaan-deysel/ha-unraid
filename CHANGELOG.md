@@ -9,7 +9,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Added
 
-- **Boot Device (Flash USB) Support**: Added integration entities (`DiskUsageSensor`, `DiskHealthBinarySensor`, `DiskTemperatureSensor`, `DiskErrorCountSensor`) for the Unraid USB boot disk (`data.boot`), enabling monitoring of flash drive capacity, filesystem, device path, and operational health.
+- **Boot Device (Flash USB) Support**: Added integration entities (`DiskUsageSensor`, `DiskHealthBinarySensor`, `DiskTemperatureSensor`, `DiskErrorCountSensor`) for the Unraid USB boot disk (`data.boot`), enabling monitoring of flash drive capacity, filesystem, device path, temperature, error counts, and operational health.
 - **Dedicated User Shares Card (`unraid-shares-card`)**: Created a dedicated Lovelace card displaying user shares with disk usage progress bars, used/free/total capacity, share protection states (`Protected` vs. `Unprotected`), and direct filtering.
 - **Dedicated Network Interfaces Card (`unraid-network-card`)**: Created a dedicated Lovelace card visualizing physical NICs, bonds, and bridges with real-time throughput metrics (inbound/outbound rates and lifetime totals), link speed badges (e.g. 10 Gbps, 1 Gbps), active link state chips, MTU, MAC addresses, and clickable LAN/FQDN WebGUI links.
 - **Unified Control Center Dashboard Enhancements (`unraid-dashboard-card`)**: Added dedicated `Shares` and `Network` tabs to `unraid-dashboard-card` with custom SVG icons, providing unified one-click navigation across Server Overview, Storage & Disks, Shares, Network, Docker, VMs, and UPS.
@@ -23,6 +23,8 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Fixed
 
+- **Obsolete Lovelace Resource Cleanup**: Automatically delete stale Lovelace module resources pointing to retired standalone card bundles during integration setup/upgrade.
+- **Frontend Card Metrics & Safety**: Fixed unit conversion and zero threshold in network data rates, excluded disconnected/placeholder states (`unavailable`, `unknown`, `--`) from connected interface counts, guarded share parity protection against missing color attributes, and clamped share percentage bars to 0–100%.
 - **Disk Error Display in Storage Card**: Replaced plain `0 err` text with status badges reflecting healthy, warning, or error states.
 - **Lit Minification and Trailing Whitespace Template Leaks**: Fixed template compilation issues in minified production bundles and updated pre-commit hooks to avoid corrupting JavaScript templates.
 

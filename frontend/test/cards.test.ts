@@ -442,6 +442,71 @@ describe("Unraid Custom Cards", () => {
     document.body.removeChild(card);
   });
 
+  it("handles shares with missing color attribute and clamps usage percentage", async () => {
+    const card = new UnraidSharesCard();
+    card.setConfig({ type: "custom:unraid-shares-card" });
+    const hass = createMockHass();
+    // Add a share with missing color and >100% usage
+    hass.states["sensor.cube_share_unprotected_usage"] = {
+      entity_id: "sensor.cube_share_unprotected_usage",
+      state: "105.0",
+      attributes: {
+        friendly_name: "Cube Share unprotected usage",
+        used: "10.5 TB",
+        total: "10.0 TB",
+        free: "0 TB",
+      },
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = hass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("unprotected");
+    expect(card.shadowRoot?.innerHTML).toContain("Unprotected");
+    // Verify width is clamped to 100%
+    expect(card.shadowRoot?.innerHTML).toContain("width: 100%");
+    document.body.removeChild(card);
+  });
+
+  it("filters placeholder IP states from connected count and formats small data rates", async () => {
+    const card = new UnraidNetworkCard();
+    card.setConfig({ type: "custom:unraid-network-card" });
+    const hass = createMockHass();
+    // Add an unavailable interface
+    hass.states["sensor.cube_network_eth1_ip_address"] = {
+      entity_id: "sensor.cube_network_eth1_ip_address",
+      state: "unavailable",
+      attributes: { friendly_name: "Cube Network eth1 IP" },
+      last_changed: "",
+      last_updated: "",
+    };
+    hass.states["binary_sensor.cube_network_eth1_link"] = {
+      entity_id: "binary_sensor.cube_network_eth1_link",
+      state: "off",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    hass.states["sensor.cube_network_eth1_rx_throughput"] = {
+      entity_id: "sensor.cube_network_eth1_rx_throughput",
+      state: "0.05", // 0.05 MB/s = 50.0 kB/s
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = hass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    // eth0 is connected, eth1 is unavailable/off -> still 1 connected
+    expect(card.shadowRoot?.innerHTML).toContain("1 Connected");
+    expect(card.shadowRoot?.innerHTML).toContain("50.0 kB/s");
+    expect(card.shadowRoot?.innerHTML).not.toContain("unavailable");
+    document.body.removeChild(card);
+  });
+
   it("renders UnraidNetworkCardEditor", async () => {
     const editor = new UnraidNetworkCardEditor();
     editor.setConfig({ type: "custom:unraid-network-card", title: "My Network" });

@@ -69,7 +69,7 @@ export class UnraidSharesCard extends BaseUnraidCard {
         namePart
       );
 
-      const color = (u.attributes.color as string) || "green-on";
+      const color = (u.attributes.color as string) || "";
       // In Unraid, "green-on" means protected on parity-backed array, "yellow-on" means pool/unprotected
       const isProtected = color === "green-on";
 
@@ -77,7 +77,7 @@ export class UnraidSharesCard extends BaseUnraidCard {
         id: namePart,
         name: cleanName,
         entityId: u.entity_id,
-        usagePct: Math.round(Number(u.state) || 0),
+        usagePct: Math.min(100, Math.max(0, Math.round(Number(u.state) || 0))),
         used: (u.attributes.used as string) || "",
         total: (u.attributes.total as string) || "",
         free: (u.attributes.free as string) || "",

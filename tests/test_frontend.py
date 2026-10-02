@@ -47,10 +47,11 @@ class FakeResources:
         self.async_get_info = AsyncMock(return_value={"resources": len(self.items)})
         self.async_create_item = AsyncMock(side_effect=self._create)
         self.async_update_item = AsyncMock(side_effect=self._update)
+        self.async_delete_item = AsyncMock(side_effect=self._delete)
 
     def async_items(self) -> list[dict]:
         """Return loaded resources."""
-        return self.items
+        return list(self.items)
 
     def _create(self, data: dict) -> dict:
         item = {
@@ -65,6 +66,9 @@ class FakeResources:
         item = next(it for it in self.items if it["id"] == item_id)
         item.update(url=data["url"], type=data["res_type"])
         return item
+
+    def _delete(self, item_id: str) -> None:
+        self.items = [it for it in self.items if it["id"] != item_id]
 
 
 @pytest.fixture
@@ -114,6 +118,41 @@ async def test_updates_resource_when_bundle_changes(
 
     assert any("unraid-cards.js" in item["url"] for item in resources.items)
     resources.async_update_item.assert_awaited()
+
+
+async def test_deletes_stale_bundle_resources_on_upgrade(
+    hass: HomeAssistant, http: MagicMock, enable_custom_integrations: None
+) -> None:
+    """Stale individual bundle entries from earlier releases are deleted."""
+    stale_resources = [
+        {
+            "id": "res-old-server",
+            "url": f"{FRONTEND_URL_BASE}/unraid-server-card.js?v=old",
+            "type": "module",
+        },
+        {
+            "id": "res-old-storage",
+            "url": f"{FRONTEND_URL_BASE}/unraid-storage-card.js",
+            "type": "module",
+        },
+        {
+            "id": "res-unrelated",
+            "url": "/hacsfiles/custom-card/card.js",
+            "type": "module",
+        },
+    ]
+    resources = FakeResources(stale_resources)
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    with patch.object(frontend, "ResourceStorageCollection", FakeResources):
+        await async_register_frontend(hass)
+
+    remaining_urls = [item["url"] for item in resources.items]
+    assert not any("unraid-server-card.js" in url for url in remaining_urls)
+    assert not any("unraid-storage-card.js" in url for url in remaining_urls)
+    assert any("unraid-cards.js" in url for url in remaining_urls)
+    assert any("/hacsfiles/custom-card/card.js" in url for url in remaining_urls)
+    assert resources.async_delete_item.await_count == 2
 
 
 async def test_skips_when_http_or_frontend_missing(hass: HomeAssistant) -> None:

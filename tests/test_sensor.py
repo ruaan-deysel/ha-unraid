@@ -7925,5 +7925,15 @@ def test_create_disk_sensors_with_boot_device_no_temp_or_errors() -> None:
     sensors = _create_disk_sensors(coordinator, "uuid", "tower")
     types = [type(s).__name__ for s in sensors]
     assert "DiskUsageSensor" in types
-    assert "DiskTemperatureSensor" not in types
-    assert "DiskErrorCountSensor" not in types
+    assert "DiskTemperatureSensor" in types
+    assert "DiskErrorCountSensor" in types
+
+    temp_sensor = next(
+        s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"
+    )
+    assert temp_sensor.native_value is None
+
+    error_sensor = next(
+        s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"
+    )
+    assert error_sensor.native_value is None

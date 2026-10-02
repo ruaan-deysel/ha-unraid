@@ -215,9 +215,7 @@ export abstract class BaseUnraidCard extends LitElement {
       if (cleanName && !s.entity_id.includes(cleanName)) return false;
       return (
         (s.entity_id.includes("_disk_flash_") ||
-          s.entity_id.includes("_disk_boot_") ||
-          s.entity_id.endsWith("_disk_flash_usage") ||
-          s.entity_id.endsWith("_disk_boot_usage")) &&
+          s.entity_id.includes("_disk_boot_")) &&
         s.entity_id.endsWith("_usage")
       );
     });

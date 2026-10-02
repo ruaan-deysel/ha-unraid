@@ -104,6 +104,9 @@ async def _async_register_resources(hass: HomeAssistant, urls: dict[str, str]) -
         existing_by_url = {
             item["url"].partition("?")[0]: item for item in resources.async_items()
         }
+        for base_url, item in existing_by_url.items():
+            if base_url.startswith(f"{FRONTEND_URL_BASE}/") and base_url not in urls:
+                await resources.async_delete_item(item["id"])
         for base_url, versioned_url in urls.items():
             existing = existing_by_url.get(base_url)
             if existing is None:

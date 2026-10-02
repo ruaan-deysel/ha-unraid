@@ -3504,23 +3504,21 @@ def _create_disk_sensors(
             DiskErrorCountSensor(storage_coordinator, server_uuid, server_name, disk)
         )
 
-    # Boot device - usage sensor (and temperature/error count if reported)
+    # Boot device - usage, temperature, and error count sensors
     if data.boot is not None:
         entities.append(
             DiskUsageSensor(storage_coordinator, server_uuid, server_name, data.boot)
         )
-        if data.boot.temp is not None:
-            entities.append(
-                DiskTemperatureSensor(
-                    storage_coordinator, server_uuid, server_name, data.boot
-                )
+        entities.append(
+            DiskTemperatureSensor(
+                storage_coordinator, server_uuid, server_name, data.boot
             )
-        if data.boot.numErrors is not None:
-            entities.append(
-                DiskErrorCountSensor(
-                    storage_coordinator, server_uuid, server_name, data.boot
-                )
+        )
+        entities.append(
+            DiskErrorCountSensor(
+                storage_coordinator, server_uuid, server_name, data.boot
             )
+        )
 
     # Share sensors
     for share in data.shares or []:

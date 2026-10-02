@@ -22,9 +22,16 @@ export class UnraidNetworkCard extends BaseUnraidCard {
     if (!valStr) return "--";
     const num = parseFloat(valStr);
     if (isNaN(num)) return valStr;
-    if (num < 0.001) return "0 kB/s";
-    if (num < 0.1) return `${(num * 1024).toFixed(1)} kB/s`;
+    if (num <= 0) return "0 kB/s";
+    if (num < 0.1) return `${(num * 1000).toFixed(1)} kB/s`;
     return `${num.toFixed(2)} ${unit}`;
+  }
+
+  private isValidIp(s?: string): boolean {
+    return (
+      Boolean(s) &&
+      !["unavailable", "unknown", "none", "--"].includes(s!.toLowerCase().trim())
+    );
   }
 
   private formatSpeed(speedStr?: string): string {
@@ -57,7 +64,7 @@ export class UnraidNetworkCard extends BaseUnraidCard {
     const fqdnUrl = accessAttrs?.FQDN_LAN_ipv4 as string | undefined;
 
     const connectedCount = ifaces.filter(
-      (i) => i.link?.state === "on" || i.ip?.state
+      (i) => i.link?.state === "on" || this.isValidIp(i.ip?.state)
     ).length;
 
     const badge = html`
@@ -81,8 +88,8 @@ export class UnraidNetworkCard extends BaseUnraidCard {
           ${ifaces.length > 0
             ? ifaces.map((iface) => {
                 const isConnected =
-                  iface.link?.state === "on" || Boolean(iface.ip?.state);
-                const ipStr = iface.ip?.state || "--";
+                  iface.link?.state === "on" || this.isValidIp(iface.ip?.state);
+                const ipStr = this.isValidIp(iface.ip?.state) ? iface.ip!.state : "--";
                 const macStr = (iface.ip?.attributes?.mac_address as string) || (iface.link?.attributes?.mac_address as string) || "";
                 const mtu = (iface.link?.attributes?.mtu as number) || (iface.ip?.attributes?.mtu as number) || undefined;
                 const speedVal = iface.speed?.state || (iface.link?.attributes?.speed_mbps as string | number | undefined);
