@@ -4,7 +4,7 @@ import { UnraidServerCard } from "../src/server-card";
 import { UnraidStorageCard, formatDiskName } from "../src/storage-card";
 import { UnraidSharesCard, formatShareName } from "../src/shares-card";
 import { UnraidDockerCard } from "../src/docker-card";
-import { UnraidUpsCard } from "../src/ups-card";
+import { UnraidUpsCard, formatRuntime } from "../src/ups-card";
 import { UnraidVmCard } from "../src/vm-card";
 import { UnraidDashboardCard } from "../src/dashboard-card";
 import { UnraidNetworkCard } from "../src/network-card";
@@ -345,15 +345,39 @@ describe("Unraid Custom Cards", () => {
     document.body.removeChild(card);
   });
 
-  it("renders UnraidUpsCard with battery and load", async () => {
+  it("correctly formats UPS runtime for duration strings and numeric values", () => {
+    expect(formatRuntime("1 hour 41 minutes")).toBe("1 hour 41 minutes");
+    expect(formatRuntime("1 hour 41 minutes min")).toBe("1 hour 41 minutes");
+    expect(formatRuntime("45 minutes min")).toBe("45 minutes");
+    expect(formatRuntime("101")).toBe("1 hour 41 minutes");
+    expect(formatRuntime("60")).toBe("1 hour");
+    expect(formatRuntime("1")).toBe("1 minute");
+    expect(formatRuntime("45")).toBe("45 minutes");
+    expect(formatRuntime("3600", { unit_of_measurement: "s" })).toBe("1 hour");
+    expect(formatRuntime("unavailable")).toBeNull();
+    expect(formatRuntime("unknown")).toBeNull();
+    expect(formatRuntime(null)).toBeNull();
+  });
+
+  it("renders UnraidUpsCard with battery, load, and properly formatted runtime", async () => {
     const card = new UnraidUpsCard();
     card.setConfig({ type: "custom:unraid-ups-card" });
-    card.hass = createMockHass();
+    const hass = createMockHass();
+    hass.states["sensor.cube_ups_runtime"] = {
+      entity_id: "sensor.cube_ups_runtime",
+      state: "1 hour 41 minutes",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = hass;
     document.body.appendChild(card);
     await card.updateComplete;
 
     expect(card.shadowRoot?.innerHTML).toContain("UPS Power &amp; Battery");
     expect(card.shadowRoot?.innerHTML).toContain("100%");
+    expect(card.shadowRoot?.innerHTML).toContain("1 hour 41 minutes");
+    expect(card.shadowRoot?.innerHTML).not.toContain("1 hour 41 minutes min");
     document.body.removeChild(card);
   });
 

@@ -25,6 +25,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 - **Obsolete Lovelace Resource Cleanup**: Automatically delete stale Lovelace module resources pointing to retired standalone card bundles during integration setup/upgrade.
 - **Frontend Card Metrics & Safety**: Fixed unit conversion and zero threshold in network data rates, excluded disconnected/placeholder states (`unavailable`, `unknown`, `--`) from connected interface counts, guarded share parity protection against missing color attributes, and clamped share percentage bars to 0–100%.
+- **UPS Runtime Remaining Formatting (`unraid-ups-card`)**: Fixed redundant units (e.g. `1 hour 41 minutes min`) by introducing a duration formatter that preserves already-humanized runtime strings, strips accidental duplicate suffixes, and cleanly converts raw numeric minutes/seconds into readable hours and minutes.
 - **Disk Error Display in Storage Card**: Replaced plain `0 err` text with status badges reflecting healthy, warning, or error states.
 - **Lit Minification and Trailing Whitespace Template Leaks**: Fixed template compilation issues in minified production bundles and updated pre-commit hooks to avoid corrupting JavaScript templates.
 

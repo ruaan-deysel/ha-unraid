@@ -10,6 +10,49 @@ import {
 } from "./icons";
 import { registerDashboardCard } from "./register-dashboard-card";
 
+export function formatRuntime(
+  state?: string | null,
+  attributes?: Record<string, unknown>
+): string | null {
+  if (!state || state === "unavailable" || state === "unknown") {
+    return null;
+  }
+  const trimmed = state.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  // If already formatted text (e.g., "1 hour 41 minutes")
+  // Strip redundant trailing " min" if the string already contains duration units
+  if (/[a-zA-Z]/.test(trimmed)) {
+    return trimmed.replace(/(\b(?:minute|minutes|hour|hours|sec|second|seconds|min|mins)\b.*)\s+min$/i, "$1");
+  }
+
+  // If numeric (raw minutes or seconds)
+  const num = Number(trimmed);
+  if (Number.isFinite(num)) {
+    const unit = typeof attributes?.unit_of_measurement === "string" ? attributes.unit_of_measurement.toLowerCase() : "";
+    let totalMinutes = num;
+    if (unit === "s" || unit === "sec" || unit === "seconds") {
+      totalMinutes = Math.round(num / 60);
+    } else {
+      totalMinutes = Math.round(num);
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+
+    if (hours > 0) {
+      return mins > 0
+        ? `${hours} hour${hours > 1 ? "s" : ""} ${mins} minute${mins > 1 ? "s" : ""}`
+        : `${hours} hour${hours > 1 ? "s" : ""}`;
+    }
+    return `${mins} minute${mins !== 1 ? "s" : ""}`;
+  }
+
+  return trimmed;
+}
+
 export class UnraidUpsCard extends BaseUnraidCard {
   static override editorTag = UPS_EDITOR_TAG;
 
@@ -37,8 +80,7 @@ export class UnraidUpsCard extends BaseUnraidCard {
     const hasPower = Boolean(powerState && powerState.state !== "unavailable" && powerState.state !== "unknown");
     const powerW = hasPower && powerState ? `${powerState.state} W` : null;
 
-    const hasRuntime = Boolean(runtimeState && runtimeState.state !== "unavailable" && runtimeState.state !== "unknown");
-    const runtimeMin = hasRuntime && runtimeState ? `${runtimeState.state} min` : null;
+    const runtimeFormatted = formatRuntime(runtimeState?.state, runtimeState?.attributes);
 
     const hasVoltage = Boolean(voltageOut && voltageOut.state !== "unavailable" && voltageOut.state !== "unknown");
     const voltageV = hasVoltage && voltageOut ? `${voltageOut.state} V` : null;
@@ -73,7 +115,7 @@ export class UnraidUpsCard extends BaseUnraidCard {
               <span class="ring-content">${batteryPct !== null ? `${batteryPct}%` : "—"}</span>
             </div>
             <span class="ring-label">Battery Level</span>
-            <span class="ring-subtext">${runtimeMin ? `${runtimeMin} left` : batteryPct !== null ? "Healthy" : "No Data"}</span>
+            <span class="ring-subtext">${runtimeFormatted ? `${runtimeFormatted} left` : batteryPct !== null ? "Healthy" : "No Data"}</span>
           </div>
 
           <!-- Load -->
@@ -95,7 +137,7 @@ export class UnraidUpsCard extends BaseUnraidCard {
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">Runtime Remaining</span>
-            <span class="detail-val">${runtimeMin || "—"}</span>
+            <span class="detail-val">${runtimeFormatted || "—"}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">Power Consumption</span>
