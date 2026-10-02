@@ -188,8 +188,8 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         # entities stay populated. async_request_docker_refresh() forces an
         # immediate re-fetch after a container control action.
         self._cached_containers: list[DockerContainer] = []
-        self._last_docker_refresh: float = 0.0
-        self._force_docker_refresh: bool = False
+        self._last_docker_refresh: float = -DOCKER_POLL_INTERVAL
+        self._force_docker_refresh: bool = True
         # Cached VM list to keep the last known-good value across failed
         # optional queries.
         self._cached_vms: list[VmDomain] = []
