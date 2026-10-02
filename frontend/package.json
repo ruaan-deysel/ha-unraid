@@ -15,7 +15,7 @@
     "lit": "3.3.3"
   },
   "devDependencies": {
-    "@playwright/test": "1.51.0",
+    "@playwright/test": "1.63.0",
     "@vitest/coverage-v8": "5.0.1",
     "jsdom": "30.1.1",
     "typescript": "6.0.3",
