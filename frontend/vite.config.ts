@@ -1,6 +1,21 @@
 import { defineConfig } from "vitest/config";
 
+function preserveLitWhitespace() {
+  return {
+    name: "preserve-lit-whitespace",
+    generateBundle(_options: unknown, bundle: Record<string, { type: string; code?: string }>) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === "chunk" && file.code) {
+          // Replace minified `[ \t\n\f\r]` with "[ \\t\\n\\f\\r]" to eliminate literal trailing whitespace
+          file.code = file.code.replace(/`\[ \t\n\\f\\r\]`/g, '"[ \\t\\n\\f\\r]"');
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [preserveLitWhitespace()],
   build: {
     modulePreload: false,
     outDir: "../custom_components/unraid/frontend",
@@ -12,17 +27,12 @@ export default defineConfig({
     rollupOptions: {
       input: {
         "unraid-cards": "src/index.ts",
-        "unraid-server-card": "src/server-card.ts",
-        "unraid-storage-card": "src/storage-card.ts",
-        "unraid-docker-card": "src/docker-card.ts",
-        "unraid-ups-card": "src/ups-card.ts",
-        "unraid-vm-card": "src/vm-card.ts",
-        "unraid-dashboard-card": "src/dashboard-card.ts",
       },
       output: {
         format: "es",
         entryFileNames: "[name].js",
-        chunkFileNames: "chunks/[name]-[hash].js",
+        chunkFileNames: "[name]-[hash].js",
+        codeSplitting: false,
       },
     },
   },

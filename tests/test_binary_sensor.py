@@ -388,6 +388,19 @@ def test_disk_health_get_disk_from_caches(mock_storage_coordinator):
     assert sensor.is_on is False
 
 
+def test_disk_health_boot_disk(mock_storage_coordinator):
+    """Test DiskHealthBinarySensor works with boot disk."""
+    boot_disk = make_disk(id="flash", name="Flash", status="DISK_OK")
+    mock_storage_coordinator.data = make_storage_data(boot=boot_disk)
+    sensor = DiskHealthBinarySensor(
+        coordinator=mock_storage_coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        disk=boot_disk,
+    )
+    assert sensor.is_on is False
+
+
 # =============================================================================
 # ParityStatusBinarySensor Tests
 # =============================================================================

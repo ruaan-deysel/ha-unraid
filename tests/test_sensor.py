@@ -7845,3 +7845,51 @@ async def test_async_setup_entry_registers_vm_and_container_ram_sensors(
     assert "VirtualMachineStatusSensor" in entity_types
     assert "ContainerMemoryUsedSensor" in entity_types
     assert "ContainerMemoryLimitSensor" in entity_types
+
+
+def test_create_disk_sensors_with_boot_device() -> None:
+    """Test _create_disk_sensors creates sensors for boot device."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    boot_disk = ArrayDisk(
+        id="flash",
+        name="Flash",
+        type="FLASH",
+        device="sdb",
+        fsSize=30000000,
+        fsUsed=2000000,
+        fsFree=28000000,
+        temp=32,
+        numErrors=0,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(state="STARTED", boot=boot_disk)
+    )
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    types = [type(s).__name__ for s in sensors]
+    assert "DiskUsageSensor" in types
+    assert "DiskTemperatureSensor" in types
+    assert "DiskErrorCountSensor" in types
+
+    usage_sensor = next(s for s in sensors if type(s).__name__ == "DiskUsageSensor")
+    assert usage_sensor.native_value is not None
+    assert usage_sensor.extra_state_attributes["device"] == "sdb"
+
+    temp_sensor = next(
+        s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"
+    )
+    assert temp_sensor.native_value == 32
+
+    error_sensor = next(
+        s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"
+    )
+    assert error_sensor.native_value == 0

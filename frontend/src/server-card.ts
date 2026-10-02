@@ -18,20 +18,25 @@ export class UnraidServerCard extends BaseUnraidCard {
   private formatUptime(secondsOrIso: string | undefined): string {
     if (!secondsOrIso) return "Unknown";
     const trimmed = secondsOrIso.trim();
+    let totalSec = 0;
     if (/^\d+(\.\d+)?$/.test(trimmed)) {
-      const num = Number(trimmed);
-      const days = Math.floor(num / 86400);
-      const hours = Math.floor((num % 86400) / 3600);
-      return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+      totalSec = Math.floor(Number(trimmed));
+    } else {
+      const date = new Date(secondsOrIso);
+      if (!isNaN(date.getTime())) {
+        totalSec = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+      } else {
+        return secondsOrIso;
+      }
     }
-    const date = new Date(secondsOrIso);
-    if (!isNaN(date.getTime())) {
-      const diffMs = Date.now() - date.getTime();
-      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
-      return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
-    }
-    return secondsOrIso;
+
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
   }
 
   protected override render(): TemplateResult {
@@ -61,6 +66,44 @@ export class UnraidServerCard extends BaseUnraidCard {
     const ramTotalStr = (ramState?.attributes?.total as string) || "";
     const arrayUsedStr = (arrayUsage?.attributes?.capacity_used as string) || "";
     const arrayTotalStr = (arrayUsage?.attributes?.capacity_total as string) || "";
+
+    // Network interfaces and primary interface
+    const ifaces = this.getNetworkInterfaces();
+    const primaryIface = ifaces.length > 0 ? ifaces[0] : undefined;
+    const speedRaw = primaryIface?.speed?.state || (primaryIface?.link?.attributes?.speed_mbps as string | number | undefined);
+    const netSpeedNum = speedRaw != null ? Number(speedRaw) : undefined;
+    const netSpeedText = netSpeedNum
+      ? netSpeedNum >= 1000
+        ? `${netSpeedNum / 1000} Gbps`
+        : `${netSpeedNum} Mbps`
+      : "";
+
+    const rxVal = primaryIface?.rx?.state ? parseFloat(primaryIface.rx.state) : NaN;
+    const txVal = primaryIface?.tx?.state ? parseFloat(primaryIface.tx.state) : NaN;
+    const rxText = !isNaN(rxVal)
+      ? rxVal < 0.1
+        ? `${(rxVal * 1024).toFixed(0)} kB/s`
+        : `${rxVal.toFixed(2)} MB/s`
+      : "";
+    const txText = !isNaN(txVal)
+      ? txVal < 0.1
+        ? `${(txVal * 1024).toFixed(0)} kB/s`
+        : `${txVal.toFixed(2)} MB/s`
+      : "";
+    const netTrafficText = rxText && txText ? `↓ ${rxText} • ↑ ${txText}` : netSpeedText || "Active";
+
+    // Boot / Flash device
+    const bootDisk = this.getBootDiskEntity();
+    const bootAttrs = bootDisk?.attributes;
+    const bootUsed = (bootAttrs?.used || bootAttrs?.fs_used) as string | undefined;
+    const bootTotal = (bootAttrs?.total || bootAttrs?.fs_size) as string | undefined;
+    const bootDevice = bootAttrs?.device as string | undefined;
+    const bootText = bootUsed && bootTotal
+      ? `Flash (${bootUsed} / ${bootTotal})`
+      : bootDevice
+      ? `Flash (${bootDevice})`
+      : "Flash (USB)";
+    const bootTooltip = bootAttrs?.filesystem ? `Device: ${bootDevice || "USB"} • FS: ${bootAttrs.filesystem}` : "USB Flash Boot Drive";
 
     const badge = html`
       <span class="badge ${isArrayStarted ? "badge-online" : "badge-error"}">
@@ -136,18 +179,32 @@ export class UnraidServerCard extends BaseUnraidCard {
                   <span class="detail-val" title="${cpuModel}">${cpuModel}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">LAN IP Address</span>
-                  <span class="detail-val">${ipState?.state || "Connected"}</span>
+                  <span class="detail-label">OS Version</span>
+                  <span class="detail-val">${device?.sw_version || "Unraid OS"}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">System Uptime</span>
+                  <span class="detail-val">${this.formatUptime(uptimeState?.state)}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Primary Network</span>
+                  <span class="detail-val" title="${primaryIface ? `${primaryIface.name} • ${netSpeedText}` : 'Connected'}">
+                    ${primaryIface ? `${primaryIface.name}: ` : ""}${primaryIface?.ip?.state || ipState?.state || "Connected"}
+                  </span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Network Traffic</span>
+                  <span class="detail-val" title="${netSpeedText ? `Link Speed: ${netSpeedText}` : 'Network Speed'}">${netTrafficText}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Boot Device</span>
+                  <span class="detail-val" title="${bootTooltip}">${bootText}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">System Health</span>
                   <span class="detail-val" style="color: ${alertCount === 0 ? "var(--unraid-online)" : "var(--unraid-error)"}">
                     ${alertCount === 0 ? "Normal • Healthy" : `${alertCount} Active Alerts`}
                   </span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">OS Version</span>
-                  <span class="detail-val">${device?.sw_version || "Unraid OS"}</span>
                 </div>
               </div>
             `

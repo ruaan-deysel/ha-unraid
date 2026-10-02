@@ -13,6 +13,12 @@ export const UPS_EDITOR_TAG = "unraid-ups-card-editor";
 export const VM_CARD_TAG = "unraid-vm-card";
 export const VM_EDITOR_TAG = "unraid-vm-card-editor";
 
+export const SHARES_CARD_TAG = "unraid-shares-card";
+export const SHARES_EDITOR_TAG = "unraid-shares-card-editor";
+
+export const NETWORK_CARD_TAG = "unraid-network-card";
+export const NETWORK_EDITOR_TAG = "unraid-network-card-editor";
+
 export const DASHBOARD_CARD_TAG = "unraid-dashboard-card";
 export const DASHBOARD_EDITOR_TAG = "unraid-dashboard-card-editor";
 

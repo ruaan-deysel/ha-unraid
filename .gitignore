@@ -183,3 +183,5 @@ config/*
 # Frontend
 frontend/node_modules/
 frontend/coverage/
+frontend/.vitest/
+frontend/test-results/

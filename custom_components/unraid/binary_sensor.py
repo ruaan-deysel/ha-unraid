@@ -142,6 +142,8 @@ class DiskHealthBinarySensor(UnraidBinarySensorEntity[UnraidStorageCoordinator])
         if data is None:
             return None
         all_disks = data.disks + data.parities + data.caches
+        if data.boot is not None:
+            all_disks.append(data.boot)
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -1228,6 +1230,8 @@ async def async_setup_entry(
         all_disks = (
             coordinator_data.disks + coordinator_data.parities + coordinator_data.caches
         )
+        if coordinator_data.boot is not None:
+            all_disks.append(coordinator_data.boot)
         for disk in all_disks:
             # Disk health binary sensor (includes standby state in attributes)
             entities.append(

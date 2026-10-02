@@ -174,6 +174,8 @@ export class UnraidCardEditor extends LitElement {
 
 export class UnraidServerCardEditor extends UnraidCardEditor {}
 export class UnraidStorageCardEditor extends UnraidCardEditor {}
+export class UnraidSharesCardEditor extends UnraidCardEditor {}
+export class UnraidNetworkCardEditor extends UnraidCardEditor {}
 export class UnraidDockerCardEditor extends UnraidCardEditor {}
 export class UnraidUpsCardEditor extends UnraidCardEditor {}
 export class UnraidVmCardEditor extends UnraidCardEditor {}

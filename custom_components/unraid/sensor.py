@@ -1459,6 +1459,8 @@ class DiskTemperatureSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
         if data is None:
             return None
         all_disks = (data.disks or []) + (data.parities or []) + (data.caches or [])
+        if data.boot is not None:
+            all_disks.append(data.boot)
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -1526,6 +1528,8 @@ class DiskErrorCountSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
         if data is None:
             return None
         all_disks = (data.disks or []) + (data.parities or []) + (data.caches or [])
+        if data.boot is not None:
+            all_disks.append(data.boot)
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -1616,6 +1620,8 @@ class DiskUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
         if data is None:
             return None
         all_disks = (data.disks or []) + (data.parities or []) + (data.caches or [])
+        if data.boot is not None:
+            all_disks.append(data.boot)
         for disk in all_disks:
             if disk.id == self._disk_id:
                 return disk
@@ -3497,6 +3503,24 @@ def _create_disk_sensors(
         entities.append(
             DiskErrorCountSensor(storage_coordinator, server_uuid, server_name, disk)
         )
+
+    # Boot device - usage sensor (and temperature/error count if reported)
+    if data.boot is not None:
+        entities.append(
+            DiskUsageSensor(storage_coordinator, server_uuid, server_name, data.boot)
+        )
+        if data.boot.temp is not None:
+            entities.append(
+                DiskTemperatureSensor(
+                    storage_coordinator, server_uuid, server_name, data.boot
+                )
+            )
+        if data.boot.numErrors is not None:
+            entities.append(
+                DiskErrorCountSensor(
+                    storage_coordinator, server_uuid, server_name, data.boot
+                )
+            )
 
     # Share sensors
     for share in data.shares or []:

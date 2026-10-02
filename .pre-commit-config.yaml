@@ -12,13 +12,16 @@ repos:
       - id: check-yaml
         exclude: ^config/blueprints/
       - id: end-of-file-fixer
+        exclude: ^custom_components/unraid/frontend/
       - id: trailing-whitespace
+        exclude: ^custom_components/unraid/frontend/
       - id: check-added-large-files
       - id: check-json
         exclude: ^pyrightconfig\.json$
       - id: check-merge-conflict
       - id: check-toml
       - id: mixed-line-ending
+        exclude: ^custom_components/unraid/frontend/
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.0

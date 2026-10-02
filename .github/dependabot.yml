@@ -41,3 +41,13 @@ updates:
           - "pytest*"
           - "syrupy"
           - "coverage*"
+
+  # Maintain frontend npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      frontend:
+        patterns: ["*"]

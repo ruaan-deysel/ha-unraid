@@ -7,6 +7,25 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Added
+
+- **Boot Device (Flash USB) Support**: Added integration entities (`DiskUsageSensor`, `DiskHealthBinarySensor`, `DiskTemperatureSensor`, `DiskErrorCountSensor`) for the Unraid USB boot disk (`data.boot`), enabling monitoring of flash drive capacity, filesystem, device path, and operational health.
+- **Dedicated User Shares Card (`unraid-shares-card`)**: Created a dedicated Lovelace card displaying user shares with disk usage progress bars, used/free/total capacity, share protection states (`Protected` vs. `Unprotected`), and direct filtering.
+- **Dedicated Network Interfaces Card (`unraid-network-card`)**: Created a dedicated Lovelace card visualizing physical NICs, bonds, and bridges with real-time throughput metrics (inbound/outbound rates and lifetime totals), link speed badges (e.g. 10 Gbps, 1 Gbps), active link state chips, MTU, MAC addresses, and clickable LAN/FQDN WebGUI links.
+- **Unified Control Center Dashboard Enhancements (`unraid-dashboard-card`)**: Added dedicated `Shares` and `Network` tabs to `unraid-dashboard-card` with custom SVG icons, providing unified one-click navigation across Server Overview, Storage & Disks, Shares, Network, Docker, VMs, and UPS.
+- **Server Card System Information Expansion (`unraid-server-card`)**: Enhanced `unraid-server-card` with:
+  - **System Uptime**: Robust human-readable uptime parser supporting both ISO 8601 timestamps (`sensor.*_up_since`) and epoch seconds (`sensor.*_uptime`), formatting down to days, hours, and minutes.
+  - **Primary Network**: Primary network interface name and IP address (e.g. `br0: 192.168.20.21`).
+  - **Network Traffic**: Active link speed and real-time live transfer rates (`↓ rx • ↑ tx`).
+  - **Boot Device**: Drive name and used/total space (e.g. `Flash (2.5 GB / 29.3 GB)`).
+- **Storage Card Boot Device Display (`unraid-storage-card`)**: Added `Flash (Boot)` device at the bottom of the disk tray with dedicated USB flash drive badge, `--` temperature placeholder, `Healthy` status badge, and usage percentage bar.
+- **End-to-End Playwright Browser Testing & Single-Bundle CI**: Added Playwright browser test suite (`npm run test:browser`) verifying element registration, template rendering without DOM corruption, card styling, and tab switching against a live browser fixture; added GitHub Actions workflow validating frontend build integrity and browser test suites.
+
+### Fixed
+
+- **Disk Error Display in Storage Card**: Replaced plain `0 err` text with status badges reflecting healthy, warning, or error states.
+- **Lit Minification and Trailing Whitespace Template Leaks**: Fixed template compilation issues in minified production bundles and updated pre-commit hooks to avoid corrupting JavaScript templates.
+
 ## [2026.10.0] - 2026-10-01
 
 ### Added

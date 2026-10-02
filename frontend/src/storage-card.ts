@@ -14,10 +14,13 @@ import {
   mdiPlay,
   mdiShieldAlert,
   mdiShieldCheck,
+  mdiUsbFlashDrive,
 } from "./icons";
 import { registerDashboardCard } from "./register-dashboard-card";
 
-interface DiskItem {
+export type DiskHealthLevel = "healthy" | "warning" | "error";
+
+export interface DiskItem {
   id: string;
   name: string;
   isParity: boolean;
@@ -25,16 +28,45 @@ interface DiskItem {
   isBoot: boolean;
   usagePct: number;
   temp: string;
+  tempNum?: number;
   errors: number;
+  health: DiskHealthLevel;
+  statusText?: string;
   isSpinning: boolean;
   spinEntityId?: string;
   freeSpace?: string;
   totalSpace?: string;
 }
 
-function matchesDiskEntity(targetEntityId: string, diskKey: string): boolean {
-  const escaped = diskKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[._])${escaped}(?:[._]|$)`).test(targetEntityId);
+export function formatDiskName(rawName: string, id: string): string {
+  const name = rawName.trim();
+  const match = name.match(/^(?:.*?\s+)?(?:Disk\s+)?([a-zA-Z0-9_-]+)(?:\s+(?:usage|health|temperature|temp|spin|errors))?$/i);
+  if (match && match[1]) {
+    const token = match[1];
+    const diskNum = token.match(/^disk[_\s]?(\d+)$/i);
+    if (diskNum) return `Disk ${diskNum[1]}`;
+    if (/^\d+$/.test(token)) return `Disk ${token}`;
+    if (token.toLowerCase() === "parity") return "Parity";
+    const parityNum = token.match(/^parity[_\s]?(\d+)$/i);
+    if (parityNum) return `Parity ${parityNum[1]}`;
+    if (token.toLowerCase() === "cache") return "Cache";
+    if (token.toLowerCase().startsWith("cache_")) return `Cache (${token.slice(6).toUpperCase()})`;
+    if (token.toLowerCase() === "boot" || token.toLowerCase() === "flash") return "Flash (Boot)";
+    return token.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return name || id;
+}
+
+function extractDiskToken(entityId: string): string {
+  const objectId = entityId.split(".")[1] || "";
+  const token = objectId
+    .replace(/^.*?_disk_/, "")
+    .replace(/_usage$|_temperature$|_temp$|_errors$|_health$|_spin$/, "")
+    .toLowerCase()
+    .replace(/_/g, "");
+  const numMatch = token.match(/^(?:disk)?(\d+)$/);
+  if (numMatch) return `disk${numMatch[1]}`;
+  return token;
 }
 
 export class UnraidStorageCard extends BaseUnraidCard {
@@ -42,22 +74,26 @@ export class UnraidStorageCard extends BaseUnraidCard {
 
   private getDisks(): DiskItem[] {
     const usageEntities = this.getEntities("disk_usage");
+    const healthEntities = this.getEntities("disk_health", "binary_sensor");
     const tempEntities = this.getEntities("disk_temperature");
     const errorEntities = this.getEntities("disk_error_count");
     const spinEntities = this.getEntities("disk_spin", "switch");
 
     const diskMap = new Map<string, DiskItem>();
 
+    // 1. Process usage entities (Data and Cache disks)
     for (const u of usageEntities) {
-      // Derive a disk key from entity_id, e.g. sensor.tower_disk_1_usage -> disk_1
-      const parts = u.entity_id.split(".");
-      const namePart = (parts[1] || "").replace(/_disk_usage|_usage$/, "");
-      const cleanName = (u.attributes.friendly_name as string) || namePart;
+      const diskKey = extractDiskToken(u.entity_id);
+      const cleanName = formatDiskName((u.attributes.friendly_name as string) || diskKey, diskKey);
       const isParity = cleanName.toLowerCase().includes("parity");
       const isCache = cleanName.toLowerCase().includes("cache") || cleanName.toLowerCase().includes("pool");
       const isBoot = cleanName.toLowerCase().includes("boot") || cleanName.toLowerCase().includes("flash");
 
-      const diskKey = namePart;
+      const attrSpin = u.attributes.spin_state === "active" || u.attributes.spinning === true;
+      const attrTemp = u.attributes.temperature_celsius ?? u.attributes.temperature;
+      const attrErrors = Number(u.attributes.num_errors ?? 0);
+      const attrStatus = (u.attributes.status as string) || "DISK_OK";
+
       diskMap.set(diskKey, {
         id: diskKey,
         name: cleanName,
@@ -65,48 +101,120 @@ export class UnraidStorageCard extends BaseUnraidCard {
         isCache,
         isBoot,
         usagePct: Math.round(Number(u.state) || 0),
-        temp: "*",
-        errors: 0,
-        isSpinning: false,
+        temp: attrTemp !== undefined && attrTemp !== null ? `${attrTemp}°C` : "*",
+        tempNum: typeof attrTemp === "number" ? attrTemp : undefined,
+        errors: attrErrors,
+        health: "healthy",
+        statusText: attrStatus,
+        isSpinning: attrSpin,
         freeSpace: u.attributes.free as string | undefined,
         totalSpace: u.attributes.total as string | undefined,
       });
     }
 
-    // Match temps
+    // 2. Add any disks from healthEntities not yet in diskMap (e.g. Parity disk)
+    for (const h of healthEntities) {
+      const diskKey = extractDiskToken(h.entity_id);
+      if (diskMap.has(diskKey)) continue;
+      if (diskKey.includes("disabled") || diskKey.includes("missing") || diskKey.includes("invalid")) continue;
+
+      const cleanName = formatDiskName((h.attributes.friendly_name as string) || diskKey, diskKey);
+      const isParity = cleanName.toLowerCase().includes("parity");
+      const isCache = cleanName.toLowerCase().includes("cache");
+      const isBoot = cleanName.toLowerCase().includes("boot");
+      const attrSpin = h.attributes.spinning === true || (h.attributes.standby !== undefined ? !h.attributes.standby : false);
+      const attrTemp = h.attributes.temperature;
+      const attrStatus = (h.attributes.status as string) || "DISK_OK";
+
+      diskMap.set(diskKey, {
+        id: diskKey,
+        name: cleanName,
+        isParity,
+        isCache,
+        isBoot,
+        usagePct: 0,
+        temp: attrTemp !== undefined && attrTemp !== null ? `${attrTemp}°C` : "*",
+        tempNum: typeof attrTemp === "number" ? attrTemp : undefined,
+        errors: 0,
+        health: h.state === "on" ? "error" : "healthy",
+        statusText: attrStatus,
+        isSpinning: attrSpin,
+      });
+    }
+
+    // 3. Match dedicated temperature entities
     for (const t of tempEntities) {
-      for (const [key, disk] of diskMap.entries()) {
-        if (matchesDiskEntity(t.entity_id, key)) {
-          disk.temp = t.state !== "unavailable" && t.state !== "unknown" ? `${t.state}°C` : "*";
-          break;
-        }
+      const key = extractDiskToken(t.entity_id);
+      const disk = diskMap.get(key);
+      if (disk && t.state !== "unavailable" && t.state !== "unknown") {
+        disk.temp = `${t.state}°C`;
+        disk.tempNum = parseFloat(t.state);
       }
     }
 
-    // Match errors
+    // 4. Match error sensors
     for (const e of errorEntities) {
-      for (const [key, disk] of diskMap.entries()) {
-        if (matchesDiskEntity(e.entity_id, key)) {
-          disk.errors = Number(e.state) || 0;
-          break;
+      const key = extractDiskToken(e.entity_id);
+      const disk = diskMap.get(key);
+      if (disk) {
+        const val = Number(e.state);
+        if (!isNaN(val)) disk.errors = val;
+      }
+    }
+
+    // 5. Match spin switches
+    for (const s of spinEntities) {
+      const key = extractDiskToken(s.entity_id);
+      const disk = diskMap.get(key);
+      if (disk) {
+        disk.isSpinning = s.state === "on";
+        disk.spinEntityId = s.entity_id;
+      }
+    }
+
+    // 6. Match health binary sensors & resolve health level
+    for (const h of healthEntities) {
+      const key = extractDiskToken(h.entity_id);
+      const disk = diskMap.get(key);
+      if (disk) {
+        if (h.attributes.status) {
+          disk.statusText = h.attributes.status as string;
+        }
+        if (h.attributes.spinning !== undefined) {
+          disk.isSpinning = Boolean(h.attributes.spinning);
+        } else if (h.attributes.standby !== undefined) {
+          disk.isSpinning = !h.attributes.standby;
+        }
+        if (h.attributes.temperature !== undefined && disk.temp === "*") {
+          disk.temp = `${h.attributes.temperature}°C`;
+          disk.tempNum = Number(h.attributes.temperature);
+        }
+        if (h.state === "on") {
+          disk.health = "error";
         }
       }
     }
 
-    // Match spin switches
-    for (const s of spinEntities) {
-      for (const [key, disk] of diskMap.entries()) {
-        if (matchesDiskEntity(s.entity_id, key)) {
-          disk.isSpinning = s.state === "on";
-          disk.spinEntityId = s.entity_id;
-          break;
-        }
+    // 7. Calculate overall health level
+    for (const disk of diskMap.values()) {
+      const status = (disk.statusText || "").toUpperCase();
+      const hasStatusError = status.includes("ERR") || status.includes("WRONG") || status.includes("INVALID") || status.includes("DSBL") || status.includes("FAIL");
+
+      if (disk.health === "error" || hasStatusError || disk.errors >= 10) {
+        disk.health = "error";
+      } else if (disk.errors > 0 || (disk.tempNum !== undefined && disk.tempNum > 45)) {
+        disk.health = "warning";
+      } else {
+        disk.health = "healthy";
       }
     }
 
     return Array.from(diskMap.values()).sort((a, b) => {
       if (a.isParity !== b.isParity) {
         return a.isParity ? -1 : 1;
+      }
+      if (a.isBoot !== b.isBoot) {
+        return a.isBoot ? 1 : -1;
       }
       if (a.isCache !== b.isCache) {
         return a.isCache ? 1 : -1;
@@ -197,8 +305,9 @@ export class UnraidStorageCard extends BaseUnraidCard {
         <div class="item-list">
           ${disks.length > 0
             ? disks.map((disk) => {
-                const tempNum = parseFloat(disk.temp);
-                const tempColor = !isNaN(tempNum)
+                const tempNum = disk.tempNum ?? parseFloat(disk.temp);
+                const hasValidTemp = disk.isSpinning && !isNaN(tempNum) && disk.temp !== "*" && disk.temp !== "unavailable";
+                const tempColor = hasValidTemp
                   ? tempNum > 45
                     ? "var(--unraid-error)"
                     : tempNum > 36
@@ -206,11 +315,45 @@ export class UnraidStorageCard extends BaseUnraidCard {
                     : "var(--unraid-online)"
                   : "var(--unraid-standby)";
 
+                const tempDisplay = hasValidTemp ? `${Math.round(tempNum)}°C` : "--";
+
+                const healthBadge = disk.health === "healthy"
+                  ? html`
+                      <span class="badge badge-online" style="font-size: 0.68rem; gap: 4px;">
+                        ${iconTemplate(mdiCheckCircle, 11)}
+                        <span>Healthy</span>
+                      </span>
+                    `
+                  : disk.health === "warning"
+                  ? html`
+                      <span class="badge badge-warning" style="font-size: 0.68rem; gap: 4px;">
+                        ${iconTemplate(mdiAlertCircle, 11)}
+                        <span>Warning${disk.errors > 0 ? ` (${disk.errors})` : ""}</span>
+                      </span>
+                    `
+                  : html`
+                      <span class="badge badge-error" style="font-size: 0.68rem; gap: 4px;">
+                        ${iconTemplate(mdiAlertCircle, 11)}
+                        <span>Error${disk.errors > 0 ? ` (${disk.errors})` : ""}</span>
+                      </span>
+                    `;
+
                 return html`
                   <div class="list-row">
                     <div class="row-left">
-                      <!-- Spin status button -->
-                      ${disk.spinEntityId
+                      <!-- Spin status button or USB Flash badge -->
+                      ${disk.isBoot
+                        ? html`
+                            <span
+                              class="badge badge-online"
+                              style="font-size: 0.68rem; gap: 4px; min-width: 60px; justify-content: center;"
+                              title="USB Flash Boot Drive"
+                            >
+                              ${iconTemplate(mdiUsbFlashDrive, 11)}
+                              <span>Flash</span>
+                            </span>
+                          `
+                        : disk.spinEntityId
                         ? html`
                             <button
                               class="badge ${disk.isSpinning ? "badge-online" : "badge-standby"}"
@@ -228,39 +371,43 @@ export class UnraidStorageCard extends BaseUnraidCard {
                             </span>
                           `}
 
-                      <span style="font-weight: 600; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <span style="font-weight: 600; min-width: 75px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                         ${disk.name}
                       </span>
                     </div>
 
                     <div class="row-right">
                       <!-- Temperature Chip -->
-                      <span class="badge" style="color: ${tempColor}; background: color-mix(in srgb, ${tempColor} 12%, transparent);">
-                        ${disk.temp}
+                      <span
+                        class="badge"
+                        style="color: ${disk.isBoot ? "var(--unraid-text-dim)" : tempColor}; background: color-mix(in srgb, ${disk.isBoot ? "var(--unraid-text-dim)" : tempColor} 12%, transparent); min-width: 44px; justify-content: center;"
+                        title="${disk.isBoot ? "USB Flash Drive" : disk.isSpinning ? `Temperature: ${tempDisplay}` : "Disk is in standby"}"
+                      >
+                        ${disk.isBoot ? "--" : tempDisplay}
                       </span>
 
-                      <!-- Error Counter -->
-                      ${disk.errors > 0
-                        ? html`
-                            <span class="badge badge-error">
-                              ${disk.errors} err
-                            </span>
-                          `
-                        : html`
-                            <span class="badge badge-online" style="font-size: 0.68rem;">0 err</span>
-                          `}
+                      <!-- Health Status (Healthy, Warning, Error) -->
+                      ${healthBadge}
 
                       <!-- Utilization -->
                       <div style="display: flex; align-items: center; gap: 6px; width: 85px;">
-                        <div class="progress-bar" style="height: 4px;">
-                          <div
-                            class="progress-fill"
-                            style="width: ${disk.usagePct}%; background: ${disk.isCache ? "var(--unraid-info)" : "var(--unraid-accent)"};"
-                          ></div>
-                        </div>
-                        <span style="font-size: 0.7rem; font-family: monospace; color: var(--unraid-subtext);">
-                          ${disk.usagePct}%
-                        </span>
+                        ${disk.isParity
+                          ? html`
+                              <span style="font-size: 0.72rem; color: var(--unraid-online); font-weight: 500; font-family: monospace;">
+                                Parity
+                              </span>
+                            `
+                          : html`
+                              <div class="progress-bar" style="height: 4px; flex: 1;">
+                                <div
+                                  class="progress-fill"
+                                  style="width: ${disk.usagePct}%; background: ${disk.isBoot ? "var(--unraid-warning)" : disk.isCache ? "var(--unraid-info)" : "var(--unraid-accent)"};"
+                                ></div>
+                              </div>
+                              <span style="font-size: 0.7rem; font-family: monospace; color: var(--unraid-subtext);">
+                                ${disk.usagePct}%
+                              </span>
+                            `}
                       </div>
                     </div>
                   </div>

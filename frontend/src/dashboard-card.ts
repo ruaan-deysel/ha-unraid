@@ -9,7 +9,9 @@ import {
   iconTemplate,
   mdiDocker,
   mdiFlash,
+  mdiFolder,
   mdiHarddisk,
+  mdiLanConnect,
   mdiMonitor,
   mdiServer,
 } from "./icons";
@@ -17,11 +19,13 @@ import { registerDashboardCard } from "./register-dashboard-card";
 
 import "./server-card";
 import "./storage-card";
+import "./shares-card";
+import "./network-card";
 import "./docker-card";
 import "./ups-card";
 import "./vm-card";
 
-type ActiveTab = "overview" | "storage" | "docker" | "ups" | "vms";
+type ActiveTab = "overview" | "storage" | "shares" | "network" | "docker" | "ups" | "vms";
 
 export class UnraidDashboardCard extends BaseUnraidCard {
   static override editorTag = DASHBOARD_EDITOR_TAG;
@@ -69,6 +73,18 @@ export class UnraidDashboardCard extends BaseUnraidCard {
             ${iconTemplate(mdiHarddisk, 14)} Storage & Disks
           </button>
           <button
+            class="tab-btn ${this._activeTab === "shares" ? "active" : ""}"
+            @click=${() => (this._activeTab = "shares")}
+          >
+            ${iconTemplate(mdiFolder, 14)} Shares
+          </button>
+          <button
+            class="tab-btn ${this._activeTab === "network" ? "active" : ""}"
+            @click=${() => (this._activeTab = "network")}
+          >
+            ${iconTemplate(mdiLanConnect, 14)} Network
+          </button>
+          <button
             class="tab-btn ${this._activeTab === "docker" ? "active" : ""}"
             @click=${() => (this._activeTab = "docker")}
           >
@@ -95,6 +111,12 @@ export class UnraidDashboardCard extends BaseUnraidCard {
             : nothing}
           ${this._activeTab === "storage"
             ? html`<unraid-storage-card .hass=${this.hass} .config=${{ ...this.config, type: "custom:unraid-storage-card", embedded: true }}></unraid-storage-card>`
+            : nothing}
+          ${this._activeTab === "shares"
+            ? html`<unraid-shares-card .hass=${this.hass} .config=${{ ...this.config, type: "custom:unraid-shares-card", embedded: true }}></unraid-shares-card>`
+            : nothing}
+          ${this._activeTab === "network"
+            ? html`<unraid-network-card .hass=${this.hass} .config=${{ ...this.config, type: "custom:unraid-network-card", embedded: true }}></unraid-network-card>`
             : nothing}
           ${this._activeTab === "docker"
             ? html`<unraid-docker-card .hass=${this.hass} .config=${{ ...this.config, type: "custom:unraid-docker-card", embedded: true }}></unraid-docker-card>`

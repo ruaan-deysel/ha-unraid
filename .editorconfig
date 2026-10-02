@@ -53,3 +53,8 @@ indent_size = 2
 
 [.github/dependabot.{yml,yaml}]
 indent_size = 2
+
+# Compiled frontend assets
+[custom_components/unraid/frontend/**]
+trim_trailing_whitespace = false
+insert_final_newline = false

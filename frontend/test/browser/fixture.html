@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unraid Dashboard Cards Browser Fixture</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        --card-background-color: #1c1c24;
+        --primary-background-color: #111116;
+        --secondary-background-color: #282833;
+        --primary-color: #f25f22;
+        --primary-text-color: #e0e0e0;
+        --secondary-text-color: #9e9e9e;
+        --divider-color: rgba(255, 255, 255, 0.12);
+        --ha-card-background: var(--card-background-color);
+        --ha-card-border-radius: 12px;
+        --ha-card-border-color: rgba(255, 255, 255, 0.1);
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #111116;
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .fixture-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      ha-card {
+        background: var(--ha-card-background);
+        border: 1px solid var(--ha-card-border-color);
+        border-radius: var(--ha-card-border-radius);
+        padding: 16px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fixture-container" id="container"></div>
+
+    <script type="module">
+      import "/unraid-cards.js";
+
+      const mockHass = {
+        states: {
+          "sensor.cube_cpu_usage": {
+            entity_id: "sensor.cube_cpu_usage",
+            state: "15",
+            attributes: {
+              friendly_name: "Cube CPU Usage",
+              cpu_model: "Intel i7-8700K",
+              cpu_cores: 6,
+              cpu_threads: 12,
+            },
+          },
+          "sensor.cube_ram_usage": {
+            entity_id: "sensor.cube_ram_usage",
+            state: "25",
+            attributes: {
+              friendly_name: "Cube RAM Usage",
+              used: "8.0 GiB",
+              total: "32.0 GiB",
+            },
+          },
+          "sensor.cube_array_usage": {
+            entity_id: "sensor.cube_array_usage",
+            state: "4",
+            attributes: {
+              friendly_name: "Cube Array usage",
+              capacity_used: "1.4 TB",
+              capacity_total: "39.1 TB",
+              capacity_free: "37.7 TB",
+            },
+          },
+          "sensor.cube_array_state": {
+            entity_id: "sensor.cube_array_state",
+            state: "started",
+            attributes: {},
+          },
+          "binary_sensor.cube_parity_status": {
+            entity_id: "binary_sensor.cube_parity_status",
+            state: "on",
+            attributes: { status: "Valid" },
+          },
+          "binary_sensor.cube_disk_parity_health": {
+            entity_id: "binary_sensor.cube_disk_parity_health",
+            state: "off",
+            attributes: {
+              status: "DISK_OK",
+              device: "sdc",
+              standby: true,
+              spinning: false,
+              friendly_name: "Cube Disk parity health",
+            },
+          },
+          "sensor.cube_disk_disk1_usage": {
+            entity_id: "sensor.cube_disk_disk1_usage",
+            state: "6.5",
+            attributes: {
+              friendly_name: "Cube Disk disk1 usage",
+              device: "sdd",
+              status: "DISK_OK",
+              num_errors: 0,
+              spin_state: "standby",
+              temperature_celsius: null,
+            },
+          },
+          "binary_sensor.cube_disk_disk1_health": {
+            entity_id: "binary_sensor.cube_disk_disk1_health",
+            state: "off",
+            attributes: {
+              status: "DISK_OK",
+              device: "sdd",
+              standby: true,
+              spinning: false,
+              friendly_name: "Cube Disk disk1 health",
+            },
+          },
+          "sensor.cube_disk_cache_usage": {
+            entity_id: "sensor.cube_disk_cache_usage",
+            state: "9.5",
+            attributes: {
+              friendly_name: "Cube Disk cache usage",
+              device: "nvme0n1",
+              status: "DISK_OK",
+              num_errors: 0,
+              spin_state: "active",
+              temperature_celsius: 29,
+            },
+          },
+          "binary_sensor.cube_disk_cache_health": {
+            entity_id: "binary_sensor.cube_disk_cache_health",
+            state: "off",
+            attributes: {
+              status: "DISK_OK",
+              device: "nvme0n1",
+              temperature: 29,
+              standby: false,
+              spinning: true,
+              friendly_name: "Cube Disk cache health",
+            },
+          },
+          "sensor.cube_share_appdata_usage": {
+            entity_id: "sensor.cube_share_appdata_usage",
+            state: "9.7",
+            attributes: {
+              friendly_name: "Cube Share appdata usage",
+              total: "480.6 GB",
+              used: "46.6 GB",
+              free: "434.0 GB",
+              color: "yellow-on",
+            },
+          },
+          "sensor.cube_share_media_usage": {
+            entity_id: "sensor.cube_share_media_usage",
+            state: "3.7",
+            attributes: {
+              friendly_name: "Cube Share media usage",
+              total: "39.1 TB",
+              used: "1.4 TB",
+              free: "37.7 TB",
+              color: "green-on",
+            },
+          },
+          "switch.cube_docker_container_plex": {
+            entity_id: "switch.cube_docker_container_plex",
+            state: "on",
+            attributes: { friendly_name: "plex" },
+          },
+          "sensor.cube_ups_battery": {
+            entity_id: "sensor.cube_ups_battery",
+            state: "100",
+            attributes: {},
+          },
+          "sensor.cube_ups_load": {
+            entity_id: "sensor.cube_ups_load",
+            state: "14",
+            attributes: {},
+          },
+          "switch.cube_virtual_machine_ha": {
+            entity_id: "switch.cube_virtual_machine_ha",
+            state: "on",
+            attributes: { friendly_name: "Home Assistant" },
+          },
+          "sensor.cube_up_since": {
+            entity_id: "sensor.cube_up_since",
+            state: "2026-09-30T10:00:00+00:00",
+            attributes: {
+              friendly_name: "Cube Up since",
+            },
+          },
+          "sensor.cube_disk_flash_usage": {
+            entity_id: "sensor.cube_disk_flash_usage",
+            state: "8.5",
+            attributes: {
+              friendly_name: "Cube Disk flash usage",
+              device: "sdb",
+              status: "DISK_OK",
+              num_errors: 0,
+              fs_size: "31.4 GB",
+              fs_used: "2.68 GB",
+              fs_free: "28.7 GB",
+            },
+          },
+          "binary_sensor.cube_disk_flash_health": {
+            entity_id: "binary_sensor.cube_disk_flash_health",
+            state: "off",
+            attributes: {
+              status: "DISK_OK",
+              device: "sdb",
+              friendly_name: "Cube Disk flash health",
+            },
+          },
+          "sensor.cube_network_eth0_ip_address": {
+            entity_id: "sensor.cube_network_eth0_ip_address",
+            state: "192.168.20.21",
+            attributes: {
+              friendly_name: "Cube Network eth0 IP",
+              mac_address: "00:11:22:33:44:55",
+              mtu: 1500,
+            },
+          },
+          "sensor.cube_network_eth0_speed": {
+            entity_id: "sensor.cube_network_eth0_speed",
+            state: "1000",
+            attributes: { unit_of_measurement: "Mbps" },
+          },
+          "sensor.cube_network_eth0_rx_throughput": {
+            entity_id: "sensor.cube_network_eth0_rx_throughput",
+            state: "12.4",
+            attributes: { total_received: "1.2 GB" },
+          },
+          "sensor.cube_network_eth0_tx_throughput": {
+            entity_id: "sensor.cube_network_eth0_tx_throughput",
+            state: "5.8",
+            attributes: { total_sent: "650 MB" },
+          },
+          "binary_sensor.cube_network_eth0_link": {
+            entity_id: "binary_sensor.cube_network_eth0_link",
+            state: "on",
+            attributes: { speed_mbps: 1000 },
+          },
+          "sensor.cube_network_access": {
+            entity_id: "sensor.cube_network_access",
+            state: "http://192.168.20.21",
+            attributes: {
+              LAN_IPv4_ipv4: "http://192.168.20.21",
+              FQDN_LAN_ipv4: "https://cube.myunraid.net",
+            },
+          },
+        },
+        devices: {
+          dev_1: {
+            id: "dev_1",
+            name: "Cube",
+            identifiers: [["unraid", "uuid-1234"]],
+            model: "Custom Server",
+            sw_version: "7.3.2",
+          },
+        },
+        entities: {},
+        callService: async () => Promise.resolve(),
+      };
+
+      window.mockHass = mockHass;
+
+      const container = document.getElementById("container");
+      const cardTags = [
+        "unraid-server-card",
+        "unraid-storage-card",
+        "unraid-shares-card",
+        "unraid-docker-card",
+        "unraid-ups-card",
+        "unraid-vm-card",
+        "unraid-network-card",
+        "unraid-dashboard-card",
+      ];
+
+      for (const tag of cardTags) {
+        const el = document.createElement(tag);
+        el.id = tag.replace("unraid-", "");
+        el.setConfig({ type: `custom:${tag}` });
+        el.hass = mockHass;
+        container.appendChild(el);
+      }
+
+      await Promise.all(
+        Array.from(container.children).map((c) => c.updateComplete)
+      );
+
+      // Signal ready
+      window.fixtureReady = true;
+    </script>
+  </body>
+</html>

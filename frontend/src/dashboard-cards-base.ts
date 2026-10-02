@@ -123,12 +123,103 @@ export abstract class BaseUnraidCard extends LitElement {
       }
       const objectId = s.entity_id.split(".")[1] || "";
       const keyMatch =
-        objectId.endsWith(`_${translationKey}`) || objectId === translationKey;
+        objectId.endsWith(`_${translationKey}`) ||
+        objectId === translationKey ||
+        (translationKey === "uptime" &&
+          (objectId.endsWith("_up_since") || objectId === "up_since")) ||
+        (translationKey === "network_interface_ip" &&
+          objectId.includes("_network_") &&
+          (objectId.endsWith("_ip") || objectId.endsWith("_ip_address"))) ||
+        (translationKey === "network_access" &&
+          objectId.endsWith("_network_access"));
+
       if (device?.name) {
         const cleanName = device.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
         return keyMatch && objectId.includes(cleanName);
       }
       return keyMatch;
+    });
+  }
+
+  /**
+   * Get all network interface metrics for active server.
+   */
+  protected getNetworkInterfaces(): Array<{
+    name: string;
+    displayName: string;
+    ip?: HassEntity;
+    speed?: HassEntity;
+    rx?: HassEntity;
+    tx?: HassEntity;
+    link?: HassEntity;
+  }> {
+    if (!this.hass?.states) return [];
+    const device = this.getActiveDevice();
+    const cleanName = device?.name
+      ? device.name.toLowerCase().replace(/[^a-z0-9]/g, "_")
+      : undefined;
+
+    const ifaceMap = new Map<
+      string,
+      {
+        name: string;
+        displayName: string;
+        ip?: HassEntity;
+        speed?: HassEntity;
+        rx?: HassEntity;
+        tx?: HassEntity;
+        link?: HassEntity;
+      }
+    >();
+
+    for (const [entityId, stateObj] of Object.entries(this.hass.states)) {
+      if (cleanName && !entityId.includes(cleanName)) continue;
+      const match = entityId.match(
+        /_network_([a-zA-Z0-9_-]+)_(inbound(?:_throughput)?|outbound(?:_throughput)?|rx(?:_throughput)?|tx(?:_throughput)?|speed|ip|ip_address|link)$/i
+      );
+      if (!match || !match[1] || !match[2]) continue;
+      const ifaceName = match[1];
+      const prop = match[2].toLowerCase();
+
+      if (!ifaceMap.has(ifaceName)) {
+        ifaceMap.set(ifaceName, {
+          name: ifaceName,
+          displayName: ifaceName.toUpperCase(),
+        });
+      }
+      const entry = ifaceMap.get(ifaceName)!;
+      if (prop.startsWith("inbound") || prop.startsWith("rx")) entry.rx = stateObj;
+      else if (prop.startsWith("outbound") || prop.startsWith("tx")) entry.tx = stateObj;
+      else if (prop === "speed") entry.speed = stateObj;
+      else if (prop === "ip" || prop === "ip_address") entry.ip = stateObj;
+      else if (prop === "link") entry.link = stateObj;
+    }
+
+    return Array.from(ifaceMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true })
+    );
+  }
+
+  /**
+   * Get boot/flash disk usage entity if present.
+   */
+  protected getBootDiskEntity(): HassEntity | undefined {
+    if (!this.hass?.states) return undefined;
+    const device = this.getActiveDevice();
+    const cleanName = device?.name
+      ? device.name.toLowerCase().replace(/[^a-z0-9]/g, "_")
+      : undefined;
+
+    return Object.values(this.hass.states).find((s) => {
+      if (!s.entity_id.startsWith("sensor.")) return false;
+      if (cleanName && !s.entity_id.includes(cleanName)) return false;
+      return (
+        (s.entity_id.includes("_disk_flash_") ||
+          s.entity_id.includes("_disk_boot_") ||
+          s.entity_id.endsWith("_disk_flash_usage") ||
+          s.entity_id.endsWith("_disk_boot_usage")) &&
+        s.entity_id.endsWith("_usage")
+      );
     });
   }
 
@@ -195,6 +286,21 @@ export abstract class BaseUnraidCard extends LitElement {
             s.entity_id.includes("_cache") ||
             s.entity_id.includes("_parity")) &&
           s.entity_id.includes("_spin")
+        );
+      }
+      if (translationKey === "disk_health") {
+        return (
+          (s.entity_id.includes("_disk_") ||
+            s.entity_id.includes("_cache") ||
+            s.entity_id.includes("_parity") ||
+            s.entity_id.includes("_boot")) &&
+          (s.entity_id.endsWith("_health") || s.entity_id.includes("_health_"))
+        );
+      }
+      if (translationKey === "share_usage" || translationKey === "share") {
+        return (
+          s.entity_id.includes("_share_") &&
+          s.entity_id.endsWith("_usage")
         );
       }
       const objectId = s.entity_id.split(".")[1] || "";
