@@ -560,6 +560,12 @@ describe("Unraid Custom Cards", () => {
     expect(card.shadowRoot?.innerHTML).toContain("1 Connected");
     expect(card.shadowRoot?.innerHTML).toContain("50.0 kB/s");
     expect(card.shadowRoot?.innerHTML).not.toContain("unavailable");
+
+    // When throughput reports 'unknown' or 'unavailable', placeholder '--' is shown
+    hass.states["sensor.cube_network_eth1_rx_throughput"].state = "unavailable";
+    card.requestUpdate();
+    await card.updateComplete;
+    expect(card.shadowRoot?.innerHTML).not.toContain("unavailable");
     document.body.removeChild(card);
   });
 

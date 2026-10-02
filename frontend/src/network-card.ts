@@ -20,8 +20,10 @@ export class UnraidNetworkCard extends BaseUnraidCard {
 
   private formatDataRate(valStr?: string, unit = "MB/s"): string {
     if (!valStr) return "--";
+    const clean = valStr.toLowerCase().trim();
+    if (["unavailable", "unknown", "none", "--"].includes(clean)) return "--";
     const num = parseFloat(valStr);
-    if (isNaN(num)) return valStr;
+    if (isNaN(num)) return "--";
     if (num <= 0) return "0 kB/s";
     if (num < 0.1) return `${(num * 1000).toFixed(1)} kB/s`;
     return `${num.toFixed(2)} ${unit}`;
@@ -36,6 +38,8 @@ export class UnraidNetworkCard extends BaseUnraidCard {
 
   private formatSpeed(speedStr?: string): string {
     if (!speedStr) return "";
+    const clean = speedStr.toLowerCase().trim();
+    if (["unavailable", "unknown", "none", "--"].includes(clean)) return "";
     const num = Number(speedStr);
     if (isNaN(num)) return speedStr;
     if (num >= 1000) return `${num / 1000} Gbps`;
