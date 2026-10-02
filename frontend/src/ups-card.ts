@@ -107,7 +107,13 @@ export class UnraidUpsCard extends BaseUnraidCard {
         <!-- Ring Gauges -->
         <div class="rings-grid" style="grid-template-columns: repeat(2, 1fr);">
           <!-- Battery -->
-          <div class="ring-card">
+          <!-- Battery -->
+          <div
+            class="ring-card"
+            style="${batteryState ? "cursor: pointer;" : ""}"
+            @click=${() => batteryState && this.openMoreInfo(batteryState.entity_id)}
+            title="Click to view Battery details"
+          >
             <div
               class="ring-gauge"
               style="--pct: ${batteryPct ?? 0}; --ring-color: ${batteryPct === null ? "var(--unraid-border)" : batteryPct < 20 ? "var(--unraid-error)" : batteryPct < 50 ? "var(--unraid-warning)" : "var(--unraid-online)"}"
@@ -119,7 +125,12 @@ export class UnraidUpsCard extends BaseUnraidCard {
           </div>
 
           <!-- Load -->
-          <div class="ring-card">
+          <div
+            class="ring-card"
+            style="${loadState ? "cursor: pointer;" : ""}"
+            @click=${() => loadState && this.openMoreInfo(loadState.entity_id)}
+            title="Click to view Load details"
+          >
             <div
               class="ring-gauge"
               style="--pct: ${loadPct ?? 0}; --ring-color: ${loadPct === null ? "var(--unraid-border)" : loadPct > 80 ? "var(--unraid-error)" : loadPct > 50 ? "var(--unraid-warning)" : "var(--unraid-info)"}"
@@ -135,19 +146,39 @@ export class UnraidUpsCard extends BaseUnraidCard {
 
         <!-- Power & Electrical Specs -->
         <div class="detail-grid">
-          <div class="detail-item">
+          <div
+            class="detail-item"
+            style="${runtimeState ? "cursor: pointer;" : ""}"
+            @click=${() => runtimeState && this.openMoreInfo(runtimeState.entity_id)}
+            title="Click to view Runtime details"
+          >
             <span class="detail-label">Runtime Remaining</span>
             <span class="detail-val">${runtimeFormatted || "—"}</span>
           </div>
-          <div class="detail-item">
+          <div
+            class="detail-item"
+            style="${powerState ? "cursor: pointer;" : ""}"
+            @click=${() => powerState && this.openMoreInfo(powerState.entity_id)}
+            title="Click to view Power details"
+          >
             <span class="detail-label">Power Consumption</span>
             <span class="detail-val">${powerW || "—"}</span>
           </div>
-          <div class="detail-item">
+          <div
+            class="detail-item"
+            style="${voltageOut ? "cursor: pointer;" : ""}"
+            @click=${() => voltageOut && this.openMoreInfo(voltageOut.entity_id)}
+            title="Click to view Voltage details"
+          >
             <span class="detail-label">Output Voltage</span>
             <span class="detail-val">${voltageV || "—"}</span>
           </div>
-          <div class="detail-item">
+          <div
+            class="detail-item"
+            style="${healthState ? "cursor: pointer;" : ""}"
+            @click=${() => healthState && this.openMoreInfo(healthState.entity_id)}
+            title="Click to view Battery Health details"
+          >
             <span class="detail-label">Battery Health</span>
             <span class="detail-val" style="${health ? "color: var(--unraid-online);" : ""}">${health || "—"}</span>
           </div>

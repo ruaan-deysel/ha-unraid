@@ -20,6 +20,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
   - **Boot Device**: Drive name and used/total space (e.g. `Flash (2.5 GB / 29.3 GB)`).
 - **Storage Card Boot Device Display (`unraid-storage-card`)**: Added `Flash (Boot)` device at the bottom of the disk tray with dedicated USB flash drive badge, `--` temperature placeholder, `Healthy` status badge, and usage percentage bar.
 - **End-to-End Playwright Browser Testing & Single-Bundle CI**: Added Playwright browser test suite (`npm run test:browser`) verifying element registration, template rendering without DOM corruption, card styling, and tab switching against a live browser fixture; added GitHub Actions workflow validating frontend build integrity and browser test suites.
+- **Native Subviews & Interactive More-Info Dialogs**: Added a `navigate()` navigation helper in `BaseUnraidCard` for seamless drill-down into Home Assistant native subviews (`subview: true`); added interactive click triggers across server and UPS gauge rings and detail items to open Home Assistant's native `more-info` dialogs with full historical charts and attributes.
 
 ### Fixed
 

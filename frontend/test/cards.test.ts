@@ -292,6 +292,38 @@ describe("Unraid Custom Cards", () => {
     document.body.removeChild(card);
   });
 
+  it("dispatches hass-more-info event when clicking server rings and supports navigation", async () => {
+    const card = new UnraidServerCard();
+    card.setConfig({ type: "custom:unraid-server-card" });
+    card.hass = createMockHass();
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    let moreInfoEvent: CustomEvent | null = null;
+    card.addEventListener("hass-more-info", ((e: CustomEvent) => {
+      moreInfoEvent = e;
+    }) as EventListener);
+
+    const cpuRing = card.shadowRoot?.querySelector(".ring-card") as HTMLElement;
+    expect(cpuRing).not.toBeNull();
+    cpuRing.click();
+
+    expect(moreInfoEvent).not.toBeNull();
+    expect((moreInfoEvent as any)?.detail?.entityId).toBe("sensor.cube_cpu_usage");
+
+    // Test navigate helper on BaseUnraidCard
+    let locationChanged = false;
+    const locHandler = () => {
+      locationChanged = true;
+    };
+    window.addEventListener("location-changed", locHandler);
+    (card as any).navigate("/dashboard-unraid/storage");
+    expect(locationChanged).toBe(true);
+    window.removeEventListener("location-changed", locHandler);
+
+    document.body.removeChild(card);
+  });
+
   it("renders UnraidStorageCard with clean disk names and Healthy badge", async () => {
     const card = new UnraidStorageCard();
     card.setConfig({ type: "custom:unraid-storage-card" });

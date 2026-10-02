@@ -132,7 +132,12 @@ export class UnraidServerCard extends BaseUnraidCard {
         <!-- Conic Ring Gauges -->
         <div class="rings-grid">
           <!-- CPU -->
-          <div class="ring-card">
+          <div
+            class="ring-card"
+            style="${cpuState ? "cursor: pointer;" : ""}"
+            @click=${() => cpuState && this.openMoreInfo(cpuState.entity_id)}
+            title="Click to view CPU details"
+          >
             <div
               class="ring-gauge"
               style="--pct: ${cpuPct}; --ring-color: ${cpuPct > 80 ? "var(--unraid-error)" : cpuPct > 50 ? "var(--unraid-warning)" : "var(--unraid-online)"}"
@@ -146,7 +151,12 @@ export class UnraidServerCard extends BaseUnraidCard {
           </div>
 
           <!-- RAM -->
-          <div class="ring-card">
+          <div
+            class="ring-card"
+            style="${ramState ? "cursor: pointer;" : ""}"
+            @click=${() => ramState && this.openMoreInfo(ramState.entity_id)}
+            title="Click to view Memory details"
+          >
             <div
               class="ring-gauge"
               style="--pct: ${ramPct}; --ring-color: ${ramPct > 85 ? "var(--unraid-error)" : "var(--unraid-info)"}"
@@ -158,7 +168,12 @@ export class UnraidServerCard extends BaseUnraidCard {
           </div>
 
           <!-- Array -->
-          <div class="ring-card">
+          <div
+            class="ring-card"
+            style="${arrayUsage ? "cursor: pointer;" : ""}"
+            @click=${() => arrayUsage && this.openMoreInfo(arrayUsage.entity_id)}
+            title="Click to view Array storage details"
+          >
             <div
               class="ring-gauge"
               style="--pct: ${arrayPct}; --ring-color: var(--unraid-accent)"
@@ -182,25 +197,50 @@ export class UnraidServerCard extends BaseUnraidCard {
                   <span class="detail-label">OS Version</span>
                   <span class="detail-val">${device?.sw_version || "Unraid OS"}</span>
                 </div>
-                <div class="detail-item">
+                <div
+                  class="detail-item"
+                  style="${uptimeState ? "cursor: pointer;" : ""}"
+                  @click=${() => uptimeState && this.openMoreInfo(uptimeState.entity_id)}
+                  title="Click to view Uptime details"
+                >
                   <span class="detail-label">System Uptime</span>
                   <span class="detail-val">${this.formatUptime(uptimeState?.state)}</span>
                 </div>
-                <div class="detail-item">
+                <div
+                  class="detail-item"
+                  style="${primaryIface?.rx || ipState ? "cursor: pointer;" : ""}"
+                  @click=${() => (primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : ipState && this.openMoreInfo(ipState.entity_id))}
+                  title="Click to view Network details"
+                >
                   <span class="detail-label">Primary Network</span>
                   <span class="detail-val" title="${primaryIface ? `${primaryIface.name} • ${netSpeedText}` : 'Connected'}">
                     ${primaryIface ? `${primaryIface.name}: ` : ""}${primaryIface?.ip?.state || ipState?.state || "Connected"}
                   </span>
                 </div>
-                <div class="detail-item">
+                <div
+                  class="detail-item"
+                  style="${primaryIface?.rx || primaryIface?.speed ? "cursor: pointer;" : ""}"
+                  @click=${() => (primaryIface?.rx ? this.openMoreInfo(primaryIface.rx.entity_id) : primaryIface?.speed && this.openMoreInfo(primaryIface.speed.entity_id))}
+                  title="Click to view Network traffic details"
+                >
                   <span class="detail-label">Network Traffic</span>
                   <span class="detail-val" title="${netSpeedText ? `Link Speed: ${netSpeedText}` : 'Network Speed'}">${netTrafficText}</span>
                 </div>
-                <div class="detail-item">
+                <div
+                  class="detail-item"
+                  style="${bootDisk ? "cursor: pointer;" : ""}"
+                  @click=${() => bootDisk && this.openMoreInfo(bootDisk.entity_id)}
+                  title="Click to view Boot device details"
+                >
                   <span class="detail-label">Boot Device</span>
                   <span class="detail-val" title="${bootTooltip}">${bootText}</span>
                 </div>
-                <div class="detail-item">
+                <div
+                  class="detail-item"
+                  style="${alertsState ? "cursor: pointer;" : ""}"
+                  @click=${() => alertsState && this.openMoreInfo(alertsState.entity_id)}
+                  title="Click to view Notifications"
+                >
                   <span class="detail-label">System Health</span>
                   <span class="detail-val" style="color: ${alertCount === 0 ? "var(--unraid-online)" : "var(--unraid-error)"}">
                     ${alertCount === 0 ? "Normal • Healthy" : `${alertCount} Active Alerts`}

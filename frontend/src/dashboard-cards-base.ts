@@ -353,6 +353,17 @@ export abstract class BaseUnraidCard extends LitElement {
     fireEvent(this, "hass-more-info", { entityId });
   }
 
+  /** Navigate to a path or subview */
+  protected navigate(path: string, replace = false): void {
+    if (!path) return;
+    if (replace) {
+      window.history.replaceState(null, "", path);
+    } else {
+      window.history.pushState(null, "", path);
+    }
+    fireEvent(window, "location-changed", { replace });
+  }
+
   protected renderHeader(
     title: string,
     subtitle: string,
