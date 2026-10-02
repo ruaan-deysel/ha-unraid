@@ -101,12 +101,13 @@ async def _async_register_resources(hass: HomeAssistant, urls: dict[str, str]) -
     resources = lovelace.resources if lovelace is not None else None
     if isinstance(resources, ResourceStorageCollection):
         await resources.async_get_info()
+        for item in list(resources.async_items()):
+            base_url = item["url"].partition("?")[0]
+            if base_url.startswith(f"{FRONTEND_URL_BASE}/") and base_url not in urls:
+                await resources.async_delete_item(item["id"])
         existing_by_url = {
             item["url"].partition("?")[0]: item for item in resources.async_items()
         }
-        for base_url, item in existing_by_url.items():
-            if base_url.startswith(f"{FRONTEND_URL_BASE}/") and base_url not in urls:
-                await resources.async_delete_item(item["id"])
         for base_url, versioned_url in urls.items():
             existing = existing_by_url.get(base_url)
             if existing is None:

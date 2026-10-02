@@ -136,6 +136,11 @@ async def test_deletes_stale_bundle_resources_on_upgrade(
             "type": "module",
         },
         {
+            "id": "res-old-storage-dup",
+            "url": f"{FRONTEND_URL_BASE}/unraid-storage-card.js?v=older",
+            "type": "module",
+        },
+        {
             "id": "res-unrelated",
             "url": "/hacsfiles/custom-card/card.js",
             "type": "module",
@@ -152,7 +157,7 @@ async def test_deletes_stale_bundle_resources_on_upgrade(
     assert not any("unraid-storage-card.js" in url for url in remaining_urls)
     assert any("unraid-cards.js" in url for url in remaining_urls)
     assert any("/hacsfiles/custom-card/card.js" in url for url in remaining_urls)
-    assert resources.async_delete_item.await_count == 2
+    assert resources.async_delete_item.await_count == 3
 
 
 async def test_skips_when_http_or_frontend_missing(hass: HomeAssistant) -> None:

@@ -32,7 +32,6 @@ export default defineConfig({
         format: "es",
         entryFileNames: "[name].js",
         chunkFileNames: "[name]-[hash].js",
-        codeSplitting: false,
       },
     },
   },

@@ -82,12 +82,12 @@ export class UnraidServerCard extends BaseUnraidCard {
     const txVal = primaryIface?.tx?.state ? parseFloat(primaryIface.tx.state) : NaN;
     const rxText = !isNaN(rxVal)
       ? rxVal < 0.1
-        ? `${(rxVal * 1024).toFixed(0)} kB/s`
+        ? `${(rxVal * 1000).toFixed(1)} kB/s`
         : `${rxVal.toFixed(2)} MB/s`
       : "";
     const txText = !isNaN(txVal)
       ? txVal < 0.1
-        ? `${(txVal * 1024).toFixed(0)} kB/s`
+        ? `${(txVal * 1000).toFixed(1)} kB/s`
         : `${txVal.toFixed(2)} MB/s`
       : "";
     const netTrafficText = rxText && txText ? `↓ ${rxText} • ↑ ${txText}` : netSpeedText || "Active";
