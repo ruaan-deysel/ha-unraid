@@ -57,8 +57,6 @@ export class UnraidDashboardCard extends BaseUnraidCard {
             </div>
           </div>
         </div>
-
-        <!-- Tab Strip -->
         <div class="tab-strip">
           <button
             class="tab-btn ${this._activeTab === "overview" ? "active" : ""}"
@@ -103,8 +101,6 @@ export class UnraidDashboardCard extends BaseUnraidCard {
             ${iconTemplate(mdiMonitor, 14)} VMs
           </button>
         </div>
-
-        <!-- Tab Contents -->
         <div>
           ${this._activeTab === "overview"
             ? html`<unraid-server-card .hass=${this.hass} .config=${{ ...this.config, type: "custom:unraid-server-card", embedded: true }}></unraid-server-card>`

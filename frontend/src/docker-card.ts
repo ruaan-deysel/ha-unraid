@@ -189,8 +189,6 @@ export class UnraidDockerCard extends BaseUnraidCard {
           mdiDocker,
           badge
         )}
-
-        <!-- Top Controls & Filter Bar -->
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <div style="display: flex; gap: 4px; overflow-x: auto;">
             <button
@@ -246,8 +244,6 @@ export class UnraidDockerCard extends BaseUnraidCard {
             </button>
           </div>
         </div>
-
-        <!-- Containers Display (Grid or List View) -->
         ${this._viewMode === "grid"
           ? html`
               <div class="container-grid">

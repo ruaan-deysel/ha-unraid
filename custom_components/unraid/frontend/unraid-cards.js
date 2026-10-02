@@ -488,7 +488,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     }
   `;setConfig(e){this._config={...e}}_valueChanged(e,t){this._config&&(this._config={...this._config,[e]:t},K(this,`config-changed`,{config:this._config}))}render(){if(!this._config)return z``;let e=this.hass?.devices?Object.values(this.hass.devices).filter(e=>e.identifiers?.some(([e])=>e===`unraid`)):[];return z`
       <div class="card-config">
-        <!-- Server Selector -->
         <div class="form-row">
           <label for="server">Unraid Server</label>
           ${e.length>0?z`
@@ -515,8 +514,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 />
               `}
         </div>
-
-        <!-- Custom Title -->
         <div class="form-row">
           <label for="title">Custom Title (optional)</label>
           <input
@@ -527,8 +524,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             @input=${e=>this._valueChanged(`title`,e.target.value)}
           />
         </div>
-
-        <!-- Specific options for Docker Card -->
         ${this._config.type?.includes(`docker`)?z`
               <div class="form-row">
                 <label for="view_mode">Default View Mode</label>
@@ -542,8 +537,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </select>
               </div>
             `:``}
-
-        <!-- Toggles -->
         <label class="checkbox-row">
           <input
             type="checkbox"
@@ -567,10 +560,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(t,`${e?.model||`Unraid OS`} • Up ${this.formatUptime(c?.state)}`,Xe,L)}
-
-        <!-- Conic Ring Gauges -->
         <div class="rings-grid">
-          <!-- CPU -->
           <div
             class="ring-card"
             style="${n?`cursor: pointer;`:``}"
@@ -588,8 +578,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               ${o?.state?`${o.state}°C`:``}${s?.state?` • ${s.state}W`:``}
             </span>
           </div>
-
-          <!-- RAM -->
           <div
             class="ring-card"
             style="${r?`cursor: pointer;`:``}"
@@ -605,8 +593,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="ring-label">Memory</span>
             <span class="ring-subtext">${_&&v?`${_} / ${v}`:`${f}% used`}</span>
           </div>
-
-          <!-- Array -->
           <div
             class="ring-card"
             style="${i?`cursor: pointer;`:``}"
@@ -695,8 +681,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(this.config.title||`Storage Array & Disks`,`${s||`${o}%`} used of ${c||`Array`}${l?` (${l} Free)`:``}`,Ue,m)}
-
-        <!-- Array Capacity Bar -->
         <div style="display: flex; flex-direction: column; gap: 4px;">
           <div style="display: flex; justify-content: space-between; font-size: 0.76rem; font-weight: 600;">
             <span>Array Capacity</span>
@@ -706,8 +690,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <div class="progress-fill" style="width: ${o}%;"></div>
           </div>
         </div>
-
-        <!-- Parity Check Status & Action Banner -->
         <div class="list-row" style="background: color-mix(in srgb, var(--unraid-text) 5%, transparent);">
           <div class="row-left">
             <div style="color: ${f?`var(--unraid-online)`:`var(--unraid-warning)`}">
@@ -735,8 +717,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 `:V}
           </div>
         </div>
-
-        <!-- Disk Trays List -->
         <div class="item-list">
           ${p.length>0?p.map(e=>{let t=e.tempNum??parseFloat(e.temp),n=e.isSpinning&&!isNaN(t)&&e.temp!==`*`&&e.temp!==`unavailable`,r=n?t>45?`var(--unraid-error)`:t>36?`var(--unraid-warning)`:`var(--unraid-online)`:`var(--unraid-standby)`,i=n?`${Math.round(t)}°C`:`--`,a=e.health===`healthy`?z`
                       <span class="badge badge-online" style="font-size: 0.68rem; gap: 4px;">
@@ -756,7 +736,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     `;return z`
                   <div class="list-row">
                     <div class="row-left">
-                      <!-- Spin status button or USB Flash badge -->
                       ${e.isBoot?z`
                             <span
                               class="badge badge-online"
@@ -788,7 +767,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     </div>
 
                     <div class="row-right">
-                      <!-- Temperature Chip -->
                       <span
                         class="badge"
                         style="color: ${e.isBoot?`var(--unraid-text-dim)`:r}; background: color-mix(in srgb, ${e.isBoot?`var(--unraid-text-dim)`:r} 12%, transparent); min-width: 44px; justify-content: center;"
@@ -796,11 +774,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       >
                         ${e.isBoot?`--`:i}
                       </span>
-
-                      <!-- Health Status (Healthy, Warning, Error) -->
                       ${a}
-
-                      <!-- Utilization -->
                       <div style="display: flex; align-items: center; gap: 6px; width: 85px;">
                         ${e.isParity?z`
                               <span style="font-size: 0.72rem; color: var(--unraid-online); font-weight: 500; font-family: monospace;">
@@ -831,8 +805,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(this.config.title||`User Shares`,`${e.length} configured shares`,He,i)}
-
-        <!-- Search Bar if more than 4 shares -->
         ${e.length>4?z`
               <div style="margin-bottom: 4px;">
                 <input
@@ -853,8 +825,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 />
               </div>
             `:V}
-
-        <!-- Shares List -->
         <div class="item-list">
           ${t.length>0?t.map(e=>{let t=e.usagePct>90?`var(--unraid-error)`:e.usagePct>75?`var(--unraid-warning)`:`var(--unraid-online)`;return z`
                   <div
@@ -864,7 +834,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     @click=${()=>this._openMoreInfo(e.entityId)}
                   >
                     <div class="row-left">
-                      <!-- Folder Icon -->
                       <div
                         style="color: ${e.isProtected?`var(--unraid-accent)`:`var(--unraid-warning)`}; display: flex; align-items: center;"
                       >
@@ -878,8 +847,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                           >
                             ${e.name}
                           </span>
-
-                          <!-- Protection Tag -->
                           <span
                             class="badge ${e.isProtected?`badge-online`:`badge-warning`}"
                             style="font-size: 0.62rem; padding: 1px 6px;"
@@ -894,7 +861,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     </div>
 
                     <div class="row-right">
-                      <!-- Utilization bar and percentage -->
                       <div style="display: flex; align-items: center; gap: 6px; width: 110px;">
                         <div class="progress-bar" style="height: 6px; flex: 1;">
                           <div
@@ -925,8 +891,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(this.config.title||`${t} Network`,`${e?.model||`Unraid`} • ${n.length} Interface${n.length===1?``:`s`}`,We,c)}
-
-        <!-- Interfaces List -->
         <div class="item-list">
           ${n.length>0?n.map(e=>{let t=e.link?.state===`on`||this.isValidIp(e.ip?.state),n=this.isValidIp(e.ip?.state)?e.ip.state:`--`,r=e.ip?.attributes?.mac_address||e.link?.attributes?.mac_address||``,i=e.link?.attributes?.mtu||e.ip?.attributes?.mtu||void 0,a=e.speed?.state||e.link?.attributes?.speed_mbps,o=this.formatSpeed(a==null?void 0:String(a)),s=this.formatDataRate(e.rx?.state),c=this.formatDataRate(e.tx?.state),l=e.rx?.attributes?.total_received||``,u=e.tx?.attributes?.total_sent||``,d=e.ip?.entity_id||e.rx?.entity_id||e.link?.entity_id;return z`
                   <div
@@ -962,8 +926,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                         </span>
                       </div>
                     </div>
-
-                    <!-- Throughput and Addressing details -->
                     <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--unraid-subtext); border-top: 1px solid var(--unraid-border, rgba(255,255,255,0.06)); padding-top: 6px;">
                       <div style="display: flex; align-items: center; gap: 14px;">
                         <span style="display: flex; align-items: center; gap: 4px;" title="${l?`Total Inbound: ${l}`:`Inbound Transfer Rate`}">
@@ -1039,8 +1001,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(this.config.title||`Docker Containers`,`${t} running • ${n} stopped`,Re,o)}
-
-        <!-- Top Controls & Filter Bar -->
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <div style="display: flex; gap: 4px; overflow-x: auto;">
             <button
@@ -1091,8 +1051,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </button>
           </div>
         </div>
-
-        <!-- Containers Display (Grid or List View) -->
         ${this._viewMode===`grid`?z`
               <div class="container-grid">
                 ${a.map(e=>z`
@@ -1176,11 +1134,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     `;return z`
       <ha-card>
         ${this.renderHeader(this.config.title||`UPS Power & Battery`,e?.attributes?.model||`Uninterruptible Power Supply`,Ve,v)}
-
-        <!-- Ring Gauges -->
         <div class="rings-grid" style="grid-template-columns: repeat(2, 1fr);">
-          <!-- Battery -->
-          <!-- Battery -->
+
           <div
             class="ring-card"
             style="${t?`cursor: pointer;`:``}"
@@ -1196,8 +1151,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="ring-label">Battery Level</span>
             <span class="ring-subtext">${h?`${h} left`:f===null?`No Data`:`Healthy`}</span>
           </div>
-
-          <!-- Load -->
           <div
             class="ring-card"
             style="${n?`cursor: pointer;`:``}"
@@ -1216,8 +1169,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         </div>
 
         <div class="divider"></div>
-
-        <!-- Power & Electrical Specs -->
         <div class="detail-grid">
           <div
             class="detail-item"
@@ -1313,8 +1264,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </div>
           </div>
         </div>
-
-        <!-- Tab Strip -->
         <div class="tab-strip">
           <button
             class="tab-btn ${this._activeTab===`overview`?`active`:``}"
@@ -1359,8 +1308,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             ${J(Ge,14)} VMs
           </button>
         </div>
-
-        <!-- Tab Contents -->
         <div>
           ${this._activeTab===`overview`?z`<unraid-server-card .hass=${this.hass} .config=${{...this.config,type:`custom:unraid-server-card`,embedded:!0}}></unraid-server-card>`:V}
           ${this._activeTab===`storage`?z`<unraid-storage-card .hass=${this.hass} .config=${{...this.config,type:`custom:unraid-storage-card`,embedded:!0}}></unraid-storage-card>`:V}

@@ -122,8 +122,6 @@ export class UnraidSharesCard extends BaseUnraidCard {
           mdiFolder,
           badge
         )}
-
-        <!-- Search Bar if more than 4 shares -->
         ${allShares.length > 4
           ? html`
               <div style="margin-bottom: 4px;">
@@ -147,8 +145,6 @@ export class UnraidSharesCard extends BaseUnraidCard {
               </div>
             `
           : nothing}
-
-        <!-- Shares List -->
         <div class="item-list">
           ${filteredShares.length > 0
             ? filteredShares.map((share) => {
@@ -167,7 +163,6 @@ export class UnraidSharesCard extends BaseUnraidCard {
                     @click=${() => this._openMoreInfo(share.entityId)}
                   >
                     <div class="row-left">
-                      <!-- Folder Icon -->
                       <div
                         style="color: ${share.isProtected ? "var(--unraid-accent)" : "var(--unraid-warning)"}; display: flex; align-items: center;"
                       >
@@ -181,8 +176,6 @@ export class UnraidSharesCard extends BaseUnraidCard {
                           >
                             ${share.name}
                           </span>
-
-                          <!-- Protection Tag -->
                           <span
                             class="badge ${share.isProtected ? "badge-online" : "badge-warning"}"
                             style="font-size: 0.62rem; padding: 1px 6px;"
@@ -199,7 +192,6 @@ export class UnraidSharesCard extends BaseUnraidCard {
                     </div>
 
                     <div class="row-right">
-                      <!-- Utilization bar and percentage -->
                       <div style="display: flex; align-items: center; gap: 6px; width: 110px;">
                         <div class="progress-bar" style="height: 6px; flex: 1;">
                           <div

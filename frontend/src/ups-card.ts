@@ -103,11 +103,8 @@ export class UnraidUpsCard extends BaseUnraidCard {
           mdiFlash,
           badge
         )}
-
-        <!-- Ring Gauges -->
         <div class="rings-grid" style="grid-template-columns: repeat(2, 1fr);">
-          <!-- Battery -->
-          <!-- Battery -->
+
           <div
             class="ring-card"
             style="${batteryState ? "cursor: pointer;" : ""}"
@@ -123,8 +120,6 @@ export class UnraidUpsCard extends BaseUnraidCard {
             <span class="ring-label">Battery Level</span>
             <span class="ring-subtext">${runtimeFormatted ? `${runtimeFormatted} left` : batteryPct !== null ? "Healthy" : "No Data"}</span>
           </div>
-
-          <!-- Load -->
           <div
             class="ring-card"
             style="${loadState ? "cursor: pointer;" : ""}"
@@ -143,8 +138,6 @@ export class UnraidUpsCard extends BaseUnraidCard {
         </div>
 
         <div class="divider"></div>
-
-        <!-- Power & Electrical Specs -->
         <div class="detail-grid">
           <div
             class="detail-item"

@@ -82,8 +82,6 @@ export class UnraidNetworkCard extends BaseUnraidCard {
           mdiLanConnect,
           badge
         )}
-
-        <!-- Interfaces List -->
         <div class="item-list">
           ${ifaces.length > 0
             ? ifaces.map((iface) => {
@@ -141,8 +139,6 @@ export class UnraidNetworkCard extends BaseUnraidCard {
                         </span>
                       </div>
                     </div>
-
-                    <!-- Throughput and Addressing details -->
                     <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--unraid-subtext); border-top: 1px solid var(--unraid-border, rgba(255,255,255,0.06)); padding-top: 6px;">
                       <div style="display: flex; align-items: center; gap: 14px;">
                         <span style="display: flex; align-items: center; gap: 4px;" title="${totalRx ? `Total Inbound: ${totalRx}` : 'Inbound Transfer Rate'}">

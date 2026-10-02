@@ -258,8 +258,6 @@ export class UnraidStorageCard extends BaseUnraidCard {
           mdiHarddisk,
           badge
         )}
-
-        <!-- Array Capacity Bar -->
         <div style="display: flex; flex-direction: column; gap: 4px;">
           <div style="display: flex; justify-content: space-between; font-size: 0.76rem; font-weight: 600;">
             <span>Array Capacity</span>
@@ -269,8 +267,6 @@ export class UnraidStorageCard extends BaseUnraidCard {
             <div class="progress-fill" style="width: ${arrayPct}%;"></div>
           </div>
         </div>
-
-        <!-- Parity Check Status & Action Banner -->
         <div class="list-row" style="background: color-mix(in srgb, var(--unraid-text) 5%, transparent);">
           <div class="row-left">
             <div style="color: ${isParityValid ? "var(--unraid-online)" : "var(--unraid-warning)"}">
@@ -300,8 +296,6 @@ export class UnraidStorageCard extends BaseUnraidCard {
               : nothing}
           </div>
         </div>
-
-        <!-- Disk Trays List -->
         <div class="item-list">
           ${disks.length > 0
             ? disks.map((disk) => {
@@ -341,7 +335,6 @@ export class UnraidStorageCard extends BaseUnraidCard {
                 return html`
                   <div class="list-row">
                     <div class="row-left">
-                      <!-- Spin status button or USB Flash badge -->
                       ${disk.isBoot
                         ? html`
                             <span
@@ -377,7 +370,6 @@ export class UnraidStorageCard extends BaseUnraidCard {
                     </div>
 
                     <div class="row-right">
-                      <!-- Temperature Chip -->
                       <span
                         class="badge"
                         style="color: ${disk.isBoot ? "var(--unraid-text-dim)" : tempColor}; background: color-mix(in srgb, ${disk.isBoot ? "var(--unraid-text-dim)" : tempColor} 12%, transparent); min-width: 44px; justify-content: center;"
@@ -385,11 +377,7 @@ export class UnraidStorageCard extends BaseUnraidCard {
                       >
                         ${disk.isBoot ? "--" : tempDisplay}
                       </span>
-
-                      <!-- Health Status (Healthy, Warning, Error) -->
                       ${healthBadge}
-
-                      <!-- Utilization -->
                       <div style="display: flex; align-items: center; gap: 6px; width: 85px;">
                         ${disk.isParity
                           ? html`

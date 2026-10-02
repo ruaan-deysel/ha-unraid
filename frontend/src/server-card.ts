@@ -128,10 +128,7 @@ export class UnraidServerCard extends BaseUnraidCard {
           mdiServer,
           badge
         )}
-
-        <!-- Conic Ring Gauges -->
         <div class="rings-grid">
-          <!-- CPU -->
           <div
             class="ring-card"
             style="${cpuState ? "cursor: pointer;" : ""}"
@@ -149,8 +146,6 @@ export class UnraidServerCard extends BaseUnraidCard {
               ${tempState?.state ? `${tempState.state}°C` : ""}${powerState?.state ? ` • ${powerState.state}W` : ""}
             </span>
           </div>
-
-          <!-- RAM -->
           <div
             class="ring-card"
             style="${ramState ? "cursor: pointer;" : ""}"
@@ -166,8 +161,6 @@ export class UnraidServerCard extends BaseUnraidCard {
             <span class="ring-label">Memory</span>
             <span class="ring-subtext">${ramUsedStr && ramTotalStr ? `${ramUsedStr} / ${ramTotalStr}` : `${ramPct}% used`}</span>
           </div>
-
-          <!-- Array -->
           <div
             class="ring-card"
             style="${arrayUsage ? "cursor: pointer;" : ""}"

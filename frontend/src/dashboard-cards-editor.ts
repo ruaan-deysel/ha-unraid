@@ -73,7 +73,6 @@ export class UnraidCardEditor extends LitElement {
 
     return html`
       <div class="card-config">
-        <!-- Server Selector -->
         <div class="form-row">
           <label for="server">Unraid Server</label>
           ${devices.length > 0
@@ -116,8 +115,6 @@ export class UnraidCardEditor extends LitElement {
                 />
               `}
         </div>
-
-        <!-- Custom Title -->
         <div class="form-row">
           <label for="title">Custom Title (optional)</label>
           <input
@@ -132,8 +129,6 @@ export class UnraidCardEditor extends LitElement {
               )}
           />
         </div>
-
-        <!-- Specific options for Docker Card -->
         ${this._config.type?.includes("docker")
           ? html`
               <div class="form-row">
@@ -153,8 +148,6 @@ export class UnraidCardEditor extends LitElement {
               </div>
             `
           : ""}
-
-        <!-- Toggles -->
         <label class="checkbox-row">
           <input
             type="checkbox"
