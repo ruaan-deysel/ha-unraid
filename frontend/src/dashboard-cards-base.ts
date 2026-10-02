@@ -129,9 +129,7 @@ export abstract class BaseUnraidCard extends LitElement {
           (objectId.endsWith("_up_since") || objectId === "up_since")) ||
         (translationKey === "network_interface_ip" &&
           objectId.includes("_network_") &&
-          (objectId.endsWith("_ip") || objectId.endsWith("_ip_address"))) ||
-        (translationKey === "network_access" &&
-          objectId.endsWith("_network_access"));
+          (objectId.endsWith("_ip") || objectId.endsWith("_ip_address")));
 
       if (device?.name) {
         const cleanName = device.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
