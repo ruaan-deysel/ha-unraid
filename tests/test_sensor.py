@@ -7893,3 +7893,37 @@ def test_create_disk_sensors_with_boot_device() -> None:
         s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"
     )
     assert error_sensor.native_value == 0
+
+
+def test_create_disk_sensors_with_boot_device_no_temp_or_errors() -> None:
+    """Test _create_disk_sensors when boot device reports no temp or errors."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    boot_disk = ArrayDisk(
+        id="flash",
+        name="Flash",
+        type="FLASH",
+        device="sdb",
+        fsSize=30000000,
+        fsUsed=2000000,
+        fsFree=28000000,
+        temp=None,
+        numErrors=None,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(state="STARTED", boot=boot_disk)
+    )
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    types = [type(s).__name__ for s in sensors]
+    assert "DiskUsageSensor" in types
+    assert "DiskTemperatureSensor" not in types
+    assert "DiskErrorCountSensor" not in types

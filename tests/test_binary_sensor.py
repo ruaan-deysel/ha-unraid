@@ -968,6 +968,7 @@ async def test_setup_entry_creates_entities(hass):
     storage_coordinator.data = make_storage_data(
         array_state="STARTED",
         disks=[mock_disk],
+        boot=make_disk(id="flash", name="Flash", status="DISK_OK"),
     )
 
     system_coordinator = MagicMock()
