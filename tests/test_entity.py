@@ -516,3 +516,11 @@ def test_deduplicate_disks() -> None:
     d_empty = ArrayDisk(id="", name="Empty")
     result4 = deduplicate_disks([d1, d_empty, None])
     assert result4 == [d1]
+
+    # Generator and dict values as iterable collections
+    gen = (x for x in [d1, d2])
+    result5 = deduplicate_disks(gen, {"a": d3}.values())
+    assert result5 == [d1, d2, d3]
+
+    # Non-iterable or unsupported input
+    assert deduplicate_disks(123) == []  # type: ignore[arg-type]

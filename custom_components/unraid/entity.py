@@ -13,14 +13,13 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
+from unraid_api.models import ArrayDisk
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from unraid_api.models import ArrayDisk
-
     from .coordinator import (
         UnraidInfraCoordinator,
         UnraidInfraData,
@@ -260,7 +259,11 @@ def deduplicate_disks(
         if source is None:
             continue
         items: Iterable[Any]
-        if isinstance(source, (list, tuple, set)):
+        if isinstance(source, ArrayDisk) or isinstance(
+            getattr(source, "id", None), str
+        ):
+            items = [source]
+        elif isinstance(source, Iterable) and not isinstance(source, (str, bytes)):
             items = source
         else:
             items = [source]
