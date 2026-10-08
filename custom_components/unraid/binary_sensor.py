@@ -32,6 +32,7 @@ from .entity import (
     UnraidBaseEntity,
     UnraidCoordinator,
     async_add_dynamic_resource_entities,
+    deduplicate_disks,
 )
 
 if TYPE_CHECKING:
@@ -1226,12 +1227,13 @@ async def async_setup_entry(
     # Add disk sensors using typed coordinator data
     coordinator_data = storage_coordinator.data
     if coordinator_data:
-        # Add disk health sensors for all disk types
-        all_disks = (
-            coordinator_data.disks + coordinator_data.parities + coordinator_data.caches
+        # Add disk health sensors for all disk types (deduplicated by disk ID)
+        all_disks = deduplicate_disks(
+            coordinator_data.disks,
+            coordinator_data.parities,
+            coordinator_data.caches,
+            coordinator_data.boot,
         )
-        if coordinator_data.boot is not None:
-            all_disks.append(coordinator_data.boot)
         for disk in all_disks:
             # Disk health binary sensor (includes standby state in attributes)
             entities.append(

@@ -21,6 +21,7 @@ from .entity import (
     UnraidBaseEntity,
     UnraidCoordinator,
     async_add_dynamic_resource_entities,
+    deduplicate_disks,
 )
 
 if TYPE_CHECKING:
@@ -960,15 +961,7 @@ async def async_setup_entry(
         data = storage_coordinator.data
         if not data:
             return []
-        disks: list[Any] = []
-        for disk in [
-            *(data.disks or []),
-            *(data.parities or []),
-            *(data.caches or []),
-        ]:
-            if isinstance(getattr(disk, "id", None), str) and disk.id:
-                disks.append(disk)
-        return disks
+        return deduplicate_disks(data.disks, data.parities, data.caches)
 
     entry.async_on_unload(
         async_add_dynamic_resource_entities(

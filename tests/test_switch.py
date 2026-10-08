@@ -1536,6 +1536,47 @@ async def test_setup_creates_control_switches(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_setup_creates_disk_spin_switches_deduplicated(hass) -> None:
+    """Test duplicate disk IDs create only one DiskSpinSwitch."""
+    data_disk = ArrayDisk(id="disk_shared", name="Data 1", type="DATA")
+    cache_disk = ArrayDisk(id="disk_shared", name="Cache 1", type="CACHE")
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(
+        disks=[data_disk],
+        caches=[cache_disk],
+    )
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = make_system_data()
+
+    mock_entry = MagicMock()
+    mock_entry.data = {"host": "192.168.1.100"}
+    mock_entry.runtime_data = UnraidRuntimeData(
+        api_client=MagicMock(),
+        system_coordinator=system_coordinator,
+        storage_coordinator=storage_coordinator,
+        infra_coordinator=MagicMock(),
+        server_info={
+            "uuid": "test-uuid",
+            "name": "tower",
+        },
+        websocket_manager=MagicMock(),
+    )
+
+    added_entities = []
+
+    def mock_add_entities(entities) -> None:
+        added_entities.extend(entities)
+
+    await async_setup_entry(hass, mock_entry, mock_add_entities)
+
+    spin_switches = [e for e in added_entities if isinstance(e, DiskSpinSwitch)]
+    assert len(spin_switches) == 1
+    assert spin_switches[0].unique_id == "test-uuid_disk_spin_disk_shared"
+
+
+@pytest.mark.asyncio
 async def test_setup_creates_container_switches(hass) -> None:
     """Test setup creates Docker container switches."""
     container = DockerContainer(id="ct:1", name="/web", state="RUNNING")

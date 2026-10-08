@@ -60,10 +60,24 @@ function createMockHass(): HomeAssistant {
         last_changed: "",
         last_updated: "",
       },
+      "binary_sensor.cube_parity_valid": {
+        entity_id: "binary_sensor.cube_parity_valid",
+        state: "off",
+        attributes: { friendly_name: "Cube Parity Valid" },
+        last_changed: "",
+        last_updated: "",
+      },
+      "binary_sensor.cube_parity_check_running": {
+        entity_id: "binary_sensor.cube_parity_check_running",
+        state: "off",
+        attributes: { friendly_name: "Cube Parity Check Running", status: "completed" },
+        last_changed: "",
+        last_updated: "",
+      },
       "binary_sensor.cube_parity_status": {
         entity_id: "binary_sensor.cube_parity_status",
-        state: "on",
-        attributes: {},
+        state: "off",
+        attributes: { status: "completed" },
         last_changed: "",
         last_updated: "",
       },
@@ -337,6 +351,212 @@ describe("Unraid Custom Cards", () => {
     expect(card.shadowRoot?.innerHTML).toContain("Healthy");
     expect(card.shadowRoot?.innerHTML).toContain("Active");
     expect(card.shadowRoot?.innerHTML).toContain("32°C");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Valid");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status: Valid");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard with Parity Valid when progress is 100 and check is not running", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["sensor.cube_parity_progress"] = {
+      entity_id: "sensor.cube_parity_progress",
+      state: "100",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["switch.cube_parity_check"] = {
+      entity_id: "switch.cube_parity_check",
+      state: "off",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Valid");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status: Valid");
+    expect(card.shadowRoot?.innerHTML).not.toContain("Parity Check In Progress");
+    expect(card.shadowRoot?.innerHTML).not.toContain("Parity Check Needed");
+    expect(card.shadowRoot?.innerHTML).toContain("Check Now");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard with Parity Check Needed when validity sensor is on", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["binary_sensor.cube_parity_valid"] = {
+      entity_id: "binary_sensor.cube_parity_valid",
+      state: "on",
+      attributes: { friendly_name: "Cube Parity Valid" },
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["sensor.cube_last_parity_check_errors"] = {
+      entity_id: "sensor.cube_last_parity_check_errors",
+      state: "5",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Check Needed");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status: Check Needed");
+    expect(card.shadowRoot?.innerHTML).toContain("5 errors");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard with check in progress at 0% and Cancel button", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["binary_sensor.cube_parity_check_running"] = {
+      entity_id: "binary_sensor.cube_parity_check_running",
+      state: "on",
+      attributes: { friendly_name: "Cube Parity Check Running", status: "running" },
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["sensor.cube_parity_progress"] = {
+      entity_id: "sensor.cube_parity_progress",
+      state: "0",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["switch.cube_parity_check"] = {
+      entity_id: "switch.cube_parity_check",
+      state: "on",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Check In Progress (0%)");
+    expect(card.shadowRoot?.innerHTML).toContain("Cancel");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard with Parity Check Paused", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["binary_sensor.cube_parity_check_running"] = {
+      entity_id: "binary_sensor.cube_parity_check_running",
+      state: "on",
+      attributes: { friendly_name: "Cube Parity Check Running", status: "paused" },
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["sensor.cube_parity_progress"] = {
+      entity_id: "sensor.cube_parity_progress",
+      state: "42",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Check Paused (42%)");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard with Parity Status Unknown when validity is unknown or unavailable", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["binary_sensor.cube_parity_valid"] = {
+      entity_id: "binary_sensor.cube_parity_valid",
+      state: "unknown",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    delete mockHass.states["binary_sensor.cube_parity_status"];
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status Unknown");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status: Unknown");
+    expect(card.shadowRoot?.innerHTML).not.toContain("Parity Check Needed");
+    document.body.removeChild(card);
+  });
+
+  it("renders UnraidStorageCard using legacy sensor fallback when dedicated entities are absent", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    delete mockHass.states["binary_sensor.cube_parity_valid"];
+    delete mockHass.states["binary_sensor.cube_parity_check_running"];
+
+    // Legacy off -> Parity Valid
+    mockHass.states["binary_sensor.cube_parity_status"] = {
+      entity_id: "binary_sensor.cube_parity_status",
+      state: "off",
+      attributes: { status: "completed" },
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Valid");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Status: Valid");
+
+    // Legacy on with status running -> In Progress
+    mockHass.states["binary_sensor.cube_parity_status"] = {
+      entity_id: "binary_sensor.cube_parity_status",
+      state: "on",
+      attributes: { status: "running" },
+      last_changed: "",
+      last_updated: "",
+    };
+    mockHass.states["sensor.cube_parity_progress"] = {
+      entity_id: "sensor.cube_parity_progress",
+      state: "65",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = { ...mockHass };
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).toContain("Parity Check In Progress (65%)");
+    document.body.removeChild(card);
+  });
+
+  it("does not render unknown last check date text", async () => {
+    const card = new UnraidStorageCard();
+    card.setConfig({ type: "custom:unraid-storage-card" });
+    const mockHass = createMockHass();
+    mockHass.states["sensor.cube_last_parity_check_date"] = {
+      entity_id: "sensor.cube_last_parity_check_date",
+      state: "unknown",
+      attributes: {},
+      last_changed: "",
+      last_updated: "",
+    };
+    card.hass = mockHass;
+    document.body.appendChild(card);
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.innerHTML).not.toContain("Last check: unknown");
+    expect(card.shadowRoot?.innerHTML).toContain("Parity healthy");
     document.body.removeChild(card);
   });
 

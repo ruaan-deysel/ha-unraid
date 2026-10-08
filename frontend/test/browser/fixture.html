@@ -85,10 +85,20 @@
             state: "started",
             attributes: {},
           },
+          "binary_sensor.cube_parity_valid": {
+            entity_id: "binary_sensor.cube_parity_valid",
+            state: "off",
+            attributes: { friendly_name: "Cube Parity Valid" },
+          },
+          "binary_sensor.cube_parity_check_running": {
+            entity_id: "binary_sensor.cube_parity_check_running",
+            state: "off",
+            attributes: { friendly_name: "Cube Parity Check Running", status: "completed" },
+          },
           "binary_sensor.cube_parity_status": {
             entity_id: "binary_sensor.cube_parity_status",
-            state: "on",
-            attributes: { status: "Valid" },
+            state: "off",
+            attributes: { status: "completed" },
           },
           "binary_sensor.cube_disk_parity_health": {
             entity_id: "binary_sensor.cube_disk_parity_health",

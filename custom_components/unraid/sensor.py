@@ -42,6 +42,7 @@ from .entity import (
     UnraidBaseEntity,
     UnraidCoordinator,
     async_add_dynamic_resource_entities,
+    deduplicate_disks,
 )
 
 if TYPE_CHECKING:
@@ -3471,53 +3472,21 @@ def _create_disk_sensors(
     entities: list[SensorEntity] = []
     data = storage_coordinator.data
 
-    # Data disks - usage, temperature, and error count sensors
-    for disk in data.disks or []:
+    # Data disks, cache, and boot - usage sensors (deduplicated by disk ID)
+    usage_disks = deduplicate_disks(data.disks, data.caches, data.boot)
+    for disk in usage_disks:
         entities.append(
             DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
         )
+
+    # All disks - temperature and error count sensors (deduplicated by disk ID)
+    health_disks = deduplicate_disks(data.disks, data.parities, data.caches, data.boot)
+    for disk in health_disks:
         entities.append(
             DiskTemperatureSensor(storage_coordinator, server_uuid, server_name, disk)
         )
         entities.append(
             DiskErrorCountSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-
-    # Parity disks - temperature and error count sensors
-    for disk in data.parities or []:
-        entities.append(
-            DiskTemperatureSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-        entities.append(
-            DiskErrorCountSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-
-    # Cache disks - usage, temperature, and error count sensors
-    for disk in data.caches or []:
-        entities.append(
-            DiskUsageSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-        entities.append(
-            DiskTemperatureSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-        entities.append(
-            DiskErrorCountSensor(storage_coordinator, server_uuid, server_name, disk)
-        )
-
-    # Boot device - usage, temperature, and error count sensors
-    if data.boot is not None:
-        entities.append(
-            DiskUsageSensor(storage_coordinator, server_uuid, server_name, data.boot)
-        )
-        entities.append(
-            DiskTemperatureSensor(
-                storage_coordinator, server_uuid, server_name, data.boot
-            )
-        )
-        entities.append(
-            DiskErrorCountSensor(
-                storage_coordinator, server_uuid, server_name, data.boot
-            )
         )
 
     # Share sensors

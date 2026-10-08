@@ -223,10 +223,79 @@ export class UnraidStorageCard extends BaseUnraidCard {
     });
   }
 
+  private isUsable(entity?: { state?: string } | null): boolean {
+    if (!entity || !entity.state) return false;
+    const s = entity.state.toLowerCase().trim();
+    return s !== "unavailable" && s !== "unknown" && s !== "none" && s !== "--";
+  }
+
+  private getParityViewState(): {
+    validity: "valid" | "invalid" | "unknown";
+    activity: "idle" | "running" | "paused" | "unknown";
+    progressPct: number;
+  } {
+    const parityValid = this.getEntity("parity_valid", "binary_sensor");
+    const parityRunning = this.getEntity("parity_check_running", "binary_sensor");
+    const legacyParityStatus =
+      this.getEntity("parity_status", "binary_sensor") ?? this.getEntity("parity_status");
+    const parityProgress = this.getEntity("parity_progress");
+
+    // Validity: binary_sensor.parity_valid has device_class problem (off = valid, on = invalid)
+    let validity: "valid" | "invalid" | "unknown" = "unknown";
+    if (this.isUsable(parityValid)) {
+      const s = parityValid!.state.toLowerCase().trim();
+      if (s === "off") {
+        validity = "valid";
+      } else if (s === "on") {
+        validity = "invalid";
+      }
+    } else if (this.isUsable(legacyParityStatus)) {
+      const s = legacyParityStatus!.state.toLowerCase().trim();
+      if (s === "off") {
+        validity = "valid";
+      } else if (s === "on") {
+        const st = String(legacyParityStatus!.attributes?.status ?? "").toLowerCase().trim();
+        if (st !== "running" && st !== "paused") {
+          validity = "invalid";
+        }
+      }
+    }
+
+    // Activity: binary_sensor.parity_check_running has device_class running (on = active, off = idle)
+    let activity: "idle" | "running" | "paused" | "unknown" = "unknown";
+    if (this.isUsable(parityRunning)) {
+      const s = parityRunning!.state.toLowerCase().trim();
+      if (s === "off") {
+        activity = "idle";
+      } else if (s === "on") {
+        const st = String(parityRunning!.attributes?.status ?? "").toLowerCase().trim();
+        activity = st === "paused" ? "paused" : "running";
+      }
+    } else if (this.isUsable(legacyParityStatus)) {
+      const st = String(legacyParityStatus!.attributes?.status ?? "").toLowerCase().trim();
+      if (st === "running") {
+        activity = "running";
+      } else if (st === "paused") {
+        activity = "paused";
+      } else if (legacyParityStatus!.state.toLowerCase().trim() === "off") {
+        activity = "idle";
+      }
+    }
+
+    // Progress: only used for display percentage when numeric
+    let progressPct = 0;
+    if (this.isUsable(parityProgress)) {
+      const val = Number(parityProgress!.state);
+      if (!isNaN(val)) {
+        progressPct = Math.round(val);
+      }
+    }
+
+    return { validity, activity, progressPct };
+  }
+
   protected override render(): TemplateResult {
     const arrayUsage = this.getEntity("array_usage");
-    const parityStatus = this.getEntity("parity_status");
-    const parityProgress = this.getEntity("parity_progress");
     const paritySwitch = this.getEntity("parity_check", "switch");
     const lastCheckDate = this.getEntity("last_parity_check_date");
     const lastCheckErrors = this.getEntity("last_parity_check_errors");
@@ -236,19 +305,61 @@ export class UnraidStorageCard extends BaseUnraidCard {
     const totalStr = (arrayUsage?.attributes?.capacity_total as string) || "";
     const freeStr = (arrayUsage?.attributes?.capacity_free as string) || "";
 
-    const isChecking = parityProgress && !isNaN(Number(parityProgress.state)) && Number(parityProgress.state) > 0;
-    const progressVal = Math.round(Number(parityProgress?.state) || 0);
+    const { validity, activity, progressPct } = this.getParityViewState();
+    const isChecking = activity === "running" || activity === "paused";
 
-    const isParityValid = parityStatus?.state?.toLowerCase() === "on" || parityStatus?.state?.toLowerCase() === "ok" || parityStatus?.state === "Valid";
+    let badgeClass = "badge-standby";
+    let badgeText = "Parity Status Unknown";
+    let badgeIcon = mdiShieldAlert;
+    if (validity === "valid") {
+      badgeClass = "badge-online";
+      badgeText = "Parity Valid";
+      badgeIcon = mdiShieldCheck;
+    } else if (validity === "invalid") {
+      badgeClass = "badge-warning";
+      badgeText = "Parity Check Needed";
+      badgeIcon = mdiShieldAlert;
+    }
 
     const disks = this.getDisks();
 
     const badge = html`
-      <span class="badge ${isParityValid ? "badge-online" : "badge-warning"}">
-        ${iconTemplate(isParityValid ? mdiShieldCheck : mdiShieldAlert, 13)}
-        <span>${isParityValid ? "Parity Valid" : "Parity Check Needed"}</span>
+      <span class="badge ${badgeClass}">
+        ${iconTemplate(badgeIcon, 13)}
+        <span>${badgeText}</span>
       </span>
     `;
+
+    let parityTitle: string;
+    if (activity === "running") {
+      parityTitle = `Parity Check In Progress (${progressPct}%)`;
+    } else if (activity === "paused") {
+      parityTitle = `Parity Check Paused (${progressPct}%)`;
+    } else if (validity === "valid") {
+      parityTitle = "Parity Status: Valid";
+    } else if (validity === "invalid") {
+      parityTitle = "Parity Status: Check Needed";
+    } else {
+      parityTitle = "Parity Status: Unknown";
+    }
+
+    const rowIcon = validity === "valid" || isChecking ? mdiCheckCircle : mdiAlertCircle;
+    const rowColor =
+      validity === "valid" || isChecking ? "var(--unraid-online)" : "var(--unraid-warning)";
+
+    const hasLastCheckDate = this.isUsable(lastCheckDate);
+    const numErrors = Number(lastCheckErrors?.state);
+    const hasErrors =
+      this.isUsable(lastCheckErrors) && !isNaN(numErrors) && numErrors > 0;
+
+    let historyText = "";
+    if (hasLastCheckDate) {
+      historyText = `Last check: ${lastCheckDate!.state}`;
+    } else if (validity === "valid") {
+      historyText = "Parity healthy";
+    }
+    const errorsText = hasErrors ? ` • ${lastCheckErrors!.state} errors` : "";
+    const showHistoryLine = Boolean(historyText || errorsText);
 
     return html`
       <ha-card>
@@ -269,17 +380,20 @@ export class UnraidStorageCard extends BaseUnraidCard {
         </div>
         <div class="list-row" style="background: color-mix(in srgb, var(--unraid-text) 5%, transparent);">
           <div class="row-left">
-            <div style="color: ${isParityValid ? "var(--unraid-online)" : "var(--unraid-warning)"}">
-              ${iconTemplate(isParityValid ? mdiCheckCircle : mdiAlertCircle, 18)}
+            <div style="color: ${rowColor}">
+              ${iconTemplate(rowIcon, 18)}
             </div>
             <div style="display: flex; flex-direction: column; min-width: 0;">
               <span style="font-weight: 600; font-size: 0.78rem;">
-                ${isChecking ? `Parity Check In Progress (${progressVal}%)` : `Parity Status: ${isParityValid ? "Valid" : "Check Needed"}`}
+                ${parityTitle}
               </span>
-              <span style="font-size: 0.7rem; color: var(--unraid-subtext);">
-                ${lastCheckDate?.state ? `Last check: ${lastCheckDate.state}` : "Parity healthy"}
-                ${lastCheckErrors?.state && lastCheckErrors.state !== "0" ? ` • ${lastCheckErrors.state} errors` : ""}
-              </span>
+              ${showHistoryLine
+                ? html`
+                    <span style="font-size: 0.7rem; color: var(--unraid-subtext);">
+                      ${historyText}${errorsText}
+                    </span>
+                  `
+                : nothing}
             </div>
           </div>
           <div class="row-right">

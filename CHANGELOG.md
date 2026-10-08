@@ -7,6 +7,15 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Duplicate Entity Unique IDs Across Storage Inventories** ([#327](https://github.com/ruaan-deysel/ha-unraid/issues/327)): Fixed `Platform not ready yet: duplicate entity unique ID` errors when a drive (such as a partitioned SSD used for both boot and pool/cache, or disks reported in multiple inventory lists) appears across `disks`, `parities`, `caches`, or `boot`. Disks are now deduplicated by ID preserving first-precedence inventory order, ensuring unique entity registration across disk usage, temperature, error count, disk health binary sensors, disk spin switches, and disk spin-down buttons.
+- **Parity Status and Activity Accuracy in Storage Card** ([#328](https://github.com/ruaan-deysel/ha-unraid/issues/328)): Fixed inverted parity status and incorrect active check states in `unraid-storage-card`:
+  - Corrected polarity evaluation for `binary_sensor.*_parity_valid` (`Problem` device class: `off` indicates valid/healthy, `on` indicates a problem/check needed).
+  - Decoupled active check detection from progress percentage so finished checks at 100% no longer remain stuck as "In Progress", and checks starting at 0% correctly show "In Progress".
+  - Correctly reflect running, paused, and idle states for parity checks and parity switches.
+  - Guarded against missing, disabled, or unavailable `sensor.*_last_parity_check` entities to avoid displaying invalid or unparsed date strings.
+
 ## [2026.10.1] - 2026-10-02
 
 ### Added

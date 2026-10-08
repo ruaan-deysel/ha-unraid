@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +19,8 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from unraid_api.models import ArrayDisk
+
     from .coordinator import (
         UnraidInfraCoordinator,
         UnraidInfraData,
@@ -239,3 +241,38 @@ def async_add_dynamic_resource_entities[ResourceT](
 
     _sync_entities()
     return coordinator.async_add_listener(_sync_entities)
+
+
+def deduplicate_disks(
+    *disk_sources: Iterable[ArrayDisk | None] | ArrayDisk | None,
+) -> list[ArrayDisk]:
+    """
+    Deduplicate disks by their unique ID, preserving first-occurrence order.
+
+    Accepts multiple disk collections or individual disk objects (such as
+    data.boot). Filters out None values, disks with missing or non-string IDs,
+    and subsequent occurrences of any already-seen disk ID.
+    """
+    seen_ids: set[str] = set()
+    unique_disks: list[ArrayDisk] = []
+
+    for source in disk_sources:
+        if source is None:
+            continue
+        items: Iterable[Any]
+        if isinstance(source, (list, tuple, set)):
+            items = source
+        else:
+            items = [source]
+        for disk in items:
+            if disk is None:
+                continue
+            disk_id = getattr(disk, "id", None)
+            if not isinstance(disk_id, str) or not disk_id:
+                continue
+            if disk_id in seen_ids:
+                continue
+            seen_ids.add(disk_id)
+            unique_disks.append(disk)
+
+    return unique_disks

@@ -25,6 +25,7 @@ from .entity import (
     UnraidBaseEntity,
     UnraidCoordinator,
     async_add_dynamic_resource_entities,
+    deduplicate_disks,
 )
 
 if TYPE_CHECKING:
@@ -808,10 +809,10 @@ async def async_setup_entry(
 
     # Disk spin switches (replaces spin up/down buttons, one per disk)
     if storage_coordinator.data:
-        all_disks = (
-            storage_coordinator.data.disks
-            + storage_coordinator.data.parities
-            + storage_coordinator.data.caches
+        all_disks = deduplicate_disks(
+            storage_coordinator.data.disks,
+            storage_coordinator.data.parities,
+            storage_coordinator.data.caches,
         )
         for disk in all_disks:
             entities.append(

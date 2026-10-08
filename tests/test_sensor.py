@@ -7937,3 +7937,198 @@ def test_create_disk_sensors_with_boot_device_no_temp_or_errors() -> None:
         s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"
     )
     assert error_sensor.native_value is None
+
+
+def test_create_disk_sensors_duplicate_cache_and_boot() -> None:
+    """Test duplicate disk ID across cache/boot creates only one entity."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    shared_disk = ArrayDisk(
+        id="samsung_evo_1",
+        name="Cache Drive",
+        type="CACHE",
+        device="nvme0n1",
+        fsSize=1000000,
+        fsUsed=500000,
+        fsFree=500000,
+        temp=35,
+        numErrors=0,
+    )
+    boot_disk = ArrayDisk(
+        id="samsung_evo_1",
+        name="Boot Partition",
+        type="FLASH",
+        device="nvme0n1p1",
+        fsSize=1000000,
+        fsUsed=500000,
+        fsFree=500000,
+        temp=36,
+        numErrors=0,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(
+            state="STARTED",
+            caches=[shared_disk],
+            boot=boot_disk,
+        )
+    )
+
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    usage_sensors = [s for s in sensors if type(s).__name__ == "DiskUsageSensor"]
+    temp_sensors = [s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"]
+    error_sensors = [s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"]
+
+    assert len(usage_sensors) == 1
+    assert len(temp_sensors) == 1
+    assert len(error_sensors) == 1
+
+    # Verify distinct unique IDs
+    unique_ids = [s.unique_id for s in sensors]
+    assert len(unique_ids) == len(set(unique_ids))
+    assert "uuid_disk_samsung_evo_1_usage" in unique_ids
+    assert "uuid_disk_samsung_evo_1_temp" in unique_ids
+    assert "uuid_disk_samsung_evo_1_errors" in unique_ids
+
+    # Entity name comes from first-precedence occurrence (cache)
+    assert usage_sensors[0]._disk_name == "Cache Drive"
+
+
+def test_create_disk_sensors_duplicate_data_and_cache() -> None:
+    """Test duplicate disk ID across data/cache creates only one entity."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    data_disk = ArrayDisk(
+        id="disk_shared",
+        name="Disk 1",
+        type="DATA",
+        temp=30,
+        numErrors=0,
+        fsSize=1000,
+        fsFree=500,
+    )
+    cache_disk = ArrayDisk(
+        id="disk_shared",
+        name="Cache 1",
+        type="CACHE",
+        temp=31,
+        numErrors=0,
+        fsSize=1000,
+        fsFree=500,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(
+            state="STARTED",
+            disks=[data_disk],
+            caches=[cache_disk],
+        )
+    )
+
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    assert len([s for s in sensors if type(s).__name__ == "DiskUsageSensor"]) == 1
+    assert len([s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"]) == 1
+    assert len([s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"]) == 1
+
+    # First occurrence was data disk
+    usage_sensor = next(s for s in sensors if type(s).__name__ == "DiskUsageSensor")
+    assert usage_sensor._disk_name == "Disk 1"
+
+
+def test_create_disk_sensors_duplicate_parity_and_cache() -> None:
+    """Test duplicate disk ID across parity/cache creates usage sensor from cache."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    parity_disk = ArrayDisk(
+        id="shared_parity",
+        name="Parity",
+        type="PARITY",
+        temp=32,
+        numErrors=0,
+    )
+    cache_disk = ArrayDisk(
+        id="shared_parity",
+        name="Cache",
+        type="CACHE",
+        temp=33,
+        numErrors=0,
+        fsSize=2000,
+        fsFree=1000,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(
+            state="STARTED",
+            parities=[parity_disk],
+            caches=[cache_disk],
+        )
+    )
+
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    usage_sensors = [s for s in sensors if type(s).__name__ == "DiskUsageSensor"]
+    temp_sensors = [s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"]
+    error_sensors = [s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"]
+
+    # Usage sensor comes from cache (parity has no usage sensor)
+    assert len(usage_sensors) == 1
+    assert len(temp_sensors) == 1
+    assert len(error_sensors) == 1
+    # First occurrence for temp/errors is parity
+    assert temp_sensors[0]._disk_name == "Parity"
+
+
+def test_create_disk_sensors_parity_only_no_usage() -> None:
+    """Test parity-only disk does not create a DiskUsageSensor."""
+    from unittest.mock import MagicMock
+
+    from unraid_api import ArrayDisk, UnraidArray
+
+    from custom_components.unraid.coordinator import (
+        UnraidStorageCoordinator,
+        UnraidStorageData,
+    )
+    from custom_components.unraid.sensor import _create_disk_sensors
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    parity_disk = ArrayDisk(
+        id="parity_only",
+        name="Parity",
+        type="PARITY",
+        temp=32,
+        numErrors=0,
+    )
+    coordinator.data = UnraidStorageData(
+        array=UnraidArray(
+            state="STARTED",
+            parities=[parity_disk],
+        )
+    )
+
+    sensors = _create_disk_sensors(coordinator, "uuid", "tower")
+    assert len([s for s in sensors if type(s).__name__ == "DiskUsageSensor"]) == 0
+    assert len([s for s in sensors if type(s).__name__ == "DiskTemperatureSensor"]) == 1
+    assert len([s for s in sensors if type(s).__name__ == "DiskErrorCountSensor"]) == 1

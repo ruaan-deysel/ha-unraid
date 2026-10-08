@@ -2301,3 +2301,48 @@ def test_plugin_installing_binary_sensor_idle() -> None:
     coordinator.data = None
     assert sensor.is_on is None
     assert sensor.extra_state_attributes == {}
+
+
+@pytest.mark.asyncio
+async def test_setup_creates_disk_health_deduplicated(hass):
+    """Test duplicate disk IDs create only one DiskHealthBinarySensor."""
+    from custom_components.unraid.binary_sensor import (
+        DiskHealthBinarySensor,
+        async_setup_entry,
+    )
+
+    shared_disk = make_disk(id="disk_shared", name="Cache Disk")
+    boot_disk = make_disk(id="disk_shared", name="Boot Flash")
+
+    storage_coordinator = MagicMock()
+    storage_coordinator.data = make_storage_data(
+        array_state="STARTED",
+        caches=[shared_disk],
+        boot=boot_disk,
+    )
+
+    system_coordinator = MagicMock()
+    system_coordinator.data = None
+
+    infra_coordinator = MagicMock()
+    infra_coordinator.data = None
+
+    mock_entry = MagicMock()
+    mock_entry.data = {"host": "192.168.1.100"}
+    mock_entry.runtime_data.server_info = {"uuid": "test-uuid-123"}
+    mock_entry.runtime_data.storage_coordinator = storage_coordinator
+    mock_entry.runtime_data.system_coordinator = system_coordinator
+    mock_entry.runtime_data.infra_coordinator = infra_coordinator
+
+    added_entities: list = []
+
+    def mock_add_entities(entities) -> None:
+        added_entities.extend(entities)
+
+    await async_setup_entry(hass, mock_entry, mock_add_entities)
+
+    health_sensors = [
+        e for e in added_entities if isinstance(e, DiskHealthBinarySensor)
+    ]
+    assert len(health_sensors) == 1
+    assert health_sensors[0].unique_id == "test-uuid-123_disk_health_disk_shared"

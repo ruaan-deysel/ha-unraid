@@ -485,3 +485,34 @@ def test_dynamic_entities_unsubscribe() -> None:
     assert len(listeners) == 1
     remove()
     assert listeners == []
+
+
+def test_deduplicate_disks() -> None:
+    """Test deduplicate_disks preserves first occurrence and deduplicates."""
+    from unraid_api.models import ArrayDisk
+
+    from custom_components.unraid.entity import deduplicate_disks
+
+    d1 = ArrayDisk(id="disk1", name="Disk 1")
+    d2 = ArrayDisk(id="disk2", name="Disk 2")
+    d1_dup = ArrayDisk(id="disk1", name="Duplicate Disk 1")
+    d3 = ArrayDisk(id="disk3", name="Disk 3")
+
+    # Repeated across collections
+    result = deduplicate_disks([d1, d2], [d1_dup, d3])
+    assert result == [d1, d2, d3]
+    assert result[0].name == "Disk 1"
+
+    # Repeated within single collection
+    result2 = deduplicate_disks([d1, d1_dup, d2])
+    assert result2 == [d1, d2]
+
+    # Individual disk argument (e.g. data.boot), None sources and None elements
+    boot = ArrayDisk(id="boot_disk", name="Flash")
+    result3 = deduplicate_disks([d1], None, boot, [None, d1_dup])
+    assert result3 == [d1, boot]
+
+    # Disks with empty or invalid id
+    d_empty = ArrayDisk(id="", name="Empty")
+    result4 = deduplicate_disks([d1, d_empty, None])
+    assert result4 == [d1]
