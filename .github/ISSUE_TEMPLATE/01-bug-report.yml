@@ -7,16 +7,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug. Use this form to describe a reproducible defect or regression. If you have setup questions or need general troubleshooting help, use GitHub Discussions instead. Once submitted, contributors or CodeRabbit AI (@coderabbitai plan) can generate an implementation plan to resolve this issue.
+        Thanks for reporting a bug. Use this form to describe a reproducible defect or regression. Once submitted, contributors or CodeRabbit AI (@coderabbitai plan) can generate an implementation plan to resolve this issue.
   - type: dropdown
     id: affected-area
     attributes:
       label: Affected area
       description: Which part of the project is affected most directly?
       options:
-        - Coordinator and data refresh
+        - Coordinator and data updates
         - Entity platforms (sensors, binary sensors, switches, buttons, etc.)
-        - Config flow and options
+        - Config flow and options flow
         - Upstream API client and authentication
         - Diagnostics and repairs
         - Services and actions
@@ -43,9 +43,9 @@ body:
   - type: input
     id: environment-version
     attributes:
-      label: Device or upstream environment details
-      description: Device firmware version, Unraid version, or upstream API version (if applicable).
-      placeholder: "e.g. Unraid 7.2.0, Firmware 2.1.0"
+      label: Environment details
+      description: Device firmware version, hardware model, or upstream system details (if applicable).
+      placeholder: "e.g. Firmware 2.1.0, Hardware Model X"
     validations:
       required: false
   - type: textarea
@@ -96,7 +96,7 @@ body:
     attributes:
       label: Pre-submission confirmations
       options:
-        - label: I searched existing open and closed issues and discussions before opening this bug report.
+        - label: I searched existing open and closed issues before opening this bug report.
           required: true
         - label: I confirm this issue targets ha-unraid, not upstream Home Assistant core or third-party hardware.
           required: true

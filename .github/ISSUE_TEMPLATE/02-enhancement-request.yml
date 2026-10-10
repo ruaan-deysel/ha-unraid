@@ -14,9 +14,9 @@ body:
       label: Affected area
       description: Which part of the project would this improve most directly?
       options:
-        - Coordinator and data refresh
+        - Coordinator and data updates
         - Entity platforms (sensors, binary sensors, switches, buttons, etc.)
-        - Config flow and options
+        - Config flow and options flow
         - Upstream API client and authentication
         - Diagnostics and repairs
         - Services and actions
@@ -72,7 +72,7 @@ body:
     attributes:
       label: Pre-submission confirmations
       options:
-        - label: I searched existing open and closed issues and discussions before opening this request.
+        - label: I searched existing open and closed issues before opening this request.
           required: true
         - label: I confirm this request targets ha-unraid, not upstream Home Assistant core.
           required: true
