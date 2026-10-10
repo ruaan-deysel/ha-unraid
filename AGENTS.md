@@ -1,9 +1,26 @@
 # AI Agent Instructions — ha-unraid
 
+## Mandatory Development Workflow for AI Agents
+
+All AI coding assistants (Claude Code, Gemini, GitHub Copilot, Cursor, Roo, Devin, etc.) MUST strictly adhere to the following workflow when working on this repository:
+
+1. Issue-First Requirement: Never start writing code or creating pull requests without an existing GitHub Issue.
+2. Issue Template: Issues must be created using the official Issue Forms (`01-bug-report.yml` for bugs or `02-enhancement-request.yml` for enhancements).
+3. CodeRabbit AI Plan: Every issue must have a generated Coding Plan from CodeRabbit AI (`@coderabbitai plan`). AI agents must read and implement strictly according to the approved plan.
+4. Branch Discipline: Always create and work on a dedicated branch (`feat/<issue-id>-<description>` or `fix/<issue-id>-<description>`). NEVER commit directly to `main`.
+5. Documentation & Changelog: Update `CHANGELOG.md` under `## [Unreleased]` for any user-facing or architectural changes.
+6. Local Verification: Run all test, lint, format, and typecheck commands locally before committing. All tests must pass with zero errors and zero warnings.
+7. PR Template Completion: Always use `.github/PULL_REQUEST_TEMPLATE.md`. Complete all fields, link the issue using `Fixes #<id>` or `Closes #<id>`, and check all Pre-Submission Governance boxes with real terminal output.
+8. Draft PR First: ALWAYS open pull requests as DRAFT (`gh pr create --draft`).
+9. CI Verification: Wait for CI workflows to run on the draft PR and verify that all status checks pass.
+10. Ready for Review: Only mark the PR as ready for review (`gh pr ready`) once all checks pass and all due diligence is verified.
+11. Review Clearance: Review and resolve all CodeRabbit AI and GitHub Copilot comments. Ensure Codecov reports show zero errors, zero warnings, and no coverage drop.
+
+
 > **Single source of truth** for all AI agents working on this codebase.
 > Agent-specific wrappers (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`) reference this file.
 
-## ⚠️ Critical Rule: Never Bypass `unraid-api`
+## ️ Critical Rule: Never Bypass `unraid-api`
 
 **This applies to every AI coding agent (Claude Code, Codex, Copilot, Gemini, etc.).**
 
