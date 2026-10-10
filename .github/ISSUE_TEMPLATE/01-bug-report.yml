@@ -1,0 +1,106 @@
+name: Bug report
+description: Report a reproducible bug, defect, or regression.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Use this form to describe a reproducible defect or regression. If you have setup questions or need general troubleshooting help, use GitHub Discussions instead. Once submitted, contributors or CodeRabbit AI (@coderabbitai plan) can generate an implementation plan to resolve this issue.
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Which part of the project is affected most directly?
+      options:
+        - Coordinator and data refresh
+        - Entity platforms (sensors, binary sensors, switches, buttons, etc.)
+        - Config flow and options
+        - Upstream API client and authentication
+        - Diagnostics and repairs
+        - Services and actions
+        - Documentation
+        - CI and repository automation
+    validations:
+      required: true
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration version
+      description: What integration version are you running?
+      placeholder: "2026.10.0"
+    validations:
+      required: true
+  - type: input
+    id: home-assistant-version
+    attributes:
+      label: Home Assistant version
+      description: What Home Assistant core version are you running?
+      placeholder: "2026.10.0"
+    validations:
+      required: true
+  - type: input
+    id: environment-version
+    attributes:
+      label: Device or upstream environment details
+      description: Device firmware version, Unraid version, or upstream API version (if applicable).
+      placeholder: "e.g. Unraid 7.2.0, Firmware 2.1.0"
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug, including what actually happened versus what you expected to happen.
+      placeholder: Detail the failure mode, unexpected outcome, and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal, repeatable sequence of steps to reproduce the issue.
+      placeholder: |
+        1. Go to ...
+        2. Trigger ...
+        3. Observe error ...
+    validations:
+      required: true
+  - type: textarea
+    id: relevant-logs
+    attributes:
+      label: Relevant log output and tracebacks
+      description: Paste relevant log excerpts, stack traces, or terminal output. Redact any sensitive credentials or tokens.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: root-cause-or-proposal
+    attributes:
+      label: Root cause analysis or proposed fix
+      description: If you or an AI agent diagnosed the issue, specify suspect files, functions, or a suggested fix to assist CodeRabbit in planning.
+      placeholder: Suspect files, functions, or potential code resolution (if known).
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots, diagnostics exports, related pull requests, or environment context.
+      placeholder: Any extra context to help reproduce and resolve.
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Pre-submission confirmations
+      options:
+        - label: I searched existing open and closed issues and discussions before opening this bug report.
+          required: true
+        - label: I confirm this issue targets ha-unraid, not upstream Home Assistant core or third-party hardware.
+          required: true
+        - label: I confirmed that no sensitive credentials (passwords, auth tokens, private keys) are included in this report.
+          required: true
+        - label: I read and agree to follow repository contribution rules and guidelines.
+          required: true
