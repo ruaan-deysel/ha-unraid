@@ -1,0 +1,300 @@
+name: PR Governance
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+# Cancel superseded runs when a contributor pushes or edits a PR repeatedly,
+# so rapid back-to-back updates do not pile up and consume CI runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-template-and-issues:
+    name: Validate PR Template, Linked Issues & HA Standards
+    runs-on: ubuntu-latest
+    if: "!endsWith(github.actor, '[bot]') && github.actor != 'dependabot[bot]'"
+
+    steps:
+      - name: Enforce PR template completion, issue linking, and HA standards
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || "";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const errors = [];
+
+            if (context.payload.pull_request.draft) {
+              core.info("Skipping PR governance checks on draft PR.");
+              return;
+            }
+
+            function escapeRegExp(value) {
+              return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+
+            function stripHtmlComments(text) {
+              return (text || "").replace(/<!--[\s\S]*?-->/g, "").trim();
+            }
+
+            function getSection(sectionTitle) {
+              const pattern = new RegExp(
+                `##\\s*${escapeRegExp(sectionTitle)}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##\\s|$)`,
+                "i",
+              );
+              const match = body.match(pattern);
+              return match ? match[1].trim() : "";
+            }
+
+            function getCheckedItems(sectionText) {
+              return [...sectionText.matchAll(/^\s*-\s*\[[xX]\]\s+(.+)$/gim)].map((m) => m[1].trim());
+            }
+
+            function getUncheckedItems(sectionText) {
+              return [...sectionText.matchAll(/^\s*-\s*\[\s*\]\s+(.+)$/gim)].map((m) => m[1].trim());
+            }
+
+            const requiredSections = [
+              "Description",
+              "Type of Change",
+              "Pre-Submission Governance",
+              "Related Issues",
+              "Critical Rule: Never Bypass unraid-api",
+              "Changes Made",
+              "Home Assistant Quality Scale & Standards",
+              "Testing Performed",
+              "Documentation",
+              "Checklist",
+            ];
+
+            const sections = Object.fromEntries(requiredSections.map((title) => [title, getSection(title)]));
+
+            for (const title of requiredSections) {
+              const raw = sections[title];
+              const cleaned = stripHtmlComments(raw);
+              if (!raw || !cleaned) {
+                errors.push(`Missing or empty required section: "${title}".`);
+              }
+            }
+
+            if (sections["Type of Change"] && getCheckedItems(sections["Type of Change"]).length === 0) {
+              errors.push('At least one item must be checked in "Type of Change".');
+            }
+
+            if (sections["Pre-Submission Governance"]) {
+              const governanceUnchecked = getUncheckedItems(sections["Pre-Submission Governance"]);
+              if (governanceUnchecked.length > 0) {
+                errors.push(
+                  `All items in "Pre-Submission Governance" must be checked to confirm the change was tested locally and is not spam. Unchecked: ${governanceUnchecked.join("; ")}.`,
+                );
+              }
+              if (getCheckedItems(sections["Pre-Submission Governance"]).length === 0) {
+                errors.push('"Pre-Submission Governance" must contain the required confirmation checkboxes.');
+              }
+            }
+
+            if (sections["Critical Rule: Never Bypass unraid-api"]) {
+              const unraidUnchecked = getUncheckedItems(sections["Critical Rule: Never Bypass unraid-api"]);
+              if (unraidUnchecked.length > 0) {
+                errors.push(
+                  `All items in "Critical Rule: Never Bypass unraid-api" must be checked. Unchecked: ${unraidUnchecked.join("; ")}.`,
+                );
+              }
+              if (getCheckedItems(sections["Critical Rule: Never Bypass unraid-api"]).length === 0) {
+                errors.push('"Critical Rule: Never Bypass unraid-api" must contain the required confirmation checkboxes.');
+              }
+            }
+
+            if (sections["Home Assistant Quality Scale & Standards"] && getCheckedItems(sections["Home Assistant Quality Scale & Standards"]).length === 0) {
+              errors.push('At least one item must be checked in "Home Assistant Quality Scale & Standards".');
+            }
+
+            if (sections["Testing Performed"] && getCheckedItems(sections["Testing Performed"]).length === 0) {
+              errors.push('At least one item must be checked in "Testing Performed".');
+            }
+
+            if (sections["Documentation"] && getCheckedItems(sections["Documentation"]).length === 0) {
+              errors.push('At least one item must be checked in "Documentation".');
+            }
+
+            if (sections["Checklist"]) {
+              const unchecked = getUncheckedItems(sections["Checklist"]);
+              const strictlyRequiredUnchecked = unchecked.filter(
+                (item) => !/\(if applicable\)|\(if needed\)/i.test(item),
+              );
+              if (strictlyRequiredUnchecked.length > 0) {
+                errors.push(
+                  `All required items in "Checklist" must be checked. Unchecked: ${strictlyRequiredUnchecked.join("; ")}.`,
+                );
+              }
+            }
+
+            if (sections["Changes Made"]) {
+              const cleaned = stripHtmlComments(sections["Changes Made"]);
+              const lines = cleaned
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line.length > 0 && line !== "-");
+
+              if (lines.length === 0) {
+                errors.push('"Changes Made" must include at least one described change.');
+              }
+            }
+
+            let changedFiles = [];
+            let page = 1;
+            while (true) {
+              try {
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner,
+                  repo,
+                  pull_number: context.payload.pull_request.number,
+                  per_page: 100,
+                  page,
+                });
+                changedFiles.push(...files);
+                if (files.length < 100) break;
+                page++;
+              } catch (err) {
+                core.warning(`Could not fetch PR files: ${err.message}`);
+                break;
+              }
+            }
+
+            const changelogModified = changedFiles.some((f) => f.filename === "CHANGELOG.md");
+            if (changedFiles.length > 0 && !changelogModified) {
+              errors.push(
+                "CHANGELOG.md must be updated under [Unreleased] with details of the changes in this PR.",
+              );
+            }
+
+            const deprecatedPatternChecks = [
+              {
+                pattern: /\bhass\.data\[DOMAIN\]/,
+                message: "Prohibited pattern: 'hass.data[DOMAIN]'. Use entry.runtime_data on the integration config entry.",
+              },
+              {
+                pattern: /\bdef\s+unit_of_measurement\s*\(/,
+                message: "Deprecated property: 'unit_of_measurement'. Use 'native_unit_of_measurement' and 'native_value'.",
+              },
+              {
+                pattern: /\baiohttp\.ClientSession\s*\(/,
+                message: "Anti-pattern: Direct 'aiohttp.ClientSession()' instantiation. Use 'async_get_clientsession(hass)' instead.",
+              },
+            ];
+
+            const customComponentFiles = changedFiles.filter(
+              (f) => f.filename.startsWith("custom_components/unraid/") && f.filename.endsWith(".py")
+            );
+
+            for (const file of customComponentFiles) {
+              if (!file.patch) continue;
+              const addedLines = file.patch
+                .split("\n")
+                .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+                .join("\n");
+
+              for (const check of deprecatedPatternChecks) {
+                if (check.pattern.test(addedLines)) {
+                  errors.push(`In ${file.filename}: ${check.message}`);
+                }
+              }
+            }
+
+            const relatedIssuesRaw = sections["Related Issues"] || "";
+            if (/#\(issue number\)/i.test(relatedIssuesRaw)) {
+              errors.push(
+                'Replace the "#(issue number)" placeholder in "Related Issues" with an issue reference or "None".',
+              );
+            }
+
+            const relatedIssuesClean = stripHtmlComments(relatedIssuesRaw);
+            const isExplicitNone =
+              /^(?:none|n\/a|not applicable|no issue|standalone)\b/i.test(relatedIssuesClean);
+
+            if (!isExplicitNone && relatedIssuesClean) {
+              const issueRefRegex =
+                /\b(?:part of|fix(?:e[sd])?|close[sd]?|resolve[sd]?|related to|addresses?|implements?)[:]??\s+(?:https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/(\d+)|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+))/gi;
+
+              const issueMatches = [...relatedIssuesClean.matchAll(issueRefRegex)];
+
+              if (issueMatches.length === 0) {
+                errors.push(
+                  "Add at least one linked issue in \"Related Issues\" using Fixes/Closes/Resolves/Related to/Part of #<number> (or issue URL), or state \"None\" if this change is self-contained.",
+                );
+              } else {
+                const repoSlug = `${owner}/${repo}`.toLowerCase();
+                let hasValidReference = false;
+
+                for (const match of issueMatches) {
+                  let refOwner = owner;
+                  let refRepo = repo;
+                  let issueNumber;
+
+                  if (match[1] && match[2] && match[3]) {
+                    refOwner = match[1];
+                    refRepo = match[2];
+                    issueNumber = Number.parseInt(match[3], 10);
+                  } else if (match[4] && match[5]) {
+                    const parts = match[4].split('/');
+                    refOwner = parts[0];
+                    refRepo = parts[1];
+                    issueNumber = Number.parseInt(match[5], 10);
+                  } else if (match[5]) {
+                    issueNumber = Number.parseInt(match[5], 10);
+                  }
+
+                  const targetSlug = `${refOwner}/${refRepo}`.toLowerCase();
+                  if (targetSlug !== repoSlug) {
+                    core.info(`Referenced external issue: ${targetSlug}#${issueNumber}`);
+                    hasValidReference = true;
+                    continue;
+                  }
+
+                  if (!Number.isNaN(issueNumber)) {
+                    try {
+                      const { data } = await github.rest.issues.get({
+                        owner: refOwner,
+                        repo: refRepo,
+                        issue_number: issueNumber,
+                      });
+
+                      if (!data.pull_request) {
+                        hasValidReference = true;
+                        break;
+                      }
+                    } catch (error) {
+                      core.info(`Skipping issue verification for #${issueNumber}: ${error.message}`);
+                      hasValidReference = true;
+                    }
+                  }
+                }
+
+                if (!hasValidReference) {
+                  errors.push(
+                    `Could not verify an existing linked issue in ${repoSlug} in \"Related Issues\". If no issue exists, specify \"None\".`,
+                  );
+                }
+              }
+            } else if (!isExplicitNone && !relatedIssuesClean) {
+              errors.push('Section "Related Issues" must reference an issue or state "None".');
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(`PR governance checks failed:\n- ${errors.join("\n- ")}`);
+              return;
+            }
+
+            core.info("PR governance checks passed.");
