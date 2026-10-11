@@ -47,7 +47,7 @@ Fixes #
 
 - [ ] This PR does not bypass `unraid-api`: no direct GraphQL, HTTP/REST, WebSocket, SSH, or raw socket calls to the Unraid server have been added
 - [ ] All communication with the Unraid server strictly uses `UnraidClient` from `unraid-api`
-- [ ] If functionality needed for this PR is missing or incomplete in `unraid-api`, an issue has been filed at https://github.com/ruaan-deysel/unraid-api and this PR waits for the library to ship it
+- [ ] If functionality needed for this PR is missing or incomplete in `unraid-api`, an issue has been filed at https://github.com/tinkerologie/unraid-api and this PR waits for the library to ship it
 
 ## Changes Made
 

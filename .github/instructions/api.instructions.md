@@ -29,7 +29,7 @@ faster.
 If a fix needs something `unraid-api` does not expose (missing field/query/
 mutation/subscription, or a library bug): **STOP — do not work around it here.**
 Open an issue on the library and direct the user there:
-**https://github.com/ruaan-deysel/unraid-api**. Consume the new capability via
+**https://github.com/tinkerologie/unraid-api**. Consume the new capability via
 `UnraidClient` once the library ships it. See `AGENTS.md` → "Critical Rule:
 Never Bypass `unraid-api`".
 

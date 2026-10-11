@@ -8,7 +8,7 @@ to the Unraid server, bypassing the unraid-api library (UnraidClient).
 Any AI agent (Claude Code, Codex, Copilot, Gemini, etc.) that introduces code
 matching these patterns is violating the project's core architectural rule.
 If the needed functionality is not available in unraid-api, open an issue at
-https://github.com/ruaan-deysel/unraid-api — do NOT add a workaround here.
+https://github.com/tinkerologie/unraid-api — do NOT add a workaround here.
 
 Exit 0 = clean, Exit 1 = violations found.
 """
@@ -105,7 +105,7 @@ def main() -> int:
         "✗ API boundary violations detected!\n"
         "  All communication with the Unraid server MUST go through UnraidClient\n"
         "  (unraid-api library). If the needed feature is missing from unraid-api,\n"
-        "  open an issue at https://github.com/ruaan-deysel/unraid-api — do NOT\n"
+        "  open an issue at https://github.com/tinkerologie/unraid-api — do NOT\n"
         "  add a workaround in this repository.\n",
         file=sys.stderr,
     )

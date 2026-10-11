@@ -25,7 +25,7 @@ All AI coding assistants (Claude Code, Gemini, GitHub Copilot, Cursor, Roo, Devi
 **This applies to every AI coding agent (Claude Code, Codex, Copilot, Gemini, etc.).**
 
 All communication with the Unraid server **must** go through the
-[`unraid-api`](https://github.com/ruaan-deysel/unraid-api) library. This is a
+[`unraid-api`](https://github.com/tinkerologie/unraid-api) library. This is a
 hard requirement, not a preference — it keeps the integration compliant with
 Home Assistant best practice (a single, typed, tested API client owns all I/O).
 
@@ -43,7 +43,7 @@ not implement a workaround in this repository. Instead:
 
 1. Explain to the user that the change belongs in the `unraid-api` library.
 2. Open (or direct the user to open) an issue on the library repo:
-   **https://github.com/ruaan-deysel/unraid-api**
+   **https://github.com/tinkerologie/unraid-api**
 3. Once the library ships the capability, consume it here through `UnraidClient`.
 
 The only sanctioned data flow is:
@@ -291,7 +291,7 @@ pytest --no-cov                  # Skip coverage for speed
 
 ### Never Do
 
-- **Bypass `unraid-api`** — no direct GraphQL/HTTP/WebSocket/SSH/raw-socket I/O to the Unraid server; no re-implementing, monkey-patching, vendoring, or working around `UnraidClient`. CI (`check-api-boundary.yml`) blocks this automatically. If the library is missing a capability, stop and open an issue at **https://github.com/ruaan-deysel/unraid-api**.
+- **Bypass `unraid-api`** — no direct GraphQL/HTTP/WebSocket/SSH/raw-socket I/O to the Unraid server; no re-implementing, monkey-patching, vendoring, or working around `UnraidClient`. CI (`check-api-boundary.yml`) blocks this automatically. If the library is missing a capability, stop and open an issue at **https://github.com/tinkerologie/unraid-api**.
 - Make polling intervals user-configurable (HA Core policy)
 - Skip `from __future__ import annotations`
 - Use bare `except:` — always catch specific exceptions

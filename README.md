@@ -1,13 +1,13 @@
 # Home Assistant Integration for Unraid®
 
 [![HACS Integration][hacsbadge]][hacs]
-[![GitHub Last Commit](https://img.shields.io/github/last-commit/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/commits/main)
-[![GitHub Release](https://img.shields.io/github/v/release/ruaan-deysel/ha-unraid?sort=semver)](https://github.com/ruaan-deysel/ha-unraid/releases)
-[![GitHub Issues](https://img.shields.io/github/issues/ruaan-deysel/ha-unraid)](https://github.com/ruaan-deysel/ha-unraid/issues)
+[![GitHub Last Commit](https://img.shields.io/github/last-commit/tinkerologie/ha-unraid)](https://github.com/tinkerologie/ha-unraid/commits/main)
+[![GitHub Release](https://img.shields.io/github/v/release/tinkerologie/ha-unraid?sort=semver)](https://github.com/tinkerologie/ha-unraid/releases)
+[![GitHub Issues](https://img.shields.io/github/issues/tinkerologie/ha-unraid)](https://github.com/tinkerologie/ha-unraid/issues)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/ruaan-deysel)](https://github.com/sponsors/ruaan-deysel)
 [![Community Forum](https://img.shields.io/badge/Community-Forum-blue)](https://community.home-assistant.io/t/unraid-integration)
-[![License](https://img.shields.io/github/license/ruaan-deysel/ha-unraid)](./LICENSE)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ruaan-deysel/ha-unraid)
+[![License](https://img.shields.io/github/license/tinkerologie/ha-unraid)](./LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tinkerologie/ha-unraid)
 
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
 [hacs]: https://github.com/hacs/integration
@@ -18,13 +18,13 @@ A Home Assistant custom integration for monitoring and controlling Unraid server
 >
 > **Important**: If you encounter issues, ensure you have the **latest version** of the Unraid GraphQL API installed via the Unraid Connect plugin. Many reported issues are resolved simply by updating to the latest API version.
 >
-> ⚠️ **Migration Notice**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with **2025.12.0**, this integration has been completely rebuilt to use Unraid's official GraphQL API. **There is no direct migration or upgrade path** from SSH to GraphQL - you will need to remove the old integration and set up fresh with a new API key. Users who prefer the SSH-based integration can continue using [release 2025.06.11](https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.06.11).
+> ⚠️ **Migration Notice**: Release **2025.06.11** is the **last stable SSH-based** version of this integration. Starting with **2025.12.0**, this integration has been completely rebuilt to use Unraid's official GraphQL API. **There is no direct migration or upgrade path** from SSH to GraphQL - you will need to remove the old integration and set up fresh with a new API key. Users who prefer the SSH-based integration can continue using [release 2025.06.11](https://github.com/tinkerologie/ha-unraid/releases/tag/v2025.06.11).
 
 ## Installation
 
 ### HACS (Recommended)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ruaan-deysel&repository=ha-unraid&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tinkerologie&repository=ha-unraid&category=integration)
 
 1. Click the button above or manually add the repository in HACS
 2. Search for **Unraid** and click **Download**
@@ -436,7 +436,7 @@ automation:
 ### Setup
 
 ```bash
-git clone https://github.com/ruaan-deysel/ha-unraid.git
+git clone https://github.com/tinkerologie/ha-unraid.git
 cd ha-unraid
 code .
 # Reopen in Dev Container when prompted

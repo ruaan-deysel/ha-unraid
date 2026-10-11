@@ -69,7 +69,7 @@ ignore = [
 ]
 
 # Banned imports — all Unraid server I/O must go through UnraidClient (unraid-api).
-# If the needed feature is missing, open an issue at https://github.com/ruaan-deysel/unraid-api
+# If the needed feature is missing, open an issue at https://github.com/tinkerologie/unraid-api
 [lint.flake8-tidy-imports.banned-api]
 "requests"              = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }
 "httpx"                 = { msg = "Use UnraidClient from unraid-api. See AGENTS.md." }

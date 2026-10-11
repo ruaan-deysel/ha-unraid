@@ -8,6 +8,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ## [Unreleased]
 
 ### Changed
+- Updated repository and documentation URLs to `tinkerologie` organization
 - Configured Codecov GitHub Actions workflow for tokenless coverage uploads
 
 ## [2026.10.2] - 2026-10-08
@@ -484,27 +485,29 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - HTTPS required for API communication
 - API key authentication via `x-api-key` header
 
-[Unreleased]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.9.2...HEAD
-[2026.9.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.9.1...v2026.9.2
-[2026.9.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.9.0...v2026.9.1
-[2026.9.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.8.1...v2026.9.0
-[2026.8.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.8.0...v2026.8.1
-[2026.8.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.3...v2026.8.0
-[2026.6.3]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.2...v2026.6.3
-[2026.6.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.1...v2026.6.2
-[2026.6.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.6.0...v2026.6.1
-[2026.6.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.5.0...v2026.6.0
-[2026.5.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.1...v2026.5.0
-[2026.4.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.4.0...v2026.4.1
-[2026.4.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.2...v2026.4.0
-[2026.3.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.1...v2026.3.2
-[2026.3.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.3.0...v2026.3.1
-[2026.3.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.3...v2026.3.0
-[2026.2.3]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.2...v2026.2.3
-[2026.2.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.1...v2026.2.2
-[2026.2.1]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.2.0...v2026.2.1
-[2026.2.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2026.01.0...v2026.2.0
-[2026.01.0]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.2...v2026.01.0
-[2025.12.2]: https://github.com/ruaan-deysel/ha-unraid/compare/v2025.12.1...v2025.12.2
-[2025.12.1]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.1
-[2025.12.0]: https://github.com/ruaan-deysel/ha-unraid/releases/tag/v2025.12.0
+[Unreleased]: https://github.com/tinkerologie/ha-unraid/compare/v2026.10.2...HEAD
+[2026.10.2]: https://github.com/tinkerologie/ha-unraid/compare/v2026.10.1...v2026.10.2
+[2026.10.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.9.2...v2026.10.1
+[2026.9.2]: https://github.com/tinkerologie/ha-unraid/compare/v2026.9.1...v2026.9.2
+[2026.9.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.9.0...v2026.9.1
+[2026.9.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.8.1...v2026.9.0
+[2026.8.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.8.0...v2026.8.1
+[2026.8.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.6.3...v2026.8.0
+[2026.6.3]: https://github.com/tinkerologie/ha-unraid/compare/v2026.6.2...v2026.6.3
+[2026.6.2]: https://github.com/tinkerologie/ha-unraid/compare/v2026.6.1...v2026.6.2
+[2026.6.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.6.0...v2026.6.1
+[2026.6.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.5.0...v2026.6.0
+[2026.5.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.4.1...v2026.5.0
+[2026.4.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.4.0...v2026.4.1
+[2026.4.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.3.2...v2026.4.0
+[2026.3.2]: https://github.com/tinkerologie/ha-unraid/compare/v2026.3.1...v2026.3.2
+[2026.3.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.3.0...v2026.3.1
+[2026.3.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.2.3...v2026.3.0
+[2026.2.3]: https://github.com/tinkerologie/ha-unraid/compare/v2026.2.2...v2026.2.3
+[2026.2.2]: https://github.com/tinkerologie/ha-unraid/compare/v2026.2.1...v2026.2.2
+[2026.2.1]: https://github.com/tinkerologie/ha-unraid/compare/v2026.2.0...v2026.2.1
+[2026.2.0]: https://github.com/tinkerologie/ha-unraid/compare/v2026.01.0...v2026.2.0
+[2026.01.0]: https://github.com/tinkerologie/ha-unraid/compare/v2025.12.2...v2026.01.0
+[2025.12.2]: https://github.com/tinkerologie/ha-unraid/compare/v2025.12.1...v2025.12.2
+[2025.12.1]: https://github.com/tinkerologie/ha-unraid/releases/tag/v2025.12.1
+[2025.12.0]: https://github.com/tinkerologie/ha-unraid/releases/tag/v2025.12.0

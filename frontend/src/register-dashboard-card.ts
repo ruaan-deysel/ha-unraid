@@ -34,7 +34,7 @@ export function registerDashboardCard(
       name: registration.name,
       description: registration.description,
       preview: true,
-      documentationURL: "https://github.com/ruaan-deysel/ha-unraid",
+      documentationURL: "https://github.com/tinkerologie/ha-unraid",
     });
   }
 }
