@@ -14,6 +14,12 @@ jobs:
   test:
     name: Backend tests & coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # OIDC is unavailable to fork and Dependabot PRs; those fall back to tokenless uploads.
+      CODECOV_OIDC: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) && github.actor != 'dependabot[bot]' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,7 +52,8 @@ jobs:
         with:
           slug: ${{ github.repository }}
           files: ./coverage.xml
-          fail_ci_if_error: false
+          use_oidc: ${{ env.CODECOV_OIDC == 'true' }}
+          fail_ci_if_error: ${{ env.CODECOV_OIDC == 'true' }}
 
   frontend:
     name: Frontend test & build
