@@ -256,7 +256,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ### Added
 
-- **Unraid Version Sensor**: Diagnostic sensor showing the Unraid OS version (e.g. "7.2.3") with API version and architecture in attributes ([#168](https://github.com/tinkerologie/ha-unraid/discussions/168))
+- **Unraid Version Sensor**: Diagnostic sensor showing the Unraid OS version (e.g. "7.2.3") with API version and architecture in attributes (discussion #168)
 - **System Health Binary Sensors**: 7 binary sensors for monitoring array and system health
   - Mover active: Indicates if the Unraid mover is currently running
   - Disks disabled: Problem sensor — ON if any disks are disabled (with count attribute)
