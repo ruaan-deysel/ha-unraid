@@ -3,7 +3,7 @@ name: Stale Issues And Pull Requests
 # Stale after 14 days without activity, closed 30 days after that.
 on:
   schedule:
-    - cron: "41 1 * * *"
+    - cron: '41 1 * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -11,6 +11,7 @@ permissions: {}
 jobs:
   stale:
     permissions:
-      issues: write
-      pull-requests: write
-    uses: tinkerologie/.github/.github/workflows/stale.yml@v1
+      actions: write # actions/stale saves its progress in the Actions cache between capped runs
+      issues: write # label, comment on, and close stale issues
+      pull-requests: write # label, comment on, and close stale pull requests
+    uses: tinkerologie/.github/.github/workflows/stale.yml@d656cb424398f328446d036df4724e3f89b5b5ec # v1.1.0

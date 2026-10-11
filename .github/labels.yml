@@ -127,3 +127,7 @@
 - name: conflicts
   color: "e99695"
   description: "Has merge conflicts with the default branch"
+
+- name: "security"
+  color: "b60205"
+  description: "Security issue; exempt from stale handling"
