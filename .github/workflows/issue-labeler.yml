@@ -1,0 +1,18 @@
+name: Issue Type Labeler
+
+# Labels issues that have neither `bug` nor `enhancement` so CodeRabbit can
+# generate a coding plan. See tinkerologie/.github GOVERNANCE.md.
+on:
+  issues:
+    types: [opened, edited, reopened]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  label:
+    permissions:
+      issues: write
+    uses: tinkerologie/.github/.github/workflows/issue-labeler.yml@v1

@@ -24,7 +24,11 @@ jobs:
   validate-template-and-issues:
     name: Validate PR Template, Linked Issues & HA Standards
     runs-on: ubuntu-latest
-    if: "!endsWith(github.actor, '[bot]') && github.actor != 'dependabot[bot]'"
+    # Exempt PRs *authored* by bots (Dependabot, Renovate). Do not key this on
+    # github.actor: CodeRabbit editing a PR description fires an `edited` event
+    # whose actor is a bot, and a skipped run would replace an earlier failure
+    # with a passing check.
+    if: "!endsWith(github.event.pull_request.user.login, '[bot]')"
 
     steps:
       - name: Enforce PR template completion, issue linking, and HA standards

@@ -119,3 +119,11 @@
 - name: "upstream"
   color: "bfdadc"
   description: "Issue in unraid-api library or Unraid server"
+
+- name: stale
+  color: "ededed"
+  description: "No recent activity; closes automatically unless updated"
+
+- name: conflicts
+  color: "e99695"
+  description: "Has merge conflicts with the default branch"

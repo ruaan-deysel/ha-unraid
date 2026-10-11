@@ -121,3 +121,27 @@ We follow Conventional Commits:
 - AI-assisted PRs require human verification and local testing before submission.
 - All template checkboxes must be confirmed.
 - PRs must remain in Draft until verified.
+
+## Issue and Pull Request Governance
+
+These rules apply to every contributor, including AI coding agents. The full org-wide rules are in
+[GOVERNANCE.md](https://github.com/tinkerologie/.github/blob/main/GOVERNANCE.md).
+
+1. **Issue first.** Open an issue with the bug or enhancement template and keep the title prefix
+   `[Bug]: ` or `[Enhancement]: `. Automation applies the `bug` or `enhancement` label from it, and
+   CodeRabbit then posts a Coding Plan on the issue. Implement from that plan.
+2. **Link the issue.** In the PR's **Related Issues** section write `Closes #<number>` (`Fixes`,
+   `Resolves`, `Part of`, and `Related to` also work), or `None` for a self-contained change.
+3. **One change at a time.** Contributors without write access can have at most 2 open pull
+   requests here (GitHub enforces this). Do not open PRs that edit the same files as another open
+   PR, such as `CHANGELOG.md`, translations, `README.md`, or generated bundles. Wait for the first to
+   merge, rebase, then continue.
+4. **Rebase before review.** Rebase on `main` before marking a PR ready for review.
+5. **Resolve conflicts first.** When a PR gets the `conflicts` label, rebase on `main`,
+   resolve the conflicts (keep every `CHANGELOG.md` entry under `[Unreleased]`), re-run the tests,
+   and force-push before doing any other work.
+6. **Coverage.** `codecov/patch` must pass: at least 90% of added or changed lines must be
+   covered by tests. Fix every uncovered line listed in the Codecov PR comment before requesting
+   review. Do not lower coverage targets or add coverage ignore rules to make it pass.
+7. **Stale items.** Issues and PRs with no activity for 14 days are labeled `stale` and closed
+   30 days later unless there is new activity.
