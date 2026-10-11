@@ -7,6 +7,9 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Changed
+- Configured Codecov GitHub Actions workflow for tokenless coverage uploads
+
 ## [2026.10.2] - 2026-10-08
 
 ### Fixed
