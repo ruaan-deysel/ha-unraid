@@ -1,0 +1,19 @@
+name: PR Labeler
+
+# Path labels from .github/labeler.yml, then exactly one type label (bug or enhancement).
+# The logic lives in the shared workflow; see STANDARDS.md in tinkerologie/.github.
+
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] -- no PR code is checked out or run
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions: {}
+
+jobs:
+  label:
+    name: Label
+    uses: tinkerologie/.github/.github/workflows/pr-labeler.yml@d0f9f9b745d716bd70ccd4e1f8580a1e3082b80e # v1.5.5
+    permissions:
+      contents: read # read the labeler configuration
+      issues: write # add and remove labels
+      pull-requests: write # add and remove labels

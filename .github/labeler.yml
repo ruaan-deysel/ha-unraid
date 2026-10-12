@@ -1,0 +1,20 @@
+# Path labels (actions/labeler), using the organization label set.
+# The bug/enhancement type label is applied by the shared PR labeler workflow, which
+# applies at most one type. See STANDARDS.md in tinkerologie/.github.
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+  # Any Markdown file except CHANGELOG.md, which every pull request updates.
+  - changed-files:
+      - all-globs-to-any-file:
+          - '**/*.md'
+          - '!CHANGELOG.md'
+
+# Lock files and pinned requirements change only when dependencies do.
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/uv.lock'
+          - '**/package-lock.json'
