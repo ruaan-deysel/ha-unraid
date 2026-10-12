@@ -362,13 +362,13 @@ jobs:
     # bot-authored PRs, drafts, superseded runs, and repositories without the
     # org-level bot credentials (private repositories on the Free plan).
     if: >-
-      always() &&
+      !cancelled() &&
       vars.TINKER_BOT_CLIENT_ID != '' &&
       needs.validate-template-and-issues.result != 'skipped' &&
       needs.validate-template-and-issues.result != 'cancelled' &&
       needs.validate-template-and-issues.outputs.skipped != 'draft'
     permissions: {}
-    uses: tinkerologie/.github/.github/workflows/governance-report.yml@331511150597376aa5dc7c3c8496a4c17a4c8b34 # v1.3.3
+    uses: tinkerologie/.github/.github/workflows/governance-report.yml@b2415ca577f4eca7d9897d6229357b7614f67348 # v1.4.1
     with:
       pr-number: ${{ github.event.pull_request.number }}
       result: ${{ needs.validate-template-and-issues.result }}
