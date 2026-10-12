@@ -1,7 +1,12 @@
 name: PR Governance
 
+# pull_request_target runs this workflow as defined on the default branch, so a
+# pull request cannot weaken its own governance check, and it can use the
+# Tinkerologie-Bot secret on PRs from forks. It is safe because no pull request
+# code is checked out or executed: the check only reads the PR description and
+# file list through the API.
 on:
-  pull_request:
+  pull_request_target:
     types:
       - opened
       - edited
@@ -24,6 +29,9 @@ jobs:
   validate-template-and-issues:
     name: Validate PR Template, Linked Issues & HA Standards
     runs-on: ubuntu-latest
+    outputs:
+      errors: ${{ steps.governance.outputs.errors }}
+      skipped: ${{ steps.governance.outputs.skipped }}
     # Exempt PRs *authored* by bots (Dependabot, Renovate). Do not key this on
     # github.actor: CodeRabbit editing a PR description fires an `edited` event
     # whose actor is a bot, and a skipped run would replace an earlier failure
@@ -31,7 +39,8 @@ jobs:
     if: "!endsWith(github.event.pull_request.user.login, '[bot]')"
 
     steps:
-      - name: Enforce PR template completion, issue linking, and HA standards
+      - id: governance
+        name: Enforce PR template completion, issue linking, and HA standards
         uses: actions/github-script@v9
         with:
           script: |
@@ -41,6 +50,7 @@ jobs:
             const errors = [];
 
             if (context.payload.pull_request.draft) {
+              core.setOutput("skipped", "draft");
               core.info("Skipping PR governance checks on draft PR.");
               return;
             }
@@ -337,9 +347,32 @@ jobs:
               errors.push('Section "Related Issues" must reference an issue (maintainers may state "None" for housekeeping).');
             }
 
+            core.setOutput("errors", JSON.stringify(errors));
             if (errors.length > 0) {
               core.setFailed(`PR governance checks failed:\n- ${errors.join("\n- ")}`);
               return;
             }
 
             core.info("PR governance checks passed.");
+
+  report:
+    name: Governance Report
+    needs: validate-template-and-issues
+    # Report failures (and later fixes) as a Tinkerologie-Bot comment. Skipped for
+    # bot-authored PRs, drafts, superseded runs, and repositories without the
+    # org-level bot credentials (private repositories on the Free plan).
+    if: >-
+      always() &&
+      vars.TINKER_BOT_CLIENT_ID != '' &&
+      needs.validate-template-and-issues.result != 'skipped' &&
+      needs.validate-template-and-issues.result != 'cancelled' &&
+      needs.validate-template-and-issues.outputs.skipped != 'draft'
+    permissions: {}
+    uses: tinkerologie/.github/.github/workflows/governance-report.yml@f661b857df3056ba8cf75c95923ccc0665118897 # v1.3.0
+    with:
+      pr-number: ${{ github.event.pull_request.number }}
+      result: ${{ needs.validate-template-and-issues.result }}
+      errors: ${{ needs.validate-template-and-issues.outputs.errors }}
+      client-id: ${{ vars.TINKER_BOT_CLIENT_ID }}
+    secrets:
+      private-key: ${{ secrets.TINKER_BOT_PRIVATE_KEY }}
