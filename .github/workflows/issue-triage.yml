@@ -6,10 +6,13 @@ on:
 
 permissions:
   contents: read # jobs request only what they need
+
 jobs:
   triage:
     name: Triage
     runs-on: ubuntu-latest
+    permissions:
+      issues: write # add and remove triage labels
     steps:
       - name: Auto-label and triage new issues
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
@@ -101,5 +104,3 @@ jobs:
               });
               core.info(`Applied labels: ${uniqueLabels.join(', ')}`);
             }
-    permissions:
-      contents: read
