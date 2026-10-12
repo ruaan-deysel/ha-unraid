@@ -307,7 +307,16 @@ jobs:
                         break;
                       }
                     } catch (error) {
-                      if ([403, 404, 410].includes(error.status)) {
+                      // GitHub also answers 403 for primary/secondary rate limits; treat those
+                      // like an outage instead of a missing issue.
+                      const headers = (error.response && error.response.headers) || {};
+                      const rateLimited =
+                        error.status === 429 ||
+                        (error.status === 403 &&
+                          (headers["x-ratelimit-remaining"] === "0" ||
+                            headers["retry-after"] !== undefined ||
+                            /rate limit/i.test(error.message)));
+                      if (!rateLimited && [403, 404, 410].includes(error.status)) {
                         core.warning(`Issue ${refOwner}/${refRepo}#${issueNumber} could not be found (HTTP ${error.status}).`);
                       } else {
                         // Server error, rate limit or network failure: do not block the PR on GitHub outages.
