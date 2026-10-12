@@ -1,53 +1,79 @@
+# Dependabot (tinkerologie standard: see STANDARDS.md in tinkerologie/.github)
 version: 2
 updates:
   # Maintain devcontainer base image
-  - package-ecosystem: "devcontainers"
-    directory: "/"
+  - package-ecosystem: devcontainers
+    directory: /
     schedule:
-      interval: "weekly"
-
-  # Maintain GitHub Actions versions
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      devcontainers-minor-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
     groups:
       github-actions:
-        patterns: ["*"]
+        patterns: ['*']
 
   # Maintain Python dependencies via uv (updates pyproject.toml + uv.lock)
   # Daily schedule ensures Home Assistant releases are picked up quickly
-  - package-ecosystem: "uv"
-    directory: "/"
+  - package-ecosystem: uv
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
     groups:
       # HA core + test framework must stay in sync — bump together
       homeassistant-stack:
         patterns:
-          - "homeassistant"
-          - "pytest-homeassistant-custom-component"
+          - homeassistant
+          - pytest-homeassistant-custom-component
       # Linting / formatting tools
       linting:
         patterns:
-          - "ruff"
-          - "mypy"
-          - "pre-commit"
+          - ruff
+          - mypy
+          - pre-commit
       # Testing utilities
       testing:
         patterns:
-          - "pytest*"
-          - "syrupy"
-          - "coverage*"
+          - pytest*
+          - syrupy
+          - coverage*
 
   # Maintain frontend npm dependencies
-  - package-ecosystem: "npm"
-    directory: "/frontend"
+  - package-ecosystem: npm
+    directory: /frontend
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
     groups:
       frontend:
-        patterns: ["*"]
+        patterns: ['*']

@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   triage:
+    name: Triage
     runs-on: ubuntu-latest
     steps:
       - name: Auto-label and triage new issues

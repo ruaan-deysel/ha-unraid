@@ -1,8 +1,5 @@
-name: Pull Request Conflicts
+name: PR Conflicts
 
-# Labels and comments on PRs that conflict with the default branch, because
-# GitHub does not notify authors. Runs after every merge to main and on
-# PR updates. No PR code is checked out, so pull_request_target is safe.
 on:
   push:
     branches: [main]

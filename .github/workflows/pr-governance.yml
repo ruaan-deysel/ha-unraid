@@ -27,7 +27,9 @@ concurrency:
 
 jobs:
   validate-template-and-issues:
-    name: Validate PR Template, Linked Issues & HA Standards
+    name: PR Governance
+    if: "!endsWith(github.event.pull_request.user.login, '[bot]')"
+
     runs-on: ubuntu-latest
     outputs:
       errors: ${{ steps.governance.outputs.errors }}
@@ -36,12 +38,10 @@ jobs:
     # github.actor: CodeRabbit editing a PR description fires an `edited` event
     # whose actor is a bot, and a skipped run would replace an earlier failure
     # with a passing check.
-    if: "!endsWith(github.event.pull_request.user.login, '[bot]')"
-
     steps:
       - id: governance
         name: Enforce PR template completion, issue linking, and HA standards
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const body = context.payload.pull_request.body || "";
@@ -361,8 +361,11 @@ jobs:
     # Report failures (and later fixes) as a Tinkerologie-Bot comment. Skipped for
     # bot-authored PRs, drafts, superseded runs, and repositories without the
     # org-level bot credentials (private repositories on the Free plan).
+    # always(): once started, a report finishes even if a newer push cancels this
+    # run. The reusable workflow serialises reports per PR, so the newer run's
+    # report then updates the comment after this one, never before.
     if: >-
-      !cancelled() &&
+      always() &&
       vars.TINKER_BOT_CLIENT_ID != '' &&
       needs.validate-template-and-issues.result != 'skipped' &&
       needs.validate-template-and-issues.result != 'cancelled' &&

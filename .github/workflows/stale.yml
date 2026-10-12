@@ -1,9 +1,8 @@
-name: Stale Issues And Pull Requests
+name: Stale
 
-# Stale after 14 days without activity, closed 30 days after that.
 on:
   schedule:
-    - cron: '41 1 * * *'
+    - cron: 41 1 * * *
   workflow_dispatch:
 
 permissions: {}

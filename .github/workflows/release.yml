@@ -1,23 +1,22 @@
----
 # yamllint disable rule:line-length
 name: Release
 
-"on":
+on:
   push:
     branches:
       - main
     paths:
       - custom_components/unraid/manifest.json
     tags:
-      - "v*"
+      - v*
 
 permissions: {}
 
 jobs:
   auto_tag:
-    name: Tag release on manifest change
-    runs-on: ubuntu-latest
+    name: Tag Release
     if: startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
@@ -135,14 +134,14 @@ jobs:
   #   2. Directly from a manually pushed v* tag (auto_tag is skipped; the
   #      `!cancelled()` keeps this job eligible despite the skipped dependency).
   release:
-    name: Build and Release
-    runs-on: ubuntu-latest
+    name: Release
     needs: auto_tag
     if: >-
       !cancelled() && (
         startsWith(github.ref, 'refs/tags/') ||
         (needs.auto_tag.result == 'success' && needs.auto_tag.outputs.tag_created == 'true')
       )
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
