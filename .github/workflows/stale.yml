@@ -14,4 +14,4 @@ jobs:
       actions: write # actions/stale saves its progress in the Actions cache between capped runs
       issues: write # label, comment on, and close stale issues
       pull-requests: write # label, comment on, and close stale pull requests
-    uses: tinkerologie/.github/.github/workflows/stale.yml@d656cb424398f328446d036df4724e3f89b5b5ec # v1.1.0
+    uses: tinkerologie/.github/.github/workflows/stale.yml@c9096d2f26b3fe506ec1a4c2f74234f66520fa26 # v1.2.0

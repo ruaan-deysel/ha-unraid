@@ -20,4 +20,4 @@ jobs:
     permissions:
       contents: read # read the default branch to compute mergeability
       pull-requests: write # add/remove the conflicts label and comment on pull requests
-    uses: tinkerologie/.github/.github/workflows/pr-conflicts.yml@d656cb424398f328446d036df4724e3f89b5b5ec # v1.1.0
+    uses: tinkerologie/.github/.github/workflows/pr-conflicts.yml@c9096d2f26b3fe506ec1a4c2f74234f66520fa26 # v1.2.0

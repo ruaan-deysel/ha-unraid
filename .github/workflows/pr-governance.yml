@@ -228,6 +228,28 @@ jobs:
             const isExplicitNone =
               /^(?:none|n\/a|not applicable|no issue|standalone)\b/i.test(relatedIssuesClean);
 
+            // "None" is reserved for maintainer housekeeping (CI, docs, dependency
+            // updates). Only authors with write access or higher may use it; everyone
+            // else must link an existing issue.
+            let isMaintainer = false;
+            if (isExplicitNone) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner,
+                  repo,
+                  username: context.payload.pull_request.user.login,
+                });
+                isMaintainer = ["admin", "maintain", "write"].includes(data.role_name || data.permission);
+              } catch (error) {
+                core.warning(`Could not read the author's repository permission: ${error.message}`);
+              }
+            }
+            if (isExplicitNone && !isMaintainer) {
+              errors.push(
+                'Contributor PRs must link an issue in "Related Issues", for example `Closes #123` or `Part of #123`. "None" is reserved for maintainer housekeeping; open an issue with the bug or enhancement template first.',
+              );
+            }
+
             if (!isExplicitNone && relatedIssuesClean) {
               const issueRefRegex =
                 /\b(?:part of|fix(?:e[sd])?|close[sd]?|resolve[sd]?|related to|addresses?|implements?)[:]??\s+(?:https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/(\d+)|([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+))/gi;
@@ -280,20 +302,25 @@ jobs:
                         break;
                       }
                     } catch (error) {
-                      core.info(`Skipping issue verification for #${issueNumber}: ${error.message}`);
-                      hasValidReference = true;
+                      if (error.status === 404) {
+                        core.warning(`Issue #${issueNumber} does not exist in ${repoSlug}.`);
+                      } else {
+                        // API outage or rate limit: do not block the PR on infrastructure errors.
+                        core.warning(`Could not verify issue #${issueNumber}: ${error.message}`);
+                        hasValidReference = true;
+                      }
                     }
                   }
                 }
 
                 if (!hasValidReference) {
                   errors.push(
-                    `Could not verify an existing linked issue in ${repoSlug} in \"Related Issues\". If no issue exists, specify \"None\".`,
+                    `Could not find the linked issue in ${repoSlug}. Link an existing issue in "Related Issues"; open one with the bug or enhancement template first.`,
                   );
                 }
               }
             } else if (!isExplicitNone && !relatedIssuesClean) {
-              errors.push('Section "Related Issues" must reference an issue or state "None".');
+              errors.push('Section "Related Issues" must reference an issue (maintainers may state "None" for housekeeping).');
             }
 
             if (errors.length > 0) {
