@@ -5,6 +5,7 @@ on:
     types: [opened, edited, reopened]
   schedule:
     - cron: 17 3 * * *
+      timezone: Australia/Brisbane
   workflow_dispatch:
 
 permissions: {}

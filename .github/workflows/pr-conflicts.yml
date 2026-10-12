@@ -3,7 +3,7 @@ name: PR Conflicts
 on:
   push:
     branches: [main]
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] -- no PR code is checked out or run
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions: {}

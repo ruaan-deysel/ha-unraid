@@ -10,7 +10,8 @@ on:
     tags:
       - v*
 
-permissions: {}
+permissions:
+  contents: read # jobs request only what they need
 
 jobs:
   auto_tag:
@@ -18,7 +19,7 @@ jobs:
     if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # create the GitHub release and tag
     outputs:
       version: ${{ steps.manifest.outputs.version }}
       tag_created: ${{ steps.create_tag.outputs.created }}
@@ -29,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
+          persist-credentials: false
       - name: Read version from manifest
         id: manifest
         run: |
@@ -50,8 +52,10 @@ jobs:
       # section must land in the same push as (or before) the manifest bump.
       - name: Check CHANGELOG has notes for this version
         id: changelog
+        env:
+          MANIFEST_VERSION: ${{ steps.manifest.outputs.version }}
         run: |
-          VERSION="${{ steps.manifest.outputs.version }}"
+          VERSION="${MANIFEST_VERSION}"
 
           if [ ! -f "CHANGELOG.md" ]; then
             echo "ready=false" >> $GITHUB_OUTPUT
@@ -77,8 +81,10 @@ jobs:
 
       - name: Check if tag already exists
         id: check_tag
+        env:
+          MANIFEST_VERSION: ${{ steps.manifest.outputs.version }}
         run: |
-          TAG="v${{ steps.manifest.outputs.version }}"
+          TAG="v${MANIFEST_VERSION}"
 
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -99,25 +105,32 @@ jobs:
         if: >-
           steps.check_tag.outputs.exists == 'false' &&
           steps.changelog.outputs.ready == 'true'
+        env:
+          MANIFEST_VERSION: ${{ steps.manifest.outputs.version }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          TAG="v${{ steps.manifest.outputs.version }}"
+          TAG="v${MANIFEST_VERSION}"
           echo "Creating tag $TAG"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TAG"
 
           echo "created=true" >> $GITHUB_OUTPUT
 
       - name: Summary
+        env:
+          MANIFEST_VERSION: ${{ steps.manifest.outputs.version }}
+          CHECK_TAG_EXISTS: ${{ steps.check_tag.outputs.exists }}
+          CHANGELOG_READY: ${{ steps.changelog.outputs.ready }}
         run: |
-          TAG="v${{ steps.manifest.outputs.version }}"
-          VERSION="${{ steps.manifest.outputs.version }}"
-          if [ "${{ steps.check_tag.outputs.exists }}" = "true" ]; then
+          TAG="v${MANIFEST_VERSION}"
+          VERSION="${MANIFEST_VERSION}"
+          if [ "${CHECK_TAG_EXISTS}" = "true" ]; then
             echo "Tag $TAG already existed. No new tag created." >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.changelog.outputs.ready }}" != "true" ]; then
+          elif [ "${CHANGELOG_READY}" != "true" ]; then
             echo "⚠️ Tag $TAG **not** created: CHANGELOG.md has no \`## [$VERSION]\` section with content." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Move the \`[Unreleased]\` notes under a \`## [$VERSION]\` heading and push the change together with a manifest.json update to trigger the release." >> $GITHUB_STEP_SUMMARY
@@ -151,15 +164,18 @@ jobs:
         with:
           fetch-depth: 0
 
+          persist-credentials: false
       - name: Determine version
         id: version
+        env:
+          AUTO_TAG_VERSION: ${{ needs.auto_tag.outputs.version }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             # Triggered by a manually pushed tag (e.g., v2025.12.0 -> 2025.12.0)
             VERSION=${GITHUB_REF#refs/tags/v}
           else
             # Same-run release after auto_tag created the tag
-            VERSION="${{ needs.auto_tag.outputs.version }}"
+            VERSION="${AUTO_TAG_VERSION}"
           fi
 
           if [ -z "$VERSION" ]; then
@@ -180,9 +196,11 @@ jobs:
           fi
 
       - name: Verify manifest.json version matches tag
+        env:
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
         run: |
           MANIFEST_VERSION=$(python3 -c "import json; print(json.load(open('custom_components/unraid/manifest.json'))['version'])")
-          TAG_VERSION="${{ steps.version.outputs.version }}"
+          TAG_VERSION="${VERSION_VERSION}"
 
           if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
             echo "ERROR: manifest.json version ($MANIFEST_VERSION) does not match tag ($TAG_VERSION)"
@@ -192,6 +210,8 @@ jobs:
           echo "✅ manifest.json version matches tag: $TAG_VERSION"
 
       - name: Build release package
+        env:
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
         run: |
           echo "Building release package..."
 
@@ -199,7 +219,7 @@ jobs:
           mkdir -p build
 
           # Create the integration package (zip file for HACS compatibility)
-          PACKAGE_FILE="build/unraid-${{ steps.version.outputs.version }}.zip"
+          PACKAGE_FILE="build/unraid-${VERSION_VERSION}.zip"
 
           # Package the custom_components directory
           cd custom_components
@@ -227,8 +247,10 @@ jobs:
 
       - name: Calculate SHA256 checksum
         id: checksum
+        env:
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          PACKAGE_FILE="build/unraid-${{ steps.version.outputs.version }}.zip"
+          PACKAGE_FILE="build/unraid-${VERSION_VERSION}.zip"
 
           # Calculate SHA256 checksum
           SHA256=$(sha256sum "$PACKAGE_FILE" | awk '{print $1}')
@@ -241,8 +263,11 @@ jobs:
 
       - name: Extract release notes from CHANGELOG
         id: changelog
+        env:
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
+          CHECKSUM_SHA256: ${{ steps.checksum.outputs.sha256 }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${VERSION_VERSION}"
 
           # Check if CHANGELOG.md exists
           if [ ! -f "CHANGELOG.md" ]; then
@@ -262,13 +287,13 @@ jobs:
 
               if [ -z "$NOTES" ]; then
                 echo "⚠️  No release notes found for version $VERSION in CHANGELOG.md"
-                NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+                NOTES="See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details."
               else
                 echo "✅ Extracted release notes for version $VERSION"
               fi
             else
               echo "⚠️  Version $VERSION not found in CHANGELOG.md"
-              NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+              NOTES="See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details."
             fi
           fi
 
@@ -276,9 +301,9 @@ jobs:
           echo "$NOTES" > build/RELEASE_NOTES.md
 
           # Add link to full changelog if not already present in NOTES
-          if ! grep -q "See \[CHANGELOG.md\](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details\." build/RELEASE_NOTES.md; then
+          if ! grep -q "See \[CHANGELOG.md\](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details\." build/RELEASE_NOTES.md; then
             echo "" >> build/RELEASE_NOTES.md
-            echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> build/RELEASE_NOTES.md
+            echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details." >> build/RELEASE_NOTES.md
           fi
 
           # Add installation instructions
@@ -292,7 +317,7 @@ jobs:
           echo "1. Open HACS in Home Assistant" >> build/RELEASE_NOTES.md
           echo "2. Go to **Integrations**" >> build/RELEASE_NOTES.md
           echo "3. Click the **⋮** menu → **Custom repositories**" >> build/RELEASE_NOTES.md
-          echo "4. Add this repository: \`https://github.com/${{ github.repository }}\`" >> build/RELEASE_NOTES.md
+          echo "4. Add this repository: \`https://github.com/${GITHUB_REPOSITORY}\`" >> build/RELEASE_NOTES.md
           echo "5. Category: **Integration**" >> build/RELEASE_NOTES.md
           echo "6. Click **Add**" >> build/RELEASE_NOTES.md
           echo "7. Search for **Unraid**" >> build/RELEASE_NOTES.md
@@ -312,7 +337,7 @@ jobs:
           echo "" >> build/RELEASE_NOTES.md
           echo "**SHA256 Checksum:**" >> build/RELEASE_NOTES.md
           echo "\`\`\`" >> build/RELEASE_NOTES.md
-          echo "${{ steps.checksum.outputs.sha256 }}  unraid-$VERSION.zip" >> build/RELEASE_NOTES.md
+          echo "${CHECKSUM_SHA256}  unraid-$VERSION.zip" >> build/RELEASE_NOTES.md
           echo "\`\`\`" >> build/RELEASE_NOTES.md
 
           cat build/RELEASE_NOTES.md
@@ -320,16 +345,18 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
+          VERSION_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
+          TAG="v${VERSION_VERSION}"
           PRE_FLAG=""
 
-          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+          if [ "${VERSION_PRERELEASE}" = "true" ]; then
             PRE_FLAG="--prerelease"
           fi
 
           gh release create "$TAG" \
-            build/unraid-${{ steps.version.outputs.version }}.zip \
+            build/unraid-${VERSION_VERSION}.zip \
             build/SHA256SUM \
             CHANGELOG.md \
             --title "$TAG" \
@@ -337,17 +364,21 @@ jobs:
             $PRE_FLAG
 
       - name: Release Summary
+        env:
+          VERSION_VERSION: ${{ steps.version.outputs.version }}
+          CHECKSUM_SHA256: ${{ steps.checksum.outputs.sha256 }}
+          VERSION_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          echo "## 🎉 v${{ steps.version.outputs.version }} Released Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 v${VERSION_VERSION} Released Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** \`unraid-${{ steps.version.outputs.version }}.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** \`unraid-${VERSION_VERSION}.zip\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**SHA256 Checksum:** \`${{ steps.checksum.outputs.sha256 }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA256 Checksum:** \`${CHECKSUM_SHA256}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Release URL:** https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release URL:** https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.version.outputs.prerelease }}" == "true" ]; then
+          if [ "${VERSION_PRERELEASE}" == "true" ]; then
             echo "**Type:** Pre-release" >> $GITHUB_STEP_SUMMARY
           else
             echo "**Type:** Stable release" >> $GITHUB_STEP_SUMMARY
@@ -357,5 +388,5 @@ jobs:
           echo "### 📋 Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Release created and package uploaded" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ HACS users can now update to v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ HACS users can now update to v${VERSION_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manual installation package available for download" >> $GITHUB_STEP_SUMMARY
