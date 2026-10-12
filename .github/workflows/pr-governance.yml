@@ -368,7 +368,7 @@ jobs:
       needs.validate-template-and-issues.result != 'cancelled' &&
       needs.validate-template-and-issues.outputs.skipped != 'draft'
     permissions: {}
-    uses: tinkerologie/.github/.github/workflows/governance-report.yml@9cfa6ddef32280d3aefb6147e2ac9b61d4eb05a0 # v1.3.2
+    uses: tinkerologie/.github/.github/workflows/governance-report.yml@331511150597376aa5dc7c3c8496a4c17a4c8b34 # v1.3.3
     with:
       pr-number: ${{ github.event.pull_request.number }}
       result: ${{ needs.validate-template-and-issues.result }}
