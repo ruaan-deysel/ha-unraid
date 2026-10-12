@@ -6,7 +6,7 @@ name: PR Governance
 # code is checked out or executed: the check only reads the PR description and
 # file list through the API.
 on:
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] -- no PR code is checked out or run
     types:
       - opened
       - edited
@@ -368,7 +368,7 @@ jobs:
       needs.validate-template-and-issues.result != 'cancelled' &&
       needs.validate-template-and-issues.outputs.skipped != 'draft'
     permissions: {}
-    uses: tinkerologie/.github/.github/workflows/governance-report.yml@f661b857df3056ba8cf75c95923ccc0665118897 # v1.3.0
+    uses: tinkerologie/.github/.github/workflows/governance-report.yml@12a9e6513ff0289c8681e119ae04da8f71991a4b # v1.3.1
     with:
       pr-number: ${{ github.event.pull_request.number }}
       result: ${{ needs.validate-template-and-issues.result }}
