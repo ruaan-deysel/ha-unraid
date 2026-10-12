@@ -232,6 +232,7 @@ jobs:
             // updates). Only authors with write access or higher may use it; everyone
             // else must link an existing issue.
             let isMaintainer = false;
+            let permissionLookupError = null;
             if (isExplicitNone) {
               try {
                 const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -239,14 +240,20 @@ jobs:
                   repo,
                   username: context.payload.pull_request.user.login,
                 });
-                isMaintainer = ["admin", "maintain", "write"].includes(data.role_name || data.permission);
+                // `permission` is the base level: maintain maps to write, and custom
+                // roles report the base role they extend.
+                isMaintainer = ["admin", "write"].includes(data.permission);
               } catch (error) {
-                core.warning(`Could not read the author's repository permission: ${error.message}`);
+                permissionLookupError = error;
               }
             }
-            if (isExplicitNone && !isMaintainer) {
+            if (isExplicitNone && permissionLookupError) {
               errors.push(
-                'Contributor PRs must link an issue in "Related Issues", for example `Closes #123` or `Part of #123`. "None" is reserved for maintainer housekeeping; open an issue with the bug or enhancement template first.',
+                `Could not confirm that the author may use "None" (GitHub API error: ${permissionLookupError.message}). Re-run this check, or link an issue in "Related Issues".`,
+              );
+            } else if (isExplicitNone && !isMaintainer) {
+              errors.push(
+                'Contributor PRs must link an issue in "Related Issues", for example `Closes #123` or `Part of #123`. "None" is reserved for maintainers with write access, for housekeeping; open an issue with the bug or enhancement template first.',
               );
             }
 
@@ -284,9 +291,7 @@ jobs:
 
                   const targetSlug = `${refOwner}/${refRepo}`.toLowerCase();
                   if (targetSlug !== repoSlug) {
-                    core.info(`Referenced external issue: ${targetSlug}#${issueNumber}`);
-                    hasValidReference = true;
-                    continue;
+                    core.info(`Verifying cross-repository issue ${targetSlug}#${issueNumber}`);
                   }
 
                   if (!Number.isNaN(issueNumber)) {
@@ -302,10 +307,10 @@ jobs:
                         break;
                       }
                     } catch (error) {
-                      if (error.status === 404) {
-                        core.warning(`Issue #${issueNumber} does not exist in ${repoSlug}.`);
+                      if ([403, 404, 410].includes(error.status)) {
+                        core.warning(`Issue ${refOwner}/${refRepo}#${issueNumber} could not be found (HTTP ${error.status}).`);
                       } else {
-                        // API outage or rate limit: do not block the PR on infrastructure errors.
+                        // Server error, rate limit or network failure: do not block the PR on GitHub outages.
                         core.warning(`Could not verify issue #${issueNumber}: ${error.message}`);
                         hasValidReference = true;
                       }
@@ -315,7 +320,7 @@ jobs:
 
                 if (!hasValidReference) {
                   errors.push(
-                    `Could not find the linked issue in ${repoSlug}. Link an existing issue in "Related Issues"; open one with the bug or enhancement template first.`,
+                    `Could not find the linked issue. Link an existing issue in "Related Issues"; open one with the bug or enhancement template first.`,
                   );
                 }
               }
