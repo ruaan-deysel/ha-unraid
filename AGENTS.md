@@ -59,7 +59,7 @@ The only sanctioned data flow is:
 | **Class prefix**     | `Unraid`                                      |
 | **Code path**        | `custom_components/unraid/`                   |
 | **Test path**        | `tests/`                                      |
-| **Python**           | 3.14+ (HA 2026.10 requires 3.14.2; CI uses 3.14.2) |
+| **Python**           | 3.14.2+ (`requires-python`; CI uses 3.14.2) |
 | **HA minimum**       | 2026.8.0 (`hacs.json`, `pyproject.toml`)      |
 | **HA target**        | 2026.10 and later developer practice          |
 | **Key dependency**   | `unraid-api>=1.13.1`                          |

@@ -62,5 +62,5 @@ except Exception as err:
 - Enum values from API: compare with `.upper()` for case insensitivity
 - Constants live in `const.py` — don't hardcode values
 - Use `entry.runtime_data` (not `hass.data[DOMAIN]`) for runtime data access
-- Runtime is Python 3.14 (HA 2026.10 requires 3.14.2); ruff still targets `py313`, so avoid 3.14-only syntax
+- Runtime is Python 3.14.2+ (`requires-python`); ruff still targets `py313`, so avoid 3.14-only syntax
 - Check `AGENTS.md` → "Home Assistant API Currency (2026.10+)" before using registry, device-info, config-flow or unit APIs
