@@ -342,6 +342,25 @@ async def test_migration_skips_device_conflict_with_warning(
     assert "Cannot migrate device" in caplog.text
 
 
+async def test_migration_rekeys_device_already_carrying_resolved_identifier(
+    hass: HomeAssistant,
+    mars_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A device holding both identifiers is re-keyed without a conflict warning."""
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=mars_entry.entry_id,
+        identifiers={(DOMAIN, PLACEHOLDER), (DOMAIN, MARS), ("other", "x")},
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _async_migrate_registry_identity(hass, mars_entry, PLACEHOLDER, MARS)
+
+    assert dev_reg.async_get(device.id).identifiers == {(DOMAIN, MARS), ("other", "x")}
+    assert "Cannot migrate device" not in caplog.text
+
+
 async def test_migration_rekeys_each_servers_own_device(
     hass: HomeAssistant, mars_entry: MockConfigEntry
 ) -> None:
