@@ -9,6 +9,7 @@
     "**/__pycache__",
     "**/.*"
   ],
+  "pythonVersion": "3.14",
   "typeCheckingMode": "basic",
   // Home Assistant's Entity base classes declare state attributes as
   // cached_property/ClassVar while integrations override them with plain
