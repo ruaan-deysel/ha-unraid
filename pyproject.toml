@@ -133,7 +133,7 @@ module = "tests.*"
 disallow_untyped_defs = false
 
 [tool.uv]
-environments = ["python_full_version >= '3.14.2'"]
+# requires-python (>=3.14.2) already bounds the resolution; no `environments` needed.
 # Override homeassistant's exact pins to fix Dependabot security alerts:
 # - aiohttp CVE-2026-34993 / multiple 2026 GHSA advisories fixed in 3.14.1
 # - PyJWT 2026 advisory set fixed in 2.13.0
