@@ -33,6 +33,11 @@ rules:
   # Dependency transparency
   dependency-transparency: done
 
+  # The documentation describes the conditions the integration provides
+  docs-conditions:
+    status: exempt
+    comment: Integration does not provide custom conditions.
+
   # The documentation includes a high-level description
   docs-high-level-description: done
 
@@ -41,6 +46,11 @@ rules:
 
   # The documentation provides removal instructions
   docs-removal-instructions: done
+
+  # The documentation describes the triggers the integration provides
+  docs-triggers:
+    status: exempt
+    comment: Integration does not provide custom triggers.
 
   # Entities have a unique ID
   entity-unique-id: done

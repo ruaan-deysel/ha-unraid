@@ -75,7 +75,7 @@ class UnraidRuntimeData:
 type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 ```
 
-Stored in `entry.runtime_data` (HA 2024.4+ pattern). Never use `hass.data[DOMAIN]`.
+Stored in `entry.runtime_data` (typed `ConfigEntry[UnraidRuntimeData]`). Never use `hass.data[DOMAIN]`.
 
 ### Entity Hierarchy
 
@@ -99,6 +99,8 @@ Exception: `UnraidButtonEntity` extends `ButtonEntity` directly (buttons are act
 ### Device Model
 
 All entities share a **single device per Unraid server**, identified by `(DOMAIN, server_uuid)`. Containers, VMs, and disks are entities (not sub-devices).
+
+`server_uuid` is the resolved identity in `entry.runtime_data.server_info["uuid"]`: the API UUID, or the hostname-qualified config entry unique ID when the firmware reports a placeholder SMBIOS UUID (see `DECISIONS.md`, "Server Identity for Placeholder SMBIOS UUIDs").
 
 ## Data Flow
 

@@ -63,6 +63,12 @@ PLACEHOLDER_UUIDS: Final = frozenset(
     }
 )
 
+
+def is_placeholder_uuid(uuid: str | None) -> bool:
+    """Return True if *uuid* is a known non-unique placeholder SMBIOS UUID."""
+    return uuid is not None and uuid.lower() in PLACEHOLDER_UUIDS
+
+
 # =============================================================================
 # Configuration Keys
 # =============================================================================

@@ -23,8 +23,8 @@ Bypass `unraid-api`".
 - **Class prefix**: `Unraid`
 - **Code path**: `custom_components/unraid/`
 - **Test path**: `tests/`
-- **Python**: 3.13+ | **HA**: 2026.5.0+ | **Dep**: `unraid-api>=1.13.1`
-- **Platforms**: `sensor`, `binary_sensor`, `switch`, `button`
+- **Python**: 3.14+ | **HA**: 2026.8.0+ (target 2026.10 developer practice) | **Dep**: `unraid-api>=1.13.1`
+- **Platforms**: `sensor`, `binary_sensor`, `switch`, `button`, `event`, `update`
 - **iot_class**: `local_polling`
 
 ## Code Quality Baseline
@@ -55,7 +55,7 @@ Platform entities use MRO: `PlatformEntity, UnraidBaseEntity`
 
 ### Runtime Data
 
-Access via `entry.runtime_data` (typed as `UnraidRuntimeData`). Never use `hass.data[DOMAIN]`.
+Access via `entry.runtime_data` (typed as `UnraidRuntimeData`: api client, three coordinators, `websocket_manager`, `server_info`). Never use `hass.data[DOMAIN]`.
 
 ## Workflow Rules
 
@@ -63,8 +63,9 @@ Access via `entry.runtime_data` (typed as `UnraidRuntimeData`). Never use `hass.
 - Test: `pytest` or `./script/test`
 - Entity names via `_attr_translation_key` + `strings.json`
 - Icons via `icons.json` keyed by translation key
-- Unique IDs: `{server_uuid}_{resource_id}`
+- Unique IDs: `{server_uuid}_{resource_id}` where `server_uuid` is `entry.runtime_data.server_info["uuid"]` (resolved once in `__init__.py`; hostname-qualified for placeholder SMBIOS UUIDs). Never derive it from `ServerInfo.uuid`.
 - Handle `None` coordinator data gracefully
+- Do not use deprecated HA core APIs (`dr.async_get_device`, `DeviceEntry.config_entries`, `add_/remove_config_entry_id`, `merge_identifiers`, `via_device`, `async_forward_entry_setup`, `OptionsFlowWithConfigEntry`, `PERCENTAGE` as a unit, ...). The full table is in `AGENTS.md` → "Home Assistant API Currency (2026.10+)".
 
 ## Path-Specific Instruction Files
 
@@ -73,8 +74,8 @@ These files auto-load in Copilot based on `applyTo` patterns:
 | Pattern                                           | File                                 | Scope                                         |
 | ------------------------------------------------- | ------------------------------------ | --------------------------------------------- |
 | `**/*.py`                                         | `python.instructions.md`             | Python conventions                            |
-| `**/entity.py`, `**/entities/*.py`                | `entities.instructions.md`           | Entity hierarchy, state, actions              |
-| `**/coordinator.py`, `**/coordinators/*.py`       | `coordinator.instructions.md`        | Triple coordinator, error handling            |
+| `sensor.py`, `binary_sensor.py`, `switch.py`, `button.py`, `event.py`, `update.py`, `entity.py` | `entities.instructions.md` | Entity hierarchy, state, actions |
+| `coordinator.py`, `websocket.py`, `cleanup.py`     | `coordinator.instructions.md`        | Triple coordinator, push updates, cleanup     |
 | `__init__.py`, `config_flow.py`, `coordinator.py` | `api.instructions.md`                | `UnraidClient` usage and API-layer boundaries |
 | `config_flow.py`                                  | `config_flow.instructions.md`        | SSL, versions, options flow                   |
 | `diagnostics.py`                                  | `diagnostics.instructions.md`        | Diagnostic data, security                     |

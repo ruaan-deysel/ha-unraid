@@ -21,17 +21,22 @@ rules:
 
 ### Tiers
 
-- **Bronze**: Minimum requirements for all integrations
-  Includes `entity-unavailable` and `integration-owner`.
-- **Silver**: Improved reliability and robustness
-  Includes `docs-actions` and `entity-event-setup`.
-- **Gold**: Best user experience
-- **Platinum**: Highest standards
+- **Bronze** (20 rules): config flow, unique IDs, `runtime-data`, `docs-*` basics
+  including `docs-actions`, `docs-conditions` and `docs-triggers` (added mid-2026),
+  `entity-event-setup`.
+- **Silver** (10 rules): unloading, reauth, `log-when-unavailable`,
+  `parallel-updates`, `entity-unavailable`, `integration-owner`, `test-coverage`.
+- **Gold** (21 rules): devices, diagnostics, discovery, translations, repairs,
+  `dynamic-devices`, `stale-devices`, remaining `docs-*` rules.
+- **Platinum** (3 rules): `async-dependency`, `inject-websession`, `strict-typing`.
+
+Current rule list: https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/
 
 ### Rules
 
 - Update status when implementing new quality scale requirements
 - Always include a `comment` explaining `exempt` or `todo` status
 - Current target: **Platinum** level
-- Key outstanding item: `test-coverage` must be **>=95%**
+- Every rule must be listed (shorthand `rule: done` is fine; `exempt` needs a `comment`)
+- `test-coverage` must stay **>=95%** per module; Codecov patch gate is 90%
 - Review after adding new features to ensure all quality scale rules still apply

@@ -59,12 +59,13 @@ The only sanctioned data flow is:
 | **Class prefix**     | `Unraid`                                      |
 | **Code path**        | `custom_components/unraid/`                   |
 | **Test path**        | `tests/`                                      |
-| **Python**           | 3.13+                                         |
-| **HA minimum**       | 2026.5.0                                      |
+| **Python**           | 3.14+ (HA 2026.10 requires 3.14.2; CI uses 3.14.2) |
+| **HA minimum**       | 2026.8.0 (`hacs.json`, `pyproject.toml`)      |
+| **HA target**        | 2026.10 and later developer practice          |
 | **Key dependency**   | `unraid-api>=1.13.1`                          |
-| **iot_class**        | `local_polling`                               |
+| **iot_class**        | `local_polling` (plus websocket push for container stats and UPS) |
 | **Config flow**      | Yes (UI only, no YAML)                        |
-| **Platforms**        | `sensor`, `binary_sensor`, `switch`, `button` |
+| **Platforms**        | `sensor`, `binary_sensor`, `switch`, `button`, `event`, `update` |
 
 ## Quick Commands
 
@@ -84,9 +85,17 @@ The only sanctioned data flow is:
 # Start dev Home Assistant
 ./script/develop
 
-# Type checking
-mypy custom_components/unraid
+# Type checking (pyright, basic mode — see pyrightconfig.json)
+./script/type-check
+
+# Spelling
+./script/spell-check
 ```
+
+The scripts activate `.local/ha-venv`. If a tool is missing there, install it with
+`uv pip install --python .venv/bin/python <tool>`; CI installs fresh with
+`uv pip install . ".[dev]" homeassistant` on Python 3.14.2, so the lock file is
+for local reproducibility only.
 
 ## Architecture
 
@@ -94,9 +103,9 @@ mypy custom_components/unraid
 
 ```text
 Entities ──▶ Coordinator ──▶ UnraidClient (unraid-api) ──▶ Unraid Server (GraphQL)
-   ▲              │
-   └──────────────┘
-     (coordinator.data)
+   ▲              │ ▲
+   └──────────────┘ └── UnraidWebSocketManager (GraphQL subscriptions push
+     (coordinator.data)   container stats / UPS updates into the coordinators)
 ```
 
 ### Triple Coordinator Pattern
@@ -120,6 +129,7 @@ class UnraidRuntimeData:
     system_coordinator: UnraidSystemCoordinator
     storage_coordinator: UnraidStorageCoordinator
     infra_coordinator: UnraidInfraCoordinator
+    websocket_manager: UnraidWebSocketManager
     server_info: dict
 
 
@@ -127,6 +137,24 @@ type UnraidConfigEntry = ConfigEntry[UnraidRuntimeData]
 ```
 
 Access in platform setup: `entry.runtime_data.system_coordinator`, etc.
+
+### Server Identity (`server_info["uuid"]`)
+
+`server_info["uuid"]` is the **only** source of the `{server_uuid}` prefix used by
+entity unique IDs, the server device identifier `(DOMAIN, server_uuid)`,
+`cleanup.py`, `async_remove_config_entry_device` and diagnostics. It is resolved
+once in `async_setup_entry` by `_resolve_server_identity()`:
+
+- Real UUID → the raw API UUID.
+- Known placeholder SMBIOS UUID (`is_placeholder_uuid()` in `const.py`) **and**
+  `entry.unique_id` starts with `{uuid}_` → the hostname-qualified
+  `entry.unique_id` that the config flow created (#166, #183, #351).
+- Anything else (host fallback, no unique ID, legacy raw-placeholder unique ID)
+  → the raw API UUID.
+
+Never build registry keys from `ServerInfo.uuid` or `coordinator.data.info.uuid`.
+`_async_migrate_registry_identity()` re-keys existing registry records
+idempotently before platforms load; see `docs/development/DECISIONS.md`.
 
 ### Data Classes
 
@@ -140,21 +168,28 @@ Each coordinator returns a typed dataclass:
 
 ```text
 custom_components/unraid/
-├── __init__.py          # Setup/teardown, UnraidRuntimeData, platform forwarding
-├── config_flow.py       # Config flow (user, reauth, reconfigure), options flow (UPS)
-├── const.py             # All constants: domain, intervals, keys, icons, states
+├── __init__.py          # Setup/teardown, UnraidRuntimeData, identity resolution + registry migration, platform forwarding
+├── cleanup.py           # Stale dynamic-entity / empty-device pruning after each refresh
+├── config_flow.py       # Config flow (user, reauth, reconfigure), options flow (UPS, container updates)
+├── const.py             # All constants: domain, intervals, keys, placeholder UUIDs, states
 ├── coordinator.py       # Triple coordinator pattern + data classes
-├── entity.py            # UnraidBaseEntity, UnraidEntity, UnraidEntityDescription
+├── diagnostics.py       # Diagnostic data for troubleshooting (UUID/hostname redacted)
+├── entity.py            # UnraidBaseEntity, UnraidEntity, dynamic-resource entity helpers
+├── event.py             # Event entities (notifications, plugin operations)
+├── frontend.py          # Registers the bundled Lovelace cards as a static path / resource
+├── frontend/            # Built card bundle (sources live in /frontend at repo root)
+├── repairs.py           # Repair flows (auth failed)
 ├── sensor.py            # All sensor entities
 ├── binary_sensor.py     # All binary sensor entities
-├── switch.py            # Container, VM, array, parity switches
-├── button.py            # Array start/stop, parity, disk spin buttons
-├── diagnostics.py       # Diagnostic data for troubleshooting
+├── switch.py            # Container, VM, array, parity, disk spin switches
+├── button.py            # Array, parity, notification, disk, VM buttons
+├── update.py            # Per-container update entities
+├── websocket.py         # UnraidWebSocketManager: GraphQL subscriptions → coordinators
 ├── icons.json           # Icon definitions per translation key
 ├── strings.json         # English translations (source of truth)
 ├── translations/en.json # Generated from strings.json
 ├── manifest.json        # Integration metadata
-└── quality_scale.yaml   # HA quality scale self-assessment
+└── quality_scale.yaml   # HA quality scale self-assessment (every rule listed)
 ```
 
 ## Code Style & Conventions
@@ -163,7 +198,7 @@ custom_components/unraid/
 
 - **Line length**: 88 characters (ruff formatter)
 - **Linter**: ruff (`E`, `W`, `F`, `I`, `C`, `B`, `UP` rules)
-- **Target**: Python 3.13 (`target-version = "py313"`)
+- **Target**: ruff `target-version = "py313"` (runtime is Python 3.14; do not add 3.14-only syntax until the target is bumped)
 - **Imports**: Use `from __future__ import annotations` in every file
 - **Type hints**: Required on all public functions; use `TYPE_CHECKING` guard for import-only types
 - **Logging**: `_LOGGER = logging.getLogger(__name__)` — use `_LOGGER.debug()` for data updates, `.info()` for lifecycle, `.warning()` for user-visible issues, `.error()` for failures
@@ -186,7 +221,7 @@ Key patterns:
 
 - `_attr_has_entity_name = True` (always, set on `UnraidBaseEntity`)
 - `_attr_translation_key = "..."` for translated names via `strings.json`
-- Unique ID format: `{server_uuid}_{resource_id}`
+- Unique ID format: `{server_uuid}_{resource_id}` where `server_uuid` is `server_info["uuid"]` (see *Server Identity* above)
 - Access coordinator data: `data: UnraidSystemData | None = self.coordinator.data`
 - Use `@property` for `native_value`, `is_on`, `extra_state_attributes`
 - Per-resource entities (disks, containers, VMs) store `_disk_id` / `_container_id` and implement `_get_disk()` / `_get_container()` helper
@@ -206,7 +241,9 @@ Key patterns:
 - SSL auto-detection: Try HTTPS first, fall back to HTTP on `UnraidSSLError`
 - Version checking: API version from `get_server_info()` compared against `MIN_API_VERSION` (requires GraphQL API `v4.31.1+`; no Unraid OS version requirement — API upgradeable via Connect plugin)
 - Options flow: `OptionsFlowWithReload` for UPS capacity/power settings
-- Unique ID: server UUID from `api_client.get_server_info()`
+- Unique ID: server UUID from `api_client.get_server_info()`; a placeholder SMBIOS UUID is qualified as `{uuid}_{hostname}`; a missing UUID falls back to the host
+- `_get_reauth_entry()` / `_get_reconfigure_entry()` + `async_update_reload_and_abort()`; never pair those with an update listener (deprecated 2026.6, error from 2026.12)
+- Shared abort reasons (`already_configured`, `reauth_successful`, ...) are translated centrally by HA 2026.10+
 
 ### Error Handling
 
@@ -220,6 +257,39 @@ Key patterns:
 - All API data comes as Pydantic v2 models from `unraid-api` library
 - Use `extra="ignore"` on Pydantic models to handle API evolution
 - Enum values from API: always compare with `.upper()` for case-insensitive matching
+
+## Home Assistant API Currency (2026.10+)
+
+Write new code against current core APIs. These are **deprecated or removed** and
+must not be (re)introduced; CI tests run on the current HA release where many of
+them raise `RuntimeError` through `report_usage`:
+
+| Do not use | Use instead | Since |
+| --- | --- | --- |
+| `hass.data[DOMAIN]` for runtime state | `entry.runtime_data` (`UnraidRuntimeData`) | 2024.4 |
+| `async_forward_entry_setup` (singular) | `async_forward_entry_setups(entry, PLATFORMS)` | removed 2025.6 |
+| `OptionsFlowWithConfigEntry`, setting `OptionsFlow.config_entry` | `OptionsFlowWithReload` / `OptionsFlow` (read-only `self.config_entry`) | 2025.12 |
+| `DataUpdateCoordinator(...)` without `config_entry=` | always pass `config_entry=entry` | 2025.x |
+| `dr.async_get_device(identifiers=...)` | `async_get_device_by_identifier((DOMAIN, id), entry.entry_id)` | 2026.8 (removed 2027.8) |
+| `DeviceEntry.config_entries`, `primary_config_entry` | `DeviceEntry.config_entry_id` (a device has one entry) | 2026.8 / reports 2026.10 |
+| `async_update_device(add_config_entry_id= / remove_config_entry_id= / merge_identifiers=)` | `new_config_entry_id=`, `new_identifiers=` | 2026.8 |
+| `DeviceInfo(via_device=...)` | `via_device_id=` | 2026.8 |
+| Returning `False` from `async_migrate_entry` | raise `ConfigEntryNotReady` / `ConfigEntryError` | 2026.10 |
+| `CONCENTRATION_*` constants; `PERCENTAGE` as a unit | `UnitOfDensity`, `UnitOfRatio.PERCENTAGE` | 2026.7 |
+| `FlowHandler.show_advanced_options` | remove the check (always true) | 2026.6 (removed 2027.6) |
+| Entity IDs whose domain differs from the platform | matching domain | 2026.4 (stops 2027.5) |
+| `RestoreStateData.last_states` | `async_get_stored_state` | 2026.11 |
+| Importing `voluptuous` directly in tests for error text | HA 2026.9+ validates with Probatio; `vol` is an alias, messages changed | 2026.9 |
+
+Still current and expected: `cv.config_entry_only_config_schema`, `ConfigType`,
+frozen `EntityDescription` dataclasses, `UpdateFailed(retry_after=...)`,
+`ServiceValidationError`, `ir.async_create_issue`, `er.async_migrate_entries` /
+`async_update_entity(new_unique_id=...)` for registry migrations (pre-check with
+`async_get_entity_id`; a conflict raises `ValueError`), and the entity lifecycle
+hooks `async_prepare_to_add_to_hass` (2026.10) / `async_entity_id_changed` (2026.11).
+
+Developer blog index: https://developers.home-assistant.io/blog/ — check it for
+the current month before touching registries, config flows or device info.
 
 ## Testing
 
@@ -235,15 +305,18 @@ pip install -e ".[dev]"
 
 ```text
 tests/
-├── conftest.py          # Shared fixtures: mock API client, coordinators, config entries
-├── fixtures/            # JSON fixtures for API responses
-├── test_init.py         # Setup/teardown tests
-├── test_config_flow.py  # Config flow tests
-├── test_coordinator.py  # Coordinator tests
-├── test_sensor.py       # Sensor entity tests
-├── test_binary_sensor.py
-├── test_switch.py
-└── test_button.py
+├── conftest.py                 # Shared fixtures: mock API client, coordinators, config entries, data factories
+├── fixtures/                   # JSON fixtures for API responses
+├── test_init.py                # Setup/teardown tests
+├── test_identity_migration.py  # Server identity resolution + registry migration (#351)
+├── test_config_flow.py         # Config flow tests
+├── test_coordinator.py         # Coordinator tests
+├── test_cleanup.py             # Stale entity / device cleanup
+├── test_websocket.py           # Subscription manager
+├── test_frontend.py            # Card registration
+├── test_diagnostics.py, test_repairs.py, test_entity.py
+├── test_sensor.py, test_binary_sensor.py, test_switch.py, test_button.py
+└── test_event.py, test_update.py
 ```
 
 ### Patterns
@@ -253,6 +326,9 @@ tests/
 - Use `pytest-asyncio` with `asyncio_mode = "auto"`
 - Fixtures provide pre-built coordinator data classes
 - Test both happy path and error scenarios (auth failure, connection loss, missing optional data)
+- Registry behaviour is tested against the real registries from the `hass` fixture (`er.async_get(hass)`, `dr.async_get(hass)`) with `MockConfigEntry.add_to_hass(hass)`; never mock the registries
+- Full-integration tests use `hass.config_entries.async_setup(entry.entry_id)`; setting up the first entry of the domain loads every entry, and `async_register_frontend` / `UnraidWebSocketManager` must be patched
+- Deprecated core APIs raise `RuntimeError` in tests (`report_usage` with no integration frame), so a failing test that mentions "deprecated" means the code, not the test, must change
 
 ### Running Tests
 
@@ -281,11 +357,11 @@ pytest --no-cov                  # Skip coverage for speed
 
 ### Ask First
 
-- Adding new platforms (beyond sensor, binary_sensor, switch, button)
+- Adding new platforms (beyond sensor, binary_sensor, switch, button, event, update)
 - Changing coordinator polling intervals
 - Modifying the config flow steps
 - Adding new dependencies to `manifest.json` or `pyproject.toml`
-- Changing entity unique ID format (breaks existing installations)
+- Changing entity unique ID format or the server identity rule (breaks existing installations; needs a registry migration)
 - Modifying `UnraidRuntimeData` structure
 - Updating the `unraid-api` library version
 
@@ -299,6 +375,8 @@ pytest --no-cov                  # Skip coverage for speed
 - Auto-update `translations/` files other than `en.json`
 - Import from `homeassistant.core` at module level in entity files (use `TYPE_CHECKING`)
 - Use `entity_id` for identification (use `unique_id`)
+- Derive unique IDs or device identifiers from `ServerInfo.uuid` directly (use `server_info["uuid"]`)
+- Use deprecated core APIs listed under *Home Assistant API Currency*
 - Store state in the entity that should be in the coordinator
 - Commit secrets, API keys, or credentials
 - Use `hass.data[DOMAIN]` directly (use `config_entry.runtime_data`)
@@ -332,10 +410,14 @@ Check diagnostics via: Settings > Devices & Services > Unraid > (...) > Download
 
 The integration targets **Platinum** level on the [HA Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/). Current status:
 
-- **Bronze**: All rules done/exempt
-- **Silver**: All rules done except `test-coverage` (must reach **>=95%**)
+- **Bronze**: All rules done/exempt (including `docs-conditions` and `docs-triggers`, added mid-2026)
+- **Silver**: All rules done; `test-coverage` is **>=95%** per module (total ~97%)
 - **Gold**: All done/exempt
 - **Platinum**: All done (async dependency, inject websession, strict typing)
+
+Every rule must be listed in `quality_scale.yaml` (`done`, `todo`, or
+`{status: exempt, comment: ...}`); hassfest validates the file for core
+integrations only, so keep it honest by hand.
 
 ## Issue and Pull Request Governance
 

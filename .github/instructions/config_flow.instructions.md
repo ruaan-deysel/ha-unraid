@@ -73,8 +73,17 @@ await self.async_set_unique_id(unique_id)
 self._abort_if_unique_id_configured()
 ```
 
+`_fetch_server_info()` qualifies a known placeholder SMBIOS UUID
+(`is_placeholder_uuid()` in `const.py`) with the hostname: `{uuid}_{hostname}`.
+This is the config entry identity, and `__init__.py` resolves the same value as
+the runtime `server_info["uuid"]` so entities and the device stay distinct per
+server (#351). Do not change this format without a registry migration.
+
 `async_step_reauth_confirm` and `async_step_reconfigure` update existing entries
-via `_get_reauth_entry()` / `_get_reconfigure_entry()`.
+via `_get_reauth_entry()` / `_get_reconfigure_entry()` and finish with
+`async_update_reload_and_abort()`. Never combine that with an update listener
+(deprecated 2026.6, error from 2026.12); options use `OptionsFlowWithReload`.
+`show_advanced_options` is deprecated (2026.6) and must not be checked.
 
 ## Validation
 

@@ -19,9 +19,11 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from unraid_api import ServerInfo, UnraidClient
@@ -40,6 +42,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     REPAIR_AUTH_FAILED,
+    is_placeholder_uuid,
 )
 from .coordinator import (
     UnraidInfraCoordinator,
@@ -129,6 +132,170 @@ def _build_server_info(server_info: ServerInfo, host: str, use_ssl: bool) -> dic
         "hw_manufacturer": server_info.hw_manufacturer,
         "hw_model": server_info.hw_model,
     }
+
+
+def _resolve_server_identity(
+    api_uuid: str | None, entry_unique_id: str | None
+) -> str | None:
+    """
+    Return the identity used as the ``{server_uuid}`` prefix at runtime.
+
+    The config flow qualifies a placeholder SMBIOS UUID with the hostname
+    (``{uuid}_{hostname}``) so two servers that share the same firmware UUID
+    can both be configured.  Entities and the server device must use that
+    same qualified identity, otherwise every server reuses the raw UUID and
+    Home Assistant rejects the second server's entities as duplicates (#351).
+
+    The hostname-qualified ``entry.unique_id`` is used only when the API UUID
+    is a known placeholder *and* the stored unique ID was derived from it.
+    Every other entry (real UUID, host fallback, legacy raw-placeholder
+    unique ID, no unique ID) keeps the raw API value unchanged.
+    """
+    if not api_uuid or not entry_unique_id or not is_placeholder_uuid(api_uuid):
+        return api_uuid
+    if entry_unique_id.lower().startswith(f"{api_uuid.lower()}_"):
+        return entry_unique_id
+    return api_uuid
+
+
+def _legacy_device_ids(
+    hass: HomeAssistant, entry: UnraidConfigEntry, raw_uuid: str
+) -> set[str]:
+    """Return IDs of this entry's devices still keyed on the raw UUID."""
+    dev_reg = dr.async_get(hass)
+    return {
+        device.id
+        for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+        if (DOMAIN, raw_uuid) in device.identifiers
+    }
+
+
+def _migrate_entity_unique_ids(
+    hass: HomeAssistant,
+    entry: UnraidConfigEntry,
+    raw_prefix: str,
+    resolved_prefix: str,
+    legacy_device_ids: set[str],
+) -> None:
+    """Rename this entry's entity unique IDs from the raw to the resolved prefix."""
+    ent_reg = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        unique_id = entity_entry.unique_id
+        if not unique_id.startswith(raw_prefix):
+            continue
+        # The entity platform assigns unique_id and device together, so a
+        # record attached to a device still keyed on the raw UUID was created
+        # under the raw identity and needs migrating even when its resource ID
+        # happens to start with the hostname (hostname "disk" vs
+        # "disk_sda_temp"). Any other record already carrying the resolved
+        # prefix was created, or migrated, under the resolved identity.
+        if entity_entry.device_id not in legacy_device_ids and unique_id.startswith(
+            resolved_prefix
+        ):
+            continue
+        new_unique_id = f"{resolved_prefix}{unique_id[len(raw_prefix) :]}"
+        existing = ent_reg.async_get_entity_id(
+            entity_entry.domain, DOMAIN, new_unique_id
+        )
+        if existing is not None:
+            _LOGGER.warning(
+                "Cannot migrate %s to unique ID %s: %s already uses it. "
+                "Remove the stale entity %s and reload the integration",
+                entity_entry.entity_id,
+                new_unique_id,
+                existing,
+                existing,
+            )
+            continue
+        try:
+            ent_reg.async_update_entity(
+                entity_entry.entity_id, new_unique_id=new_unique_id
+            )
+        except ValueError as err:
+            _LOGGER.warning(
+                "Cannot migrate %s to unique ID %s: %s",
+                entity_entry.entity_id,
+                new_unique_id,
+                err,
+            )
+            continue
+        _LOGGER.debug(
+            "Migrated %s unique ID %s -> %s",
+            entity_entry.entity_id,
+            unique_id,
+            new_unique_id,
+        )
+
+
+def _migrate_device_identifiers(
+    hass: HomeAssistant,
+    entry: UnraidConfigEntry,
+    raw_uuid: str,
+    resolved_uuid: str,
+) -> None:
+    """Re-key this entry's server device from the raw UUID to the resolved one."""
+    dev_reg = dr.async_get(hass)
+    raw_identifier = (DOMAIN, raw_uuid)
+    resolved_identifier = (DOMAIN, resolved_uuid)
+    # Devices belong to exactly one config entry (HA 2026.8+), so a device that
+    # servers previously shared has already been split per entry by core.
+    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        if raw_identifier not in device.identifiers:
+            continue
+        existing = dev_reg.async_get_device_by_identifier(
+            resolved_identifier, entry.entry_id
+        )
+        if existing is not None and existing.id != device.id:
+            _LOGGER.warning(
+                "Cannot migrate device %s to identifier %s: device %s already "
+                "uses it. Remove the stale device and reload the integration",
+                device.id,
+                resolved_uuid,
+                existing.id,
+            )
+            continue
+        dev_reg.async_update_device(
+            device.id,
+            new_identifiers=(device.identifiers - {raw_identifier})
+            | {resolved_identifier},
+        )
+        _LOGGER.debug(
+            "Migrated device %s identifier %s -> %s",
+            device.id,
+            raw_uuid,
+            resolved_uuid,
+        )
+
+
+@callback
+def _async_migrate_registry_identity(
+    hass: HomeAssistant,
+    entry: UnraidConfigEntry,
+    raw_uuid: str | None,
+    resolved_uuid: str | None,
+) -> None:
+    """
+    Move registry records keyed on the raw placeholder UUID to the resolved identity.
+
+    Runs before platforms are forwarded so existing entities keep their
+    ``entity_id``, customisations and device.  The migration is idempotent:
+    records that already carry the resolved prefix, records owned by another
+    config entry and non-placeholder servers are never touched.  Conflicting
+    targets are skipped with a warning rather than deleted.
+    """
+    if not raw_uuid or not resolved_uuid or raw_uuid == resolved_uuid:
+        return
+    _LOGGER.debug(
+        "Server identity for entry %s resolved to %s (API UUID %s)",
+        entry.entry_id,
+        resolved_uuid,
+        raw_uuid,
+    )
+    legacy_device_ids = _legacy_device_ids(hass, entry, raw_uuid)
+    _migrate_entity_unique_ids(
+        hass, entry, f"{raw_uuid}_", f"{resolved_uuid}_", legacy_device_ids
+    )
+    _migrate_device_identifiers(hass, entry, raw_uuid, resolved_uuid)
 
 
 def _normalize_ssl_config(
@@ -314,6 +481,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     server_info = _build_server_info(info, host, use_ssl)
     server_name = server_info["name"]
 
+    # Entities and the server device key off the config entry's identity, so
+    # servers sharing a placeholder SMBIOS UUID stay distinct at runtime (#351).
+    server_info["uuid"] = _resolve_server_identity(info.uuid, entry.unique_id)
+    _async_migrate_registry_identity(hass, entry, info.uuid, server_info["uuid"])
+
     (
         system_coordinator,
         storage_coordinator,
@@ -374,7 +546,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     # runs on both the system and storage coordinators so that a refresh of
     # either one triggers the check (important because containers live in the
     # system coordinator and disks/shares in the storage coordinator).
-    server_uuid = server_info["uuid"]
+    server_uuid: str = entry.runtime_data.server_info["uuid"]
 
     def _run_cleanup(_: object = None) -> None:
         async_cleanup_stale_entities(

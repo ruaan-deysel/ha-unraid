@@ -32,8 +32,8 @@ from .const import (
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
     DOMAIN,
-    PLACEHOLDER_UUIDS,
     REPAIR_AUTH_FAILED,
+    is_placeholder_uuid,
 )
 
 if TYPE_CHECKING:
@@ -347,7 +347,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         uuid = server_info.uuid
         hostname = server_info.hostname or host
 
-        if uuid and uuid.lower() in PLACEHOLDER_UUIDS:
+        if is_placeholder_uuid(uuid):
             _LOGGER.warning(
                 "Detected placeholder SMBIOS UUID %s on %s; "
                 "combining with hostname for unique identification",

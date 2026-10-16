@@ -7,7 +7,16 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Duplicate entity IDs with multiple servers sharing a placeholder SMBIOS UUID** ([#351](https://github.com/tinkerologie/ha-unraid/issues/351)): Servers whose firmware reports a known placeholder UUID (for example `03000200-0400-0500-0006-000700080009` on TerraMaster and other AMI-based units) could be added twice thanks to the hostname-qualified config entry unique ID introduced in [#183](https://github.com/tinkerologie/ha-unraid/pull/183), but entities and the server device were still keyed on the raw UUID, so the second server's entities were rejected with `Platform unraid does not generate unique IDs`. The runtime server identity now follows the config entry's hostname-qualified unique ID for placeholder servers. Entities, the server device, stale-entity cleanup, device removal and diagnostics all use that one resolved identity. Servers with a real UUID, host-fallback entries and legacy entries are unchanged.
+  - **Automatic migration**: on setup, entity unique IDs and the server device identifier that belong to the config entry are re-keyed from the raw placeholder prefix to the hostname-qualified prefix. Entity IDs, names, areas and other customisations are kept. The migration is idempotent and never deletes records.
+  - **If you applied the workaround from the issue** (replacing `server_info["uuid"]` with `entry.unique_id` locally) and already re-added the servers, nothing changes. If stale raw-prefixed entities remain from before the workaround, setup logs a `Cannot migrate ... already uses it` warning naming both entities; remove the stale one under *Settings > Devices & services > Entities* and reload the integration.
+
 ### Changed
+
+- Minimum Home Assistant version is now 2026.8.0 (`hacs.json`, `pyproject.toml`), which introduced the per-config-entry device registry APIs the identity migration relies on.
+- AI agent guidance (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.github/instructions/*.md`) refreshed for Home Assistant 2026.10 developer practice: Python 3.14, all six entity platforms, websocket manager runtime data, the server identity rule, registry-migration patterns and the deprecations that must not be reintroduced.
 - Pull requests get path labels and at most one type label, `bug` or `enhancement`, from the shared tinkerologie PR labeler. Dependabot pull requests whose largest update is a patch or minor version merge automatically once the checks and commit statuses on their head commit have finished without a failure (a Codecov check that is still pending is not waited for; a Codecov failure blocks); majors, and pull requests with open review threads, stay for review.
 - Release workflows hardened (least-privilege job permissions, no expressions in shell scripts, no persisted checkout credentials, no dependency caches); scheduled workflows run on Australia/Brisbane time. LICENSE now contains the complete Apache License 2.0 text.
 - Tinkerologie-Bot governance report updated to v1.4.3: an older run can no longer post a stale report after a newer run passed. Workflow formatting tidied.

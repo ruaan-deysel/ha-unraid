@@ -69,7 +69,7 @@ Each decision is documented with:
 
 **Context:** Entities need stable unique IDs that survive HA restarts and server reboots.
 
-**Decision:** Use `{server_uuid}_{resource_id}` where server_uuid comes from the Unraid server's UUID and resource_id is a descriptive identifier (e.g., `cpu_usage`, `disk_sda_temp`, `container_switch_plex`).
+**Decision:** Use `{server_uuid}_{resource_id}` where `server_uuid` is the resolved server identity (`entry.runtime_data.server_info["uuid"]`) and `resource_id` is a descriptive identifier (e.g., `cpu_usage`, `disk_sda_temp`, `container_switch_plex`).
 
 **Rationale:**
 
@@ -83,6 +83,28 @@ Each decision is documented with:
 - If a server's UUID changes (reinstall), entities break — this is expected
 - Container/VM rename causes new entity (old one becomes orphaned)
 - Disk replacement creates new entity (different device ID)
+
+---
+
+### Server Identity for Placeholder SMBIOS UUIDs
+
+**Date:** 2026-10 (issue [#351](https://github.com/tinkerologie/ha-unraid/issues/351), building on [#166](https://github.com/tinkerologie/ha-unraid/issues/166) / [#183](https://github.com/tinkerologie/ha-unraid/pull/183))
+
+**Context:** Some AMI/OEM firmware (TerraMaster, Beelink and similar mini PCs) reports a placeholder SMBIOS UUID such as `03000200-0400-0500-0006-000700080009` on every unit. The config flow qualifies that UUID with the hostname (`{uuid}_{hostname}`) so two such servers can both be configured, but the runtime identity still came straight from the API, so both servers produced identical entity unique IDs and device identifiers.
+
+**Decision:** There is exactly one runtime identity, resolved once in `async_setup_entry` by `_resolve_server_identity()` and stored in `server_info["uuid"]`:
+
+- If the API UUID is a known placeholder (`is_placeholder_uuid()` in `const.py`) **and** `entry.unique_id` starts with `{api_uuid}_` (case-insensitive), the identity is `entry.unique_id`.
+- Otherwise the identity is the raw API UUID. Real UUIDs, host-fallback entries, entries without a unique ID and pre-#183 entries whose unique ID is the raw placeholder keep their existing identity, so nothing changes for them.
+
+Every consumer (platform setup, `UnraidBaseEntity`, `cleanup.py`, `async_remove_config_entry_device`, diagnostics) reads `server_info["uuid"]`; nothing derives registry keys from `ServerInfo.uuid` directly.
+
+**Migration:** `_async_migrate_registry_identity()` runs before platforms are forwarded whenever the resolved identity differs from the API UUID. It re-keys the config entry's own entity unique IDs (`{raw}_{resource}` -> `{resolved}_{resource}`) via `async_update_entity(new_unique_id=...)`, which keeps `entity_id`, names and customisations, and re-keys the server device via `async_update_device(new_identifiers=...)`. It is idempotent, only touches records owned by the entry, and skips conflicts with a warning instead of deleting anything. It runs in setup rather than in `async_migrate_entry` with a version bump so that a skipped conflict is retried on the next reload once the user removes the stale record.
+
+**Consequences:**
+
+- Servers with placeholder UUIDs are identified by hostname; renaming such a server changes the config entry's identity and therefore its entities, which is the documented trade-off of #183.
+- Devices belong to a single config entry (HA 2026.8+), so each server owns its own device even when the raw identifier was previously shared. This is why the minimum Home Assistant version is 2026.8.0.
 
 ---
 
