@@ -190,7 +190,7 @@ async def test_entry_forms_schema_is_probatio(
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": source, "entry_id": entry.entry_id},
-            data=dict(entry.data),
+            data=dict(entry.data) if source == "reauth" else None,
         )
 
     assert result["type"] is FlowResultType.FORM
