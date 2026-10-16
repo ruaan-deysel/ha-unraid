@@ -787,18 +787,22 @@ async def test_setup_entry_api_error(
     mock_unraid_client.close.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "error",
+    [ConfigEntryNotReady("server gone"), ConfigEntryAuthFailed("key revoked")],
+    ids=["not_ready", "auth_failed"],
+)
 async def test_setup_entry_first_refresh_failure_closes_client(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_unraid_client: MagicMock,
+    error: Exception,
 ) -> None:
-    """Test client is closed when the first coordinator refresh fails."""
+    """Test client is closed and the error re-raised when first refresh fails."""
     mock_config_entry.add_to_hass(hass)
 
     failing_coordinator = MagicMock()
-    failing_coordinator.async_config_entry_first_refresh = AsyncMock(
-        side_effect=ConfigEntryNotReady("server gone")
-    )
+    failing_coordinator.async_config_entry_first_refresh = AsyncMock(side_effect=error)
 
     with (
         patch(
@@ -816,9 +820,10 @@ async def test_setup_entry_first_refresh_failure_closes_client(
         patch("custom_components.unraid.async_get_clientsession") as mock_session,
     ):
         mock_session.return_value = MagicMock()
-        with pytest.raises(ConfigEntryNotReady):
+        with pytest.raises(type(error)) as excinfo:
             await async_setup_entry(hass, mock_config_entry)
 
+    assert excinfo.value is error
     mock_unraid_client.close.assert_called_once()
 
 

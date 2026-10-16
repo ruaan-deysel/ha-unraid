@@ -29,7 +29,7 @@ Bypass `unraid-api`".
 
 ## Code Quality Baseline
 
-- Ruff linter + formatter, line length 88, target `py313`
+- Ruff linter + formatter, line length 88, target `py314`
 - `from __future__ import annotations` in every file
 - Type hints on all public functions
 - Constants in `const.py` with `Final` annotations
