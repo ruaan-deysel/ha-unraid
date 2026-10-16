@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import voluptuous as vol
-from homeassistant.components.repairs import RepairsFlow
-from homeassistant.data_entry_flow import FlowResult
+import probatio as vol
+from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 
 from .const import DOMAIN, REPAIR_AUTH_FAILED
 
@@ -17,11 +16,15 @@ if TYPE_CHECKING:
 class AuthFailedRepairFlow(RepairsFlow):
     """Handler for auth failed repair flow."""
 
-    async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> RepairsFlowResult:
         """Handle the first step of the repair flow."""
         return await self.async_step_confirm()
 
-    async def async_step_confirm(self, user_input: dict | None = None) -> FlowResult:
+    async def async_step_confirm(
+        self, user_input: dict | None = None
+    ) -> RepairsFlowResult:
         """Handle the confirm step - redirect to reauth flow."""
         if user_input is not None:
             # Find the config entry for this integration

@@ -5,8 +5,6 @@ resolution-markers = [
     "python_full_version >= '3.15'",
     "python_full_version < '3.15'",
 ]
-supported-markers = [
-]
 
 [manifest]
 overrides = [
@@ -1144,7 +1142,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "colorlog", marker = "extra == 'dev'", specifier = ">=6.12.0" },
     { name = "ha-unraid", extras = ["test"], marker = "extra == 'dev'" },
-    { name = "homeassistant", specifier = ">=2026.8.0" },
+    { name = "homeassistant", specifier = ">=2026.9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3.1" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.13.4" },

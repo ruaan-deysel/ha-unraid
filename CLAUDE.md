@@ -18,7 +18,7 @@ Rule: Never Bypass `unraid-api`".
 
 ## Quick Reference
 
-- **Domain**: `unraid` | **Prefix**: `Unraid` | **Python**: 3.14.2+ | **HA**: 2026.8.0+ (target 2026.10 practice) | **Dep**: `unraid-api>=1.13.1`
+- **Domain**: `unraid` | **Prefix**: `Unraid` | **Python**: 3.14.2+ | **HA**: 2026.9.0+ (target 2026.10 practice) | **Dep**: `unraid-api>=1.13.1`
 - **Platforms**: `sensor`, `binary_sensor`, `switch`, `button`, `event`, `update`
 - **Server identity**: `{server_uuid}` is always `entry.runtime_data.server_info["uuid"]` (resolved in `__init__.py`; hostname-qualified for placeholder SMBIOS UUIDs). Never key registries on `ServerInfo.uuid`.
 - **Deprecated HA APIs**: see `AGENTS.md` → "Home Assistant API Currency (2026.10+)" before touching registries, device info, config flows or units

@@ -116,5 +116,5 @@ never the deprecated `async_get_device(identifiers=...)`. Use `via_device_id`, n
 ## Units
 
 Use the `UnitOf*` enums (`UnitOfInformation`, `UnitOfTemperature`, `UnitOfDataRate`, `UnitOfRatio.PERCENTAGE`, ...).
-`CONCENTRATION_*` constants and `PERCENTAGE` used as a unit are deprecated since HA 2026.7.
-Existing `PERCENTAGE` usage is being migrated; do not add new occurrences.
+`CONCENTRATION_*` constants, the bare `PERCENTAGE` constant and string literals such as `"%"`
+or `"GiB"` must not be used as units (HA 2026.7 deprecation); the enums carry the same values.

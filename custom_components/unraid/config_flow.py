@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-import voluptuous as vol
+import probatio as vol
 from awesomeversion import AwesomeVersion
 from homeassistant import config_entries
 from homeassistant.config_entries import OptionsFlowWithReload
@@ -296,7 +296,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Get server UUID/hostname and check API version compatibility
             await self._fetch_server_info(api_client, host)
 
-        except (InvalidAuthError, CannotConnectError, UnsupportedVersionError):
+        except InvalidAuthError, CannotConnectError, UnsupportedVersionError:
             raise
         except UnraidAuthenticationError as err:
             msg = "Invalid API key or insufficient permissions"

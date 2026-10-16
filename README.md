@@ -76,7 +76,7 @@ A Home Assistant custom integration for monitoring and controlling Unraid server
 
 ## Requirements
 
-- **Home Assistant**: 2026.8.0 or later
+- **Home Assistant**: 2026.9.0 or later
 - **Unraid Server**: With **GraphQL API v4.31.1 or later** (install the [Unraid Connect](https://unraid.net/connect) plugin to stay up to date)
 - **Unraid API Key**: Generated in Unraid settings
 

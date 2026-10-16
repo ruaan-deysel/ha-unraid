@@ -62,5 +62,7 @@ except Exception as err:
 - Enum values from API: compare with `.upper()` for case insensitivity
 - Constants live in `const.py` — don't hardcode values
 - Use `entry.runtime_data` (not `hass.data[DOMAIN]`) for runtime data access
-- Runtime is Python 3.14.2+ (`requires-python`); ruff still targets `py313`, so avoid 3.14-only syntax
+- Schemas: `import probatio as vol` (HA 2026.9+ validation engine); never `import voluptuous`
+- Flow step return types: `ConfigFlowResult` (config/options flows), `RepairsFlowResult` (repairs); never the untyped `FlowResult`
+- Runtime is Python 3.14.2+ (`requires-python`, ruff `target-version = "py314"`)
 - Check `AGENTS.md` → "Home Assistant API Currency (2026.10+)" before using registry, device-info, config-flow or unit APIs

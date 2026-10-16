@@ -18,6 +18,7 @@ from homeassistant.const import (
     UnitOfEnergy,
     UnitOfInformation,
     UnitOfPower,
+    UnitOfRatio,
     UnitOfTemperature,
 )
 from homeassistant.helpers import entity_registry as er
@@ -118,7 +119,7 @@ class CpuSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """CPU usage sensor with model and core count attributes."""
 
     _attr_translation_key = "cpu_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -164,7 +165,7 @@ class RAMUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """RAM usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "ram_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -220,7 +221,7 @@ class RAMUsedSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_translation_key = "ram_used"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
@@ -260,7 +261,7 @@ class SwapUsageSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """Swap usage percentage sensor."""
 
     _attr_translation_key = "swap_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
     _attr_entity_registry_enabled_default = False
@@ -308,7 +309,7 @@ class SwapUsedSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_translation_key = "swap_used"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
 
@@ -342,7 +343,7 @@ class RAMBuffCacheSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_translation_key = "ram_buffcache"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
 
@@ -376,7 +377,7 @@ class RAMActiveSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_translation_key = "ram_active"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
 
@@ -410,7 +411,7 @@ class SwapFreeSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     _attr_translation_key = "swap_free"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
 
@@ -1248,7 +1249,7 @@ class ArrayUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Array usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "array_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -1293,7 +1294,7 @@ class ParityProgressSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Parity check progress sensor."""
 
     _attr_translation_key = "parity_progress"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
@@ -1365,7 +1366,7 @@ class LastParityCheckDateSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
                 return dt
-            except (ValueError, AttributeError):
+            except ValueError, AttributeError:
                 return None
         # Handle numeric timestamps (epoch seconds)
         if isinstance(date_val, (int, float)):
@@ -1592,7 +1593,7 @@ class DiskUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Disk usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "disk_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -1693,7 +1694,7 @@ class UPSBatterySensor(UnraidSensorEntity[UnraidSystemCoordinator]):
 
     _attr_translation_key = "ups_battery"
     _attr_device_class = SensorDeviceClass.BATTERY
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
 
@@ -1753,7 +1754,7 @@ class UPSLoadSensor(UnraidSensorEntity[UnraidSystemCoordinator]):
     """UPS load percentage sensor."""
 
     _attr_translation_key = "ups_load"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -2067,7 +2068,7 @@ class UPSEnergySensor(UnraidSensorEntity[UnraidSystemCoordinator], RestoreEntity
                     "Restored UPS energy value: %.3f kWh",
                     self._total_energy_kwh,
                 )
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 _LOGGER.warning(
                     "Could not restore UPS energy value from state: %s",
                     last_state.state,
@@ -2171,7 +2172,7 @@ class ShareUsageSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
     """Share usage percentage sensor with human-readable attributes."""
 
     _attr_translation_key = "share_usage"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -2354,7 +2355,7 @@ class ContainerCpuSensor(
     """Container CPU usage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_cpu"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
     _attr_suggested_display_precision = 1
@@ -2458,7 +2459,7 @@ class ContainerMemoryPercentSensor(
     """Container memory percentage sensor (WebSocket-powered)."""
 
     _attr_translation_key = "container_memory_percent"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
     _attr_suggested_display_precision = 1
@@ -2605,7 +2606,7 @@ class DockerTotalCpuSensor(UnraidBaseEntity[UnraidSystemCoordinator], SensorEnti
     """Total Docker CPU usage sensor (sum of all containers, WebSocket-powered)."""
 
     _attr_translation_key = "docker_total_cpu"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -2666,7 +2667,7 @@ class DockerTotalMemoryPercentSensor(
     """Total Docker memory usage sensor (sum of all containers, WebSocket-powered)."""
 
     _attr_translation_key = "docker_total_memory_percent"
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
@@ -2726,7 +2727,7 @@ class DockerTotalMemoryBytesSensor(
     _attr_translation_key = "docker_total_memory_bytes"
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = "B"
-    _attr_suggested_unit_of_measurement = "GiB"
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIBIBYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 2
 
@@ -3105,7 +3106,7 @@ class ParitySpeedSensor(UnraidSensorEntity[UnraidStorageCoordinator]):
         # speed is str | None since unraid-api v1.9.0
         try:
             speed_val = float(speed)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         # API reports parity speed directly in MB/s
         return round(speed_val, 1)

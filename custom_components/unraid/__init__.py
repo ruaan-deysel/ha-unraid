@@ -438,7 +438,7 @@ async def _async_refresh_coordinators(
         await system_coordinator.async_config_entry_first_refresh()
         await storage_coordinator.async_config_entry_first_refresh()
         await infra_coordinator.async_config_entry_first_refresh()
-    except (ConfigEntryAuthFailed, ConfigEntryNotReady):
+    except ConfigEntryAuthFailed, ConfigEntryNotReady:
         await api_client.close()
         raise
 

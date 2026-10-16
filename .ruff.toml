@@ -1,6 +1,6 @@
 # The contents of this file is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
 
-target-version = "py313"
+target-version = "py314"
 
 # Exclude the hassfest sparse HA core checkout — its ruff.toml files reference
 # a pyproject.toml that doesn't exist in the sparse checkout, causing errors.

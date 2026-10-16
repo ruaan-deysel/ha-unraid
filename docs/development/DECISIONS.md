@@ -104,7 +104,7 @@ Every consumer (platform setup, `UnraidBaseEntity`, `cleanup.py`, `async_remove_
 **Consequences:**
 
 - Servers with placeholder UUIDs are identified by hostname; renaming such a server changes the config entry's identity and therefore its entities, which is the documented trade-off of #183.
-- Devices belong to a single config entry (HA 2026.8+), so each server owns its own device even when the raw identifier was previously shared. This is why the minimum Home Assistant version is 2026.8.0.
+- Devices belong to a single config entry (HA 2026.8+), so each server owns its own device even when the raw identifier was previously shared. This is why the minimum Home Assistant version is at least 2026.8 (2026.9.0 in practice, because the flows import the Probatio validation engine that 2026.9 introduced).
 
 ---
 
