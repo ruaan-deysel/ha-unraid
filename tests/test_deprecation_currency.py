@@ -141,3 +141,153 @@ async def test_validate_connection_reraises_flow_errors(
             await flow._validate_connection(api_client, "unraid.local")
 
     assert excinfo.value is error
+
+
+# ---------------------------------------------------------------------------
+# Every form the flows show is built with a Probatio schema
+# ---------------------------------------------------------------------------
+
+
+async def test_user_form_schema_is_probatio(hass: HomeAssistant) -> None:
+    """The user step form is built from a Probatio schema."""
+    from homeassistant import config_entries
+
+    from custom_components.unraid.const import DOMAIN
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert isinstance(result["data_schema"], probatio.Schema)
+
+
+@pytest.mark.parametrize(
+    ("source", "step_id"),
+    [("reauth", "reauth_confirm"), ("reconfigure", "reconfigure")],
+)
+async def test_entry_forms_schema_is_probatio(
+    hass: HomeAssistant, source: str, step_id: str
+) -> None:
+    """The reauth and reconfigure forms are built from Probatio schemas."""
+    from unittest.mock import patch
+
+    from homeassistant.const import CONF_API_KEY, CONF_HOST
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.unraid.const import DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "old-key"},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.unraid.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": source, "entry_id": entry.entry_id},
+            data=dict(entry.data),
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == step_id
+    assert isinstance(result["data_schema"], probatio.Schema)
+
+
+async def test_options_form_schema_is_probatio(hass: HomeAssistant) -> None:
+    """The options form is built from a Probatio schema."""
+    from unittest.mock import patch
+
+    from homeassistant.const import CONF_API_KEY, CONF_HOST
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.unraid.const import DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.unraid.async_setup_entry", return_value=True):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert isinstance(result["data_schema"], probatio.Schema)
+
+
+async def test_repair_flow_submit_returns_typed_create_entry(
+    hass: HomeAssistant,
+) -> None:
+    """Submitting the repair form yields a CREATE_ENTRY RepairsFlowResult."""
+    from unittest.mock import patch
+
+    from homeassistant.const import CONF_API_KEY, CONF_HOST
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.unraid.const import DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    flow = repairs.AuthFailedRepairFlow()
+    flow.hass = hass
+    with patch.object(
+        hass.config_entries.flow, "async_init", return_value={"flow_id": "x"}
+    ) as mock_init:
+        result = await flow.async_step_confirm(user_input={})
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {}
+    mock_init.assert_called_once()
+    assert mock_init.call_args.kwargs["context"]["entry_id"] == entry.entry_id
+
+
+async def test_ups_energy_invalid_restored_state_is_ignored(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A non-numeric restored UPS energy state logs a warning and starts at 0."""
+    import logging
+    from unittest.mock import MagicMock, patch
+
+    from unraid_api.models import UPSDevice, UPSPower
+
+    from custom_components.unraid.coordinator import UnraidSystemCoordinator
+    from tests.conftest import make_system_data
+
+    ups = UPSDevice(id="ups:1", name="APC", power=UPSPower(loadPercentage=50.0))
+    coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    coordinator.data = make_system_data(ups_devices=[ups])
+    coordinator.config_entry = MagicMock(entry_id="entry")
+    entity = sensor.UPSEnergySensor(
+        coordinator=coordinator,
+        server_uuid="test-uuid",
+        server_name="tower",
+        ups=ups,
+        ups_nominal_power=1000,
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_ups_energy"
+    last_state = MagicMock(state="not_a_number")
+
+    with (
+        patch.object(entity, "async_get_last_state", return_value=last_state),
+        caplog.at_level(logging.WARNING),
+    ):
+        await entity.async_added_to_hass()
+
+    assert entity._total_energy_kwh == 0.0
+    assert "Could not restore UPS energy value" in caplog.text
