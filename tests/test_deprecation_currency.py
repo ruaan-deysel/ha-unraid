@@ -71,3 +71,73 @@ async def test_repair_flow_steps_return_typed_results(hass: HomeAssistant) -> No
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "confirm"
     assert isinstance(result["data_schema"], probatio.Schema)
+
+
+# ---------------------------------------------------------------------------
+# Exception paths reformatted for Python 3.14 (PEP 758 ``except A, B:``)
+# ---------------------------------------------------------------------------
+
+
+def test_last_parity_check_date_invalid_string_returns_none() -> None:
+    """An unparsable ISO date string is swallowed and yields no value."""
+    from unittest.mock import MagicMock
+
+    from unraid_api.models import ParityHistoryEntry
+
+    from custom_components.unraid.coordinator import UnraidStorageCoordinator
+    from tests.conftest import make_storage_data
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(
+        parity_history=[ParityHistoryEntry(date="not-a-date", status="OK")]
+    )
+    entity = sensor.LastParityCheckDateSensor(
+        coordinator=coordinator, server_uuid="test-uuid", server_name="tower"
+    )
+
+    assert entity.native_value is None
+
+
+def test_parity_speed_non_numeric_returns_none() -> None:
+    """A non-numeric parity speed string yields no value instead of raising."""
+    from unittest.mock import MagicMock
+
+    from unraid_api.models import ParityCheck
+
+    from custom_components.unraid.coordinator import UnraidStorageCoordinator
+    from tests.conftest import make_storage_data
+
+    coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    coordinator.data = make_storage_data(parity_status=ParityCheck(speed="fast"))
+    entity = sensor.ParitySpeedSensor(
+        coordinator=coordinator, server_uuid="test-uuid", server_name="tower"
+    )
+
+    assert entity.native_value is None
+
+
+@pytest.mark.parametrize(
+    "error_cls",
+    [
+        config_flow.InvalidAuthError,
+        config_flow.CannotConnectError,
+        config_flow.UnsupportedVersionError,
+    ],
+)
+async def test_validate_connection_reraises_flow_errors(
+    hass: HomeAssistant, error_cls: type[Exception]
+) -> None:
+    """Flow-level errors raised while fetching server info pass through as-is."""
+    from unittest.mock import AsyncMock
+
+    flow = config_flow.ConfigFlow()
+    flow.hass = hass
+    api_client = AsyncMock()
+    error = error_cls("boom")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(flow, "_fetch_server_info", AsyncMock(side_effect=error))
+        with pytest.raises(error_cls) as excinfo:
+            await flow._validate_connection(api_client, "unraid.local")
+
+    assert excinfo.value is error

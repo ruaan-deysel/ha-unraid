@@ -331,6 +331,7 @@ tests/
 - Registry behaviour is tested against the real registries from the `hass` fixture (`er.async_get(hass)`, `dr.async_get(hass)`) with `MockConfigEntry.add_to_hass(hass)`; never mock the registries
 - Full-integration tests use `hass.config_entries.async_setup(entry.entry_id)`; setting up the first entry of the domain loads every entry, and `async_register_frontend` / `UnraidWebSocketManager` must be patched
 - Deprecated core APIs raise `RuntimeError` in tests (`report_usage` with no integration frame), so a failing test that mentions "deprecated" means the code, not the test, must change
+- After deploying to a live Home Assistant, search its log for `Detected that custom integration 'unraid'` (the `report_usage` deprecation report) and for `custom_components.unraid` warnings; both must be empty before a PR is opened
 
 ### Running Tests
 
